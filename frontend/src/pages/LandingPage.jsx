@@ -1,11 +1,11 @@
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
 import {
-  HardHat, Users, Calendar, ClipboardList,
-  Building2, ChevronRight, Shield, Zap, Globe, ArrowRight
+  HardHat, Users, ClipboardList, ArrowRight, CheckCircle,
+  Building2, Wrench, Shield, ChevronDown, Send, AlertCircle, X
 } from 'lucide-react'
 
-function useCounter(target, duration = 2000, start = false) {
+function useCountUp(target, duration = 2000, start = false) {
   const [count, setCount] = useState(0)
   useEffect(() => {
     if (!start) return
@@ -21,244 +21,306 @@ function useCounter(target, duration = 2000, start = false) {
   return count
 }
 
-function StatCard({ value, label, suffix = '' }) {
-  const [visible, setVisible] = useState(false)
-  const ref = useRef(null)
-  const count = useCounter(value, 1800, visible)
+function InquiryForm() {
+  const [form, setForm] = useState({
+    first_name: '', last_name: '', email: '',
+    mobile: '', address: '', description: '', reason: ''
+  })
+  const [errors,    setErrors]    = useState({})
+  const [submitting, setSubmitting] = useState(false)
+  const [success,   setSuccess]   = useState(false)
+  const [apiError,  setApiError]  = useState('')
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) { setVisible(true); observer.disconnect() }
-    }, { threshold: 0.5 })
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [])
+  const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
 
-  return (
-    <div ref={ref} className="text-center">
-      <div className="font-display font-bold text-5xl lg:text-6xl text-amber-400 tabular-nums">
-        {count}{suffix}
+  const validate = () => {
+    const e = {}
+    if (!form.first_name.trim()) e.first_name = 'First name is required.'
+    if (!form.last_name.trim())  e.last_name  = 'Last name is required.'
+    if (!form.description.trim()) e.description = 'Please describe your inquiry.'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const handleSubmit = async () => {
+    setApiError('')
+    if (!validate()) return
+    setSubmitting(true)
+    try {
+      const res = await fetch('http://localhost/skillconnect/backend/api/inquiries/create.php', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error)
+      setSuccess(true)
+      setForm({ first_name: '', last_name: '', email: '', mobile: '', address: '', description: '', reason: '' })
+    } catch (err) {
+      setApiError(err.message || 'Submission failed. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (success) return (
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+        <CheckCircle size={32} className="text-emerald-400" />
       </div>
-      <div className="font-body text-slate-400 text-sm tracking-widest uppercase mt-1">{label}</div>
+      <h3 className="font-display font-bold text-2xl text-slate-100 tracking-wide">Inquiry Submitted!</h3>
+      <p className="font-body text-slate-400 text-center max-w-sm">
+        Thank you! Our team will get in touch with you shortly.
+      </p>
+      <button onClick={() => setSuccess(false)}
+        className="btn-primary text-sm mt-2">Submit Another</button>
     </div>
   )
-}
 
-function FeatureCard({ icon: Icon, title, desc }) {
   return (
-    <div className="group relative bg-steel-800 border border-steel-700 hover:border-amber-500/40 p-6 transition-all duration-300 hover:-translate-y-1">
-      <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-amber-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-amber-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      <div className="w-12 h-12 bg-amber-500/10 flex items-center justify-center mb-4 group-hover:bg-amber-500/20 transition-colors duration-300">
-        <Icon size={22} className="text-amber-400" />
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {apiError && (
+        <div className="md:col-span-2 flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-body">
+          <AlertCircle size={14} />{apiError}
+        </div>
+      )}
+
+      {/* First Name */}
+      <div>
+        <label className="label-field">First Name <span className="text-red-400">*</span></label>
+        <input className="input-field" value={form.first_name}
+          onChange={e => f('first_name', e.target.value)} placeholder="Juan" />
+        {errors.first_name && <p className="text-red-400 text-xs mt-1 font-body">{errors.first_name}</p>}
       </div>
-      <h3 className="font-display font-bold text-xl text-slate-100 mb-2 tracking-wide">{title}</h3>
-      <p className="font-body text-slate-400 text-sm leading-relaxed">{desc}</p>
-    </div>
-  )
-}
 
-function RoleCard({ icon: Icon, role, access, color, badge }) {
-  return (
-    <div className="relative overflow-hidden bg-steel-800 border border-steel-700 p-6">
-      <div className={`absolute top-0 left-0 w-1 h-full ${color}`} />
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 flex items-center justify-center flex-shrink-0 bg-steel-700">
-          <Icon size={20} className={color.replace('bg-', 'text-')} />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="font-display font-bold text-lg text-slate-100 tracking-wide">{role}</span>
-            <span className="text-xs font-display font-semibold tracking-widest uppercase px-2 py-0.5 bg-steel-700 text-slate-400">
-              {badge}
-            </span>
-          </div>
-          <ul className="space-y-1.5">
-            {access.map((item, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm text-slate-400 font-body">
-                <ChevronRight size={12} className={color.replace('bg-', 'text-')} />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {/* Last Name */}
+      <div>
+        <label className="label-field">Last Name <span className="text-red-400">*</span></label>
+        <input className="input-field" value={form.last_name}
+          onChange={e => f('last_name', e.target.value)} placeholder="dela Cruz" />
+        {errors.last_name && <p className="text-red-400 text-xs mt-1 font-body">{errors.last_name}</p>}
+      </div>
+
+      {/* Email */}
+      <div>
+        <label className="label-field">Email Address</label>
+        <input className="input-field" type="email" value={form.email}
+          onChange={e => f('email', e.target.value)} placeholder="juan@email.com" />
+      </div>
+
+      {/* Mobile */}
+      <div>
+        <label className="label-field">Mobile Number</label>
+        <input className="input-field" value={form.mobile}
+          onChange={e => f('mobile', e.target.value)} placeholder="09XX XXX XXXX" />
+      </div>
+
+      {/* Address */}
+      <div className="md:col-span-2">
+        <label className="label-field">Address</label>
+        <input className="input-field" value={form.address}
+          onChange={e => f('address', e.target.value)} placeholder="Street, City, Province" />
+      </div>
+
+      {/* Reason */}
+      <div className="md:col-span-2">
+        <label className="label-field">Reason for Inquiry</label>
+        <select className="input-field" value={form.reason} onChange={e => f('reason', e.target.value)}>
+          <option value="">Select a reason...</option>
+          <option value="Construction Services">Construction Services</option>
+          <option value="Manpower Supply">Manpower Supply</option>
+          <option value="Equipment Rental">Equipment Rental</option>
+          <option value="Project Consultation">Project Consultation</option>
+          <option value="Partnership">Partnership / Subcontracting</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      {/* Description */}
+      <div className="md:col-span-2">
+        <label className="label-field">Message / Description <span className="text-red-400">*</span></label>
+        <textarea className="input-field resize-none" rows={4} value={form.description}
+          onChange={e => f('description', e.target.value)}
+          placeholder="Tell us about your project or inquiry..." />
+        {errors.description && <p className="text-red-400 text-xs mt-1 font-body">{errors.description}</p>}
+      </div>
+
+      {/* Submit */}
+      <div className="md:col-span-2">
+        <button onClick={handleSubmit} disabled={submitting}
+          className="btn-primary w-full flex items-center justify-center gap-2">
+          {submitting
+            ? <span className="animate-pulse">Submitting...</span>
+            : <><Send size={16} />Submit Inquiry</>}
+        </button>
       </div>
     </div>
   )
 }
 
 export default function LandingPage() {
-  const navigate = useNavigate()
-  const [scrolled, setScrolled] = useState(false)
+  const navigate   = useNavigate()
+  const statsRef   = useRef(null)
+  const [statsVisible, setStatsVisible] = useState(false)
+
+  const projects  = useCountUp(250,  2000, statsVisible)
+  const workers   = useCountUp(120,  2000, statsVisible)
+  const clients   = useCountUp(85,   2000, statsVisible)
+  const years     = useCountUp(12,   2000, statsVisible)
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 60)
-    window.addEventListener('scroll', onScroll)
-    return () => window.removeEventListener('scroll', onScroll)
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setStatsVisible(true) },
+      { threshold: 0.3 }
+    )
+    if (statsRef.current) observer.observe(statsRef.current)
+    return () => observer.disconnect()
   }, [])
 
   return (
-    <div className="min-h-screen bg-steel-950 overflow-x-hidden">
-      <div className="fixed inset-0 bg-grid-steel bg-grid opacity-40 pointer-events-none z-0" />
+    <div className="min-h-screen bg-steel-950 text-slate-100">
 
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-steel-950/95 backdrop-blur-sm border-b border-steel-800' : 'bg-transparent'}`}>
+      {/* NAV */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-steel-950/90 backdrop-blur border-b border-steel-800">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-amber-500 flex items-center justify-center">
-              <HardHat size={18} className="text-steel-900" />
+            <div className="w-8 h-8 bg-amber-500 flex items-center justify-center">
+              <HardHat size={18} className="text-steel-950" />
             </div>
-            <div>
-              <div className="font-display font-bold text-lg text-slate-100 leading-none tracking-wider uppercase">
-                Skill<span className="text-amber-400">Connect</span>
-              </div>
-              <div className="font-body text-[10px] text-slate-500 leading-none tracking-widest uppercase">
-                Emerald Builders
-              </div>
-            </div>
+            <span className="font-display font-bold text-lg tracking-wider text-slate-100">
+              SKILL<span className="text-amber-400">CONNECT</span>
+            </span>
           </div>
-          <div className="hidden md:flex items-center gap-8">
-            {['Features', 'Roles', 'About'].map((link) => (
-              <a key={link} href={`#${link.toLowerCase()}`}
-                className="font-body text-sm text-slate-400 hover:text-amber-400 transition-colors duration-200 tracking-wide">
-                {link}
-              </a>
-            ))}
+          <div className="flex items-center gap-4">
+            <a href="#inquiry" className="font-body text-sm text-slate-400 hover:text-slate-100 transition-colors">
+              Contact Us
+            </a>
+            <button onClick={() => navigate('/login')} className="btn-primary text-sm">
+              Sign In
+            </button>
           </div>
-          <button onClick={() => navigate('/login')} className="btn-primary text-sm flex items-center gap-2">
-            <span>Login</span>
-            <ArrowRight size={14} />
-          </button>
         </div>
       </nav>
 
-      <section className="relative min-h-screen flex items-center pt-16 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-24">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-8 h-px bg-amber-500" />
-              <span className="font-display font-semibold text-amber-400 tracking-[0.3em] text-xs uppercase">
-                Workforce Marketplace System
-              </span>
-            </div>
-            <h1 className="font-display font-bold text-6xl md:text-7xl lg:text-8xl text-slate-100 leading-none tracking-tight mb-6">
-              SKILL<span className="text-amber-400">CONNECT</span>
-              <span className="block text-slate-400 font-light text-4xl md:text-5xl mt-2">
-                for Emerald Builders
-              </span>
-            </h1>
-            <p className="font-body text-slate-400 text-lg leading-relaxed max-w-xl mb-10">
-              A centralised web-based platform for multi-service booking, workforce scheduling,
-              and contractor management — purpose-built for construction excellence.
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <button onClick={() => navigate('/login')} className="btn-primary flex items-center gap-2 text-sm">
-                <span>Access System</span>
-                <ArrowRight size={16} />
-              </button>
-              <a href="#features" className="btn-ghost text-sm flex items-center gap-2">
-                <span>Learn More</span>
-                <ChevronRight size={16} />
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="relative z-10 border-y border-steel-700 bg-steel-900/60 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8">
-          <StatCard value={500} suffix="+" label="Workforce Managed" />
-          <StatCard value={120} suffix="+" label="Projects Delivered" />
-          <StatCard value={98} suffix="%" label="Scheduling Accuracy" />
-          <StatCard value={24} suffix="/7" label="System Availability" />
-        </div>
-      </section>
-
-      <section id="features" className="relative z-10 py-24">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="mb-14">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-px bg-amber-500" />
-              <span className="font-display font-semibold text-amber-400 tracking-[0.3em] text-xs uppercase">Platform Features</span>
-            </div>
-            <h2 className="font-display font-bold text-5xl text-slate-100 tracking-wide">
-              Everything you need to<br />
-              <span className="text-amber-400">manage your workforce</span>
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FeatureCard icon={Users} title="Contact Management" desc="Manage clients, subcontractors, and workers with type-based profiles, license tracking, and expiry alerts." />
-            <FeatureCard icon={ClipboardList} title="Job Orders" desc="Create, assign, and track job orders across your workforce with real-time status updates." />
-            <FeatureCard icon={Calendar} title="Smart Scheduling" desc="Visual scheduling system to prevent conflicts and optimise crew deployment." />
-            <FeatureCard icon={Shield} title="License Monitoring" desc="AI-assisted document scanning with automatic expiry detection and flagging." />
-            <FeatureCard icon={Building2} title="Organisation Types" desc="Classify subcontractors by type — ManPower, Heavy Equipment, Materials, and more." />
-            <FeatureCard icon={Zap} title="Role-Based Access" desc="Super Admin, Admin, and Worker portals with tailored permissions and dashboards." />
-          </div>
-        </div>
-      </section>
-
-      <section id="roles" className="relative z-10 py-24 bg-steel-900/40">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="mb-14">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-px bg-amber-500" />
-              <span className="font-display font-semibold text-amber-400 tracking-[0.3em] text-xs uppercase">Access Levels</span>
-            </div>
-            <h2 className="font-display font-bold text-5xl text-slate-100 tracking-wide">
-              Three roles,<br />
-              <span className="text-amber-400">one ecosystem</span>
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <RoleCard icon={Shield} role="Super Admin" badge="Full Control" color="bg-amber-500"
-              access={['Create & manage Admin users', 'Create contacts with Admin access', 'Reset Worker passwords', 'Full system oversight']} />
-            <RoleCard icon={Users} role="Admin" badge="Operations" color="bg-blue-400"
-              access={['Manage all Contacts (CRUD)', 'Create & track Job Orders', 'Workforce Scheduling', 'Configuration tables']} />
-            <RoleCard icon={HardHat} role="Worker" badge="Field Access" color="bg-emerald-400"
-              access={['View assigned Job Orders', 'Update task progress', 'View scheduling & assignments', 'Profile & status management']} />
-          </div>
-        </div>
-      </section>
-
-      <section id="about" className="relative z-10 py-24">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="relative overflow-hidden bg-steel-800 border border-steel-700 p-12 md:p-16">
-            <div className="relative z-10 max-w-2xl">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-px bg-amber-500" />
-                <span className="font-display font-semibold text-amber-400 tracking-[0.3em] text-xs uppercase">About the System</span>
-              </div>
-              <h2 className="font-display font-bold text-5xl text-slate-100 tracking-wide mb-6">
-                Built for<br />
-                <span className="text-amber-400">Emerald Builders</span><br />
-                & Construction
-              </h2>
-              <p className="font-body text-slate-400 leading-relaxed mb-8">
-                SkillConnect is a purpose-built workforce marketplace that streamlines how Emerald Builders
-                manages its multi-skilled workforce, subcontractor network, and project scheduling.
-              </p>
-              <button onClick={() => navigate('/login')} className="btn-primary flex items-center gap-2">
-                <span>Get Started</span>
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <footer className="relative z-10 border-t border-steel-800 py-8">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 bg-amber-500 flex items-center justify-center">
-              <HardHat size={14} className="text-steel-900" />
-            </div>
-            <span className="font-display font-bold text-slate-300 tracking-wider uppercase text-sm">
-              Skill<span className="text-amber-400">Connect</span>
+      {/* HERO */}
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
+        <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-steel-950" />
+        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 mb-8">
+            <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+            <span className="font-body text-xs text-amber-400 tracking-widest uppercase">
+              Emerald Builders & Construction
             </span>
           </div>
-          <div className="flex items-center gap-2 text-slate-500 text-sm font-body">
-            <Globe size={14} />
-            <span>Emerald Builders & Construction — {new Date().getFullYear()}</span>
+          <h1 className="font-display font-black text-5xl sm:text-7xl text-slate-100 leading-none tracking-tight mb-6">
+            BUILD SMARTER.<br />
+            <span className="text-amber-400">CONNECT FASTER.</span>
+          </h1>
+          <p className="font-body text-slate-400 text-lg sm:text-xl max-w-2xl mx-auto mb-10">
+            The all-in-one workforce and project management platform for construction teams.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button onClick={() => navigate('/login')} className="btn-primary flex items-center justify-center gap-2 text-base px-8 py-3">
+              Get Started <ArrowRight size={18} />
+            </button>
+            <a href="#inquiry"
+              className="flex items-center justify-center gap-2 px-8 py-3 border border-steel-700 text-slate-300 font-display font-semibold tracking-wider text-sm hover:border-amber-500/40 hover:text-slate-100 transition-all">
+              Submit Inquiry
+            </a>
           </div>
+          <div className="mt-16 animate-bounce">
+            <ChevronDown size={24} className="text-slate-600 mx-auto" />
+          </div>
+        </div>
+      </section>
+
+      {/* STATS */}
+      <section ref={statsRef} className="py-20 border-y border-steel-800 bg-steel-900/40">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            {[
+              { value: projects, label: 'Projects Completed', suffix: '+' },
+              { value: workers,  label: 'Skilled Workers',    suffix: '+' },
+              { value: clients,  label: 'Happy Clients',      suffix: '+' },
+              { value: years,    label: 'Years of Experience', suffix: '' },
+            ].map(s => (
+              <div key={s.label}>
+                <div className="font-display font-black text-5xl text-amber-400 mb-2">
+                  {s.value}{s.suffix}
+                </div>
+                <div className="font-body text-sm text-slate-500 uppercase tracking-wider">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURES */}
+      <section className="py-24 max-w-7xl mx-auto px-6">
+        <div className="text-center mb-16">
+          <h2 className="font-display font-bold text-4xl text-slate-100 tracking-wide mb-4">
+            Everything You Need
+          </h2>
+          <p className="font-body text-slate-400 max-w-xl mx-auto">
+            From workforce management to job order tracking — all in one platform.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { icon: Users,         title: 'Workforce Management',  desc: 'Track workers, specializations, licenses, and availability in real time.' },
+            { icon: ClipboardList, title: 'Job Order Tracking',    desc: 'Create and monitor job orders from inquiry to completion with full audit trail.' },
+            { icon: Building2,     title: 'Client Management',     desc: 'Manage clients, subcontractors, and organisations in one unified contacts system.' },
+            { icon: Wrench,        title: 'Scheduling',            desc: 'Plan and assign workers to projects with an intuitive scheduling system.' },
+            { icon: Shield,        title: 'Role-Based Access',     desc: 'Super Admin, Admin, and Worker portals with secure JWT authentication.' },
+            { icon: CheckCircle,   title: 'Inquiry to Job Order',  desc: 'Convert client inquiries into job orders instantly with auto-populated fields.' },
+          ].map(f => (
+            <div key={f.title} className="card-steel p-6 hover:border-amber-500/30 transition-all duration-200">
+              <div className="w-10 h-10 bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
+                <f.icon size={20} className="text-amber-400" />
+              </div>
+              <h3 className="font-display font-bold text-lg text-slate-100 tracking-wide mb-2">{f.title}</h3>
+              <p className="font-body text-sm text-slate-500 leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* INQUIRY FORM */}
+      <section id="inquiry" className="py-24 bg-steel-900/40 border-t border-steel-800">
+        <div className="max-w-3xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 mb-6">
+              <Send size={14} className="text-amber-400" />
+              <span className="font-body text-xs text-amber-400 tracking-widest uppercase">Get In Touch</span>
+            </div>
+            <h2 className="font-display font-bold text-4xl text-slate-100 tracking-wide mb-4">
+              Submit an Inquiry
+            </h2>
+            <p className="font-body text-slate-400">
+              Tell us about your project and we'll get back to you right away.
+            </p>
+          </div>
+          <div className="card-steel p-8">
+            <InquiryForm />
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="border-t border-steel-800 py-8">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-amber-500 flex items-center justify-center">
+              <HardHat size={13} className="text-steel-950" />
+            </div>
+            <span className="font-display font-bold text-sm tracking-wider text-slate-400">
+              SKILL<span className="text-amber-400">CONNECT</span>
+            </span>
+          </div>
+          <p className="font-body text-xs text-slate-600">
+            © 2026 Emerald Builders & Construction. All rights reserved.
+          </p>
         </div>
       </footer>
     </div>
