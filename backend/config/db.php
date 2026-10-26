@@ -1,8 +1,11 @@
 <?php
-define('DB_HOST',    'localhost');
-define('DB_NAME',    'skillconnect_new_db');
-define('DB_USER',    'root');
-define('DB_PASS',    '');
+$local = @include __DIR__ . '/db.local.php';
+$local = is_array($local) ? $local : [];
+
+define('DB_HOST',    $local['host'] ?? 'localhost');
+define('DB_NAME',    $local['name'] ?? 'skillconnect_new_db');
+define('DB_USER',    $local['user'] ?? 'root');
+define('DB_PASS',    $local['pass'] ?? '');
 define('DB_CHARSET', 'utf8mb4');
 
 function getDB(): PDO {
