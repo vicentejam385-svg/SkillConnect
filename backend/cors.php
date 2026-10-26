@@ -1,6 +1,10 @@
 <?php
 function handleCors(): void {
-    $allowed = ['http://localhost:5173', 'http://localhost:5174'];
+    $allowed = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://skillconnect-ph.vercel.app',
+];
 $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowed)) {
     header("Access-Control-Allow-Origin: $origin");
