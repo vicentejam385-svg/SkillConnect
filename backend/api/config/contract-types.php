@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-requireAuth();
+requireAdminAccess();
 
 try {
     $pdo  = getDB();

@@ -39,10 +39,20 @@ try {
         $labelStmt->execute([$body['status_id']]);
         $body['status_id'] = $labelStmt->fetchColumn() ?: null;
     }
-    $fields = ['start_time', 'end_time', 'description', 'worker_contact_id', 'client_contact_id', 'status_id'];
+    // Accept old (contact) names from the frontend and map them to the real columns
+    if (array_key_exists('worker_contact_id', $body) && !array_key_exists('worker_user_id', $body)) {
+        $body['worker_user_id'] = $body['worker_contact_id'];
+    }
+    if (array_key_exists('client_contact_id', $body) && !array_key_exists('client_user_id', $body)) {
+        $body['client_user_id'] = $body['client_contact_id'];
+    }
+    $fields = ['start_time', 'end_time', 'description', 'worker_user_id', 'client_user_id', 'status_id'];
     $set = []; $params = [];
     foreach ($fields as $f) {
-        if (array_key_exists($f, $body)) { $set[] = "$f = ?"; $params[] = $body[$f]; }
+        if (array_key_exists($f, $body)) {
+            $set[] = "`$f` = ?";
+            $params[] = ($body[$f] === '' ? null : $body[$f]);
+        }
     }
 
     if (!$set) {
@@ -54,7 +64,19 @@ try {
     $params[] = $id;
     $pdo->prepare("UPDATE schedules SET " . implode(', ', $set) . " WHERE id = ?")->execute($params);
 
-    $view = $pdo->prepare("SELECT * FROM v_schedules_full WHERE id = ?");
+    $view = $pdo->prepare(
+        "SELECT sc.*,
+                sc.worker_user_id AS worker_contact_id,
+                sc.client_user_id AS client_contact_id,
+                CONCAT(w.first_name,' ',w.last_name) AS worker_name,
+                CONCAT(c.first_name,' ',c.last_name) AS client_name,
+                s.label AS status
+         FROM schedules sc
+         LEFT JOIN users w ON w.id = sc.worker_user_id
+         LEFT JOIN users c ON c.id = sc.client_user_id
+         LEFT JOIN statuses s ON s.id = sc.status_id
+         WHERE sc.id = ?"
+    );
     $view->execute([$id]);
     echo json_encode(['success' => true, 'schedule' => $view->fetch()]);
 } catch (PDOException $e) {

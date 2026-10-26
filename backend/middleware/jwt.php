@@ -29,19 +29,55 @@ function jwtVerify(string $token): ?array {
     if (!hash_equals($expected, $sig)) return null;
 
     $payload = json_decode(base64UrlDecode($body), true);
-    if (!$payload || $payload['exp'] < time()) return null;
+        if (!is_array($payload) || !isset($payload['exp']) || $payload['exp'] < time()) return null;
 
     return $payload;
 }
+function requireAdminAccess(): array {
+    $auth = requireAuth();
+    $role = $auth['role'] ?? '';
+
+    if (in_array($role, ['admin', 'super_admin', 'superadmin'], true)) {
+        return $auth;
+    }
+
+    if ($role === 'worker') {
+        require_once __DIR__ . '/../config/db.php';
+        $pdo  = getDB();
+        $stmt = $pdo->prepare("SELECT role FROM roles WHERE user_id = ? AND role = 'admin/worker' LIMIT 1");
+        $stmt->execute([$auth['sub']]);
+        if ($stmt->fetch()) {
+            return $auth;
+        }
+    }
+
+    header('Content-Type: application/json');
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Admin access required.']);
+    exit;
+}
+function isAdminUser(array $auth): bool {
+    $role = $auth['role'] ?? '';
+    if (in_array($role, ['admin', 'super_admin', 'superadmin'], true)) return true;
+    if ($role === 'worker') {
+        require_once __DIR__ . '/../config/db.php';
+        $pdo  = getDB();
+        $stmt = $pdo->prepare("SELECT 1 FROM roles WHERE user_id = ? AND role = 'admin/worker' LIMIT 1");
+        $stmt->execute([$auth['sub'] ?? 0]);
+        return (bool)$stmt->fetch();
+    }
+    return false;
+}
 
 function requireAuth(): array {
-    // Apache often strips Authorization header — this fixes it
     $authHeader = $_SERVER['HTTP_AUTHORIZATION'] 
         ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
-        ?? apache_request_headers()['Authorization'] 
+        ?? (function_exists('apache_request_headers') ? (apache_request_headers()['Authorization'] ?? '') : '')
         ?? '';
 
     if (!str_starts_with($authHeader, 'Bearer ')) {
+        
+        header('Content-Type: application/json');
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Missing or invalid token.']);
         exit;
@@ -51,6 +87,8 @@ function requireAuth(): array {
     $payload = jwtVerify($token);
 
     if (!$payload) {
+       
+        header('Content-Type: application/json');
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Token expired or invalid.']);
         exit;

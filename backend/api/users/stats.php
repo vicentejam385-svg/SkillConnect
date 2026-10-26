@@ -1,4 +1,5 @@
 <?php
+// api/users/stats.php — dashboard counts (new schema: everything lives in users)
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
@@ -13,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $auth = requireAuth();
-if (($auth['type'] ?? '') !== 'super_admin') {
+if (($auth['role'] ?? '') !== 'super_admin') {
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Access denied.']);
     exit;
@@ -22,31 +23,29 @@ if (($auth['type'] ?? '') !== 'super_admin') {
 try {
     $pdo = getDB();
 
-    // Total active admin users (status_id = 7 = Active, or NULL treated as active for backward compat)
+    $countType = $pdo->prepare("SELECT COUNT(*) FROM users WHERE type = ?");
+
+    // Admin users = anyone with admin access (roles row), excluding the superadmin
     $adminCount = (int)$pdo->query(
-        "SELECT COUNT(*) FROM users WHERE status_id = 7 OR status_id IS NULL"
+        "SELECT COUNT(*) FROM roles WHERE role <> 'superadmin'"
     )->fetchColumn();
 
-    // Total workers
-    $workerCount = (int)$pdo->query(
-        "SELECT COUNT(*) FROM workers"
-    )->fetchColumn();
+    $countType->execute(['worker']);
+    $workerCount = (int)$countType->fetchColumn();
 
-    // Total contacts
-    $contactCount = (int)$pdo->query(
-        "SELECT COUNT(*) FROM contacts"
-    )->fetchColumn();
+    $countType->execute(['client']);
+    $contactCount = (int)$countType->fetchColumn();
 
-    // Expired licenses (uses the view)
+    // Licenses table replaces the old v_expired_licenses view
     $expiredCount = (int)$pdo->query(
-        "SELECT COUNT(*) FROM v_expired_licenses"
+        "SELECT COUNT(*) FROM licenses WHERE expiry_date < CURDATE()"
     )->fetchColumn();
 
     echo json_encode([
-        'success'       => true,
-        'admin_users'   => $adminCount,
-        'workers'       => $workerCount,
-        'contacts'      => $contactCount,
+        'success'          => true,
+        'admin_users'      => $adminCount,
+        'workers'          => $workerCount,
+        'contacts'         => $contactCount,
         'expired_licenses' => $expiredCount,
     ]);
 } catch (PDOException $e) {

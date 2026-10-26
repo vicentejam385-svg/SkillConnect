@@ -1,0 +1,38 @@
+# Secrets (API keys)
+config/groq.php
+config/brevo.php
+config/secrets.php
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+serviceAccountKey.json
+
+# Dependencies
+vendor/
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Build output
+dist/
+build/
+
+# Uploads and local databases
+uploads/
+*.sqlite
+*.sqlite3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Coverage
+coverage/

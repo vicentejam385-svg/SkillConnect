@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = 'http://localhost/skillconnect/backend'
+export const BASE_URL = 'http://localhost/skillconnect/backend'
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -12,7 +12,8 @@ api.interceptors.request.use((config) => {
   const stored = localStorage.getItem('sc_user')
   if (stored) {
     try {
-      const { token } = JSON.parse(stored)
+      const parsed = JSON.parse(stored)
+      const token = parsed.token  // ← use dot notation, not destructuring
       if (token) config.headers.Authorization = `Bearer ${token}`
     } catch {}
   }
@@ -25,7 +26,7 @@ api.interceptors.response.use(
     if (err.response && err.response.status === 401) {
       const url = err.config?.url || ''
       // Don't redirect if it's the login endpoint itself
-      if (!url.includes('/auth/login.php') && !url.includes('/auth/worker-login.php')) {
+      if (!url.includes('/auth/login.php') && !url.includes('/auth/logout.php') && !url.includes('/auth/change-password.php')) {
         localStorage.removeItem('sc_user')
         window.location.href = '/login'
       }

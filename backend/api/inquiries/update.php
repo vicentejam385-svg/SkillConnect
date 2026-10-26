@@ -12,9 +12,9 @@ if (!in_array($_SERVER['REQUEST_METHOD'], ['PUT', 'PATCH'])) {
     exit;
 }
 
-requireAuth();
+requireAdminAccess();
 
-$body = json_decode(file_get_contents('php://input'), true);
+$body = json_decode(file_get_contents('php://input'), true) ?? [];
 $id   = (int)($body['id'] ?? 0);
 
 if (!$id) {
@@ -26,7 +26,7 @@ if (!$id) {
 try {
     $pdo = getDB();
 
-    $existing = $pdo->prepare("SELECT * FROM inquiries WHERE id = ?");
+    $existing = $pdo->prepare("SELECT id FROM inquiries WHERE id = ?");
     $existing->execute([$id]);
     if (!$existing->fetch()) {
         http_response_code(404);
@@ -34,7 +34,18 @@ try {
         exit;
     }
 
-    $fields = ['first_name', 'last_name', 'email', 'address', 'phone', 'mobile', 'description', 'reason', 'status_id', 'contact_id'];
+    // contact_id -> user_id in the new schema
+    $fields = ['first_name', 'last_name', 'email', 'address', 'phone', 'mobile',
+               'description', 'reason', 'status_id', 'user_id'];
+
+    // Optional: allow the frontend to send a status label ("Won", "Lost", "New")
+    if (!array_key_exists('status_id', $body) && !empty($body['status'])) {
+        $s = $pdo->prepare("SELECT id FROM statuses WHERE entity = 'inquiry' AND label = ?");
+        $s->execute([$body['status']]);
+        $sid = $s->fetchColumn();
+        if ($sid) $body['status_id'] = (int)$sid;
+    }
+
     $set = []; $params = [];
     foreach ($fields as $f) {
         if (array_key_exists($f, $body)) { $set[] = "$f = ?"; $params[] = $body[$f]; }
@@ -49,9 +60,17 @@ try {
     $params[] = $id;
     $pdo->prepare("UPDATE inquiries SET " . implode(', ', $set) . " WHERE id = ?")->execute($params);
 
-    $view = $pdo->prepare("SELECT * FROM v_inquiries_full WHERE id = ?");
+    // Replaces the missing v_inquiries_full view
+    $view = $pdo->prepare("
+        SELECT i.*,
+               CONCAT(i.first_name, ' ', i.last_name) AS full_name,
+               s.label AS status
+        FROM inquiries i
+        LEFT JOIN statuses s ON s.id = i.status_id
+        WHERE i.id = ?
+    ");
     $view->execute([$id]);
-    echo json_encode(['success' => true, 'inquiry' => $view->fetch()]);
+    echo json_encode(['success' => true, 'inquiry' => $view->fetch(PDO::FETCH_ASSOC)]);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);

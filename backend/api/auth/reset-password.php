@@ -37,8 +37,7 @@ if (strlen($newPass) < 8) {
 
 try {
     $pdo   = getDB();
-    $table = ($auth['role'] === 'worker') ? 'workers' : 'users';
-    $stmt  = $pdo->prepare("SELECT password FROM $table WHERE id = ?");
+        $stmt  = $pdo->prepare("SELECT password FROM users WHERE id = ?");
     $stmt->execute([$auth['sub']]);
     $row = $stmt->fetch();
 
@@ -48,11 +47,12 @@ try {
         exit;
     }
 
-    $pdo->prepare("UPDATE $table SET password = ? WHERE id = ?")
+    $pdo->prepare("UPDATE users SET password = ? WHERE id = ?")
         ->execute([password_hash($newPass, PASSWORD_BCRYPT), $auth['sub']]);
 
     echo json_encode(['success' => true, 'message' => 'Password changed successfully.']);
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);
+        error_log($e->getMessage());
+    echo json_encode(['success' => false, 'error' => 'Database error.']);
 }
