@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -12,7 +13,7 @@ if (!in_array($_SERVER['REQUEST_METHOD'], ['PUT', 'PATCH'])) {
     exit;
 }
 
-requireAdminAccess();
+$auth = requireAdminAccess();
 
 $body = json_decode(file_get_contents('php://input'), true) ?? [];
 $id   = (int)($body['id'] ?? 0);
@@ -26,9 +27,12 @@ if (!$id) {
 try {
     $pdo = getDB();
 
-    $existing = $pdo->prepare("SELECT id FROM inquiries WHERE id = ?");
+    $existing = $pdo->prepare("SELECT i.*, s.label AS status_label
+                               FROM inquiries i LEFT JOIN statuses s ON s.id = i.status_id
+                               WHERE i.id = ?");
     $existing->execute([$id]);
-    if (!$existing->fetch()) {
+    $before = $existing->fetch(PDO::FETCH_ASSOC);
+    if (!$before) {
         http_response_code(404);
         echo json_encode(['success' => false, 'error' => 'Inquiry not found.']);
         exit;
@@ -70,7 +74,42 @@ try {
         WHERE i.id = ?
     ");
     $view->execute([$id]);
-    echo json_encode(['success' => true, 'inquiry' => $view->fetch(PDO::FETCH_ASSOC)]);
+    $updated = $view->fetch(PDO::FETCH_ASSOC);
+
+    // Work out which fields really changed
+    $chgOld = []; $chgNew = [];
+    foreach ($fields as $f) {
+        if (array_key_exists($f, $body) && (string)($before[$f] ?? '') !== (string)$body[$f]) {
+            $chgOld[$f] = $before[$f] ?? null;
+            $chgNew[$f] = $body[$f];
+        }
+    }
+    // Show the status as a readable label instead of a number
+    if (isset($chgNew['status_id'])) {
+        $chgOld['status'] = $before['status_label'] ?? null;
+        $chgNew['status'] = $updated['status'] ?? null;
+        unset($chgOld['status_id'], $chgNew['status_id']);
+    }
+
+    if ($chgNew) {
+        [$chgOld, $chgNew] = auditMaskSensitive($chgOld, $chgNew);
+        $statusChanged = isset($chgNew['status']);
+        $name = trim($before['first_name'] . ' ' . $before['last_name']);
+        auditLog(array_merge(auditActor($auth), [
+            'action'       => $statusChanged ? 'STATUS_CHANGE' : 'UPDATE',
+            'module'       => 'Inquiries',
+            'description'  => $statusChanged
+                ? 'Changed inquiry ' . $before['inquiry_code'] . ' status from "' . ($chgOld['status'] ?? '—') . '" to "' . ($chgNew['status'] ?? '—') . '"'
+                : 'Updated inquiry ' . $before['inquiry_code'] . ' (' . implode(', ', array_keys($chgNew)) . ')',
+            'target_type'  => 'inquiry',
+            'target_id'    => $id,
+            'target_label' => $before['inquiry_code'] . ' — ' . $name,
+            'old_values'   => $chgOld,
+            'new_values'   => $chgNew,
+        ]));
+    }
+
+    echo json_encode(['success' => true, 'inquiry' => $updated]);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);
