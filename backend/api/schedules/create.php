@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -81,11 +82,31 @@ try {
     );
     $rowStmt->execute([$newId]);
 
+    $sched = $rowStmt->fetch();
+
+    auditLog(array_merge(auditActor($auth), [
+        'action'         => 'CREATE',
+        'module'         => 'Schedules',
+        'description'    => 'Created schedule ' . ($sched['schedule_code'] ?? ('#' . $newId))
+                            . ' for worker "' . trim($sched['worker_name'] ?? '') . '"',
+        'target_user_id' => $clientId,
+        'target_type'    => 'schedule',
+        'target_id'      => $newId,
+        'target_label'   => ($sched['schedule_code'] ?? ('#' . $newId)) . ' — ' . trim($sched['worker_name'] ?? ''),
+        'new_values'     => [
+            'worker'     => trim($sched['worker_name'] ?? '') ?: null,
+            'client'     => trim($sched['client_name'] ?? '') ?: null,
+            'start_time' => $sched['start_time'] ?? null,
+            'end_time'   => $sched['end_time'] ?? null,
+            'status'     => $sched['status'] ?? null,
+        ],
+    ]));
+
     http_response_code(201);
     echo json_encode([
         'success'  => true,
         'message'  => 'Schedule created.',
-        'schedule' => $rowStmt->fetch(),
+        'schedule' => $sched,
     ]);
 } catch (PDOException $e) {
     http_response_code(500);

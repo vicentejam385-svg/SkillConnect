@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 
 handleCors();
@@ -12,7 +13,7 @@ if (!in_array($_SERVER['REQUEST_METHOD'], ['PUT', 'PATCH'])) {
     exit;
 }
 
-requireAuth();
+$auth = requireAuth();
 
 $body = json_decode(file_get_contents('php://input'), true);
 $id   = (int)($body['id'] ?? 0);
@@ -26,9 +27,19 @@ if (!$id) {
 try {
     $pdo = getDB();
 
-    $existing = $pdo->prepare("SELECT id FROM schedules WHERE id = ?");
+    $existing = $pdo->prepare(
+        "SELECT sc.*, s.label AS status_label,
+                CONCAT(w.first_name,' ',w.last_name) AS worker_name,
+                CONCAT(c.first_name,' ',c.last_name) AS client_name
+         FROM schedules sc
+         LEFT JOIN statuses s ON s.id = sc.status_id
+         LEFT JOIN users w ON w.id = sc.worker_user_id
+         LEFT JOIN users c ON c.id = sc.client_user_id
+         WHERE sc.id = ?"
+    );
     $existing->execute([$id]);
-    if (!$existing->fetch()) {
+    $before = $existing->fetch(PDO::FETCH_ASSOC);
+    if (!$before) {
         http_response_code(404);
         echo json_encode(['success' => false, 'error' => 'Schedule not found.']);
         exit;
@@ -78,7 +89,54 @@ try {
          WHERE sc.id = ?"
     );
     $view->execute([$id]);
-    echo json_encode(['success' => true, 'schedule' => $view->fetch()]);
+    $updated = $view->fetch();
+
+    // Work out which fields really changed
+    $chgOld = []; $chgNew = [];
+    foreach ($fields as $f) {
+        if (!array_key_exists($f, $body)) continue;
+        $new = ($body[$f] === '' ? null : $body[$f]);
+        if ((string)($before[$f] ?? '') !== (string)($new ?? '')) {
+            $chgOld[$f] = $before[$f] ?? null;
+            $chgNew[$f] = $new;
+        }
+    }
+    // Readable labels and names instead of ids
+    if (array_key_exists('status_id', $chgNew)) {
+        $chgOld['status'] = $before['status_label'] ?? null;
+        $chgNew['status'] = $updated['status'] ?? null;
+        unset($chgOld['status_id'], $chgNew['status_id']);
+    }
+    if (array_key_exists('worker_user_id', $chgNew)) {
+        $chgOld['worker'] = trim($before['worker_name'] ?? '') ?: null;
+        $chgNew['worker'] = trim($updated['worker_name'] ?? '') ?: null;
+        unset($chgOld['worker_user_id'], $chgNew['worker_user_id']);
+    }
+    if (array_key_exists('client_user_id', $chgNew)) {
+        $chgOld['client'] = trim($before['client_name'] ?? '') ?: null;
+        $chgNew['client'] = trim($updated['client_name'] ?? '') ?: null;
+        unset($chgOld['client_user_id'], $chgNew['client_user_id']);
+    }
+
+    if ($chgNew) {
+        $statusChanged = array_key_exists('status', $chgNew);
+        $code = $before['schedule_code'] ?? ('#' . $id);
+        auditLog(array_merge(auditActor($auth), [
+            'action'         => $statusChanged ? 'STATUS_CHANGE' : 'UPDATE',
+            'module'         => 'Schedules',
+            'description'    => $statusChanged
+                ? 'Changed schedule ' . $code . ' status from "' . ($chgOld['status'] ?? '—') . '" to "' . ($chgNew['status'] ?? '—') . '"'
+                : 'Updated schedule ' . $code . ' (' . implode(', ', array_keys($chgNew)) . ')',
+            'target_user_id' => $before['client_user_id'] ?? null,
+            'target_type'    => 'schedule',
+            'target_id'      => $id,
+            'target_label'   => $code . ' — ' . trim($before['worker_name'] ?? ''),
+            'old_values'     => $chgOld,
+            'new_values'     => $chgNew,
+        ]));
+    }
+
+    echo json_encode(['success' => true, 'schedule' => $updated]);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);

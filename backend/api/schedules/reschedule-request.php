@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -50,7 +51,7 @@ try {
     if (!$worker_name) {
         $stmt = $pdo->prepare("
             SELECT CONCAT(first_name, ' ', last_name) AS full_name 
-            FROM contacts 
+            FROM users 
             WHERE id = ? LIMIT 1
         ");
         $stmt->execute([$user['sub']]);
@@ -74,10 +75,26 @@ try {
         ':reason'         => $reason,
     ]);
 
+    $requestId = (int)$pdo->lastInsertId();
+
+    auditLog(array_merge(auditActor($user), [
+        'action'       => 'CREATE',
+        'module'       => 'Schedules',
+        'description'  => 'Requested to reschedule ' . ($schedule_code ?: ('schedule #' . $schedule_id)),
+        'target_type'  => 'reschedule_request',
+        'target_id'    => $requestId,
+        'target_label' => $schedule_code ?: ('Schedule #' . $schedule_id),
+        'new_values'   => [
+            'new_start_time' => $new_start_time,
+            'new_end_time'   => $new_end_time,
+            'reason'         => $reason,
+        ],
+    ]));
+
     echo json_encode([
         'success'    => true,
         'message'    => 'Reschedule request submitted successfully',
-        'request_id' => (int)$pdo->lastInsertId(),
+        'request_id' => $requestId,
     ]);
 
 } catch (PDOException $e) {
