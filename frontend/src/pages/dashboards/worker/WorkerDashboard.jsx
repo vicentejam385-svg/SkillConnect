@@ -22,20 +22,20 @@ const NAV_ITEMS = [
 function OnboardingNotification({ onDismiss, onGoToProfile }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="relative w-full max-w-sm bg-[#0f1923] border border-amber-500/40 rounded-sm">
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-500 rounded-t-sm" />
+      <div className="relative w-full max-w-sm bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
         {/* X button removed — user must go to profile */}
         <div className="p-6 text-center">
-          <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-4 rounded-sm">
-            <ShieldCheck size={22} className="text-amber-400" />
+          <div className="w-12 h-12 bg-emerald-50 flex items-center justify-center mx-auto mb-4 rounded-full">
+            <ShieldCheck size={22} className="text-emerald-600" />
           </div>
-          <h3 className="font-display font-bold text-lg text-slate-100 tracking-wide mb-2">Welcome! Action Required</h3>
-          <p className="font-body text-sm text-slate-400 mb-6 leading-relaxed">
-            Your account is using a <span className="text-amber-400 font-semibold">default password</span>.
+          <h3 className="font-bold text-lg text-slate-800 mb-2">Welcome! Action Required</h3>
+          <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+            Your account is using a <span className="text-emerald-600 font-semibold">default password</span>.
             Please update your credentials and upload your license to get started.
           </p>
           <div className="flex gap-3">
-            <button onClick={onGoToProfile} className="btn-primary w-full text-sm flex items-center justify-center gap-2">
+            <button onClick={onGoToProfile} className="w-full px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors">
               <User size={14} /> Go to Profile
             </button>
           </div>

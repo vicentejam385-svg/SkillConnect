@@ -5,7 +5,7 @@ import {
   ChevronRight, MapPin, Clock, X
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
-import { apiGet } from '../../../utils/api'
+import { apiGet, BASE_URL } from '../../../utils/api'
 
 // ── Helpers ────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -170,7 +170,7 @@ setSchedules(mySchedules)
 const token = JSON.parse(localStorage.getItem('sc_user'))?.token
 const photoResults = await Promise.all(
   myJobs.map(jo =>
-    fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
+    fetch(`${BASE_URL}/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())
@@ -242,7 +242,7 @@ setJobPhotos(photoMap)
         </div>
         <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between shadow-sm">
           <div>
-            <p className="text-xs text-slate-500 font-medium mb-0.5">Net Tasks</p>
+            <p className="text-xs text-slate-500 font-medium mb-0.5">Scheduled Tasks</p>
             <p className="text-2xl font-bold text-slate-800">{totalTasks}</p>
           </div>
           <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
