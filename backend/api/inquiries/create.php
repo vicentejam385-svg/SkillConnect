@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -115,10 +116,26 @@ try {
     );
     $rowStmt->execute([$inqId]);
 
+    $inquiry = $rowStmt->fetch();
+
+    auditLog([
+        'actor_user_id' => $linkedUserId,
+        'actor_name'    => trim($data['first_name']) . ' ' . trim($data['last_name']),
+        'actor_type'    => $linkedUserId ? 'client' : 'guest',
+        'action'        => 'CREATE',
+        'module'        => 'Inquiries',
+        'description'   => 'Submitted a new inquiry (' . trim($data['reason']) . ')',
+        'target_type'   => 'inquiry',
+        'target_id'     => $inqId,
+        'target_label'  => $inquiry['inquiry_code'] ?? ('Inquiry #' . $inqId),
+        'status'        => 'success',
+    ]);
+
     http_response_code(201);
-    echo json_encode(['success' => true, 'message' => 'Inquiry submitted successfully.', 'inquiry' => $rowStmt->fetch()]);
+    echo json_encode(['success' => true, 'message' => 'Inquiry submitted successfully.', 'inquiry' => $inquiry]);
 
 } catch (PDOException $e) {
+    error_log('Inquiry create failed: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'Database error.']);
 }
