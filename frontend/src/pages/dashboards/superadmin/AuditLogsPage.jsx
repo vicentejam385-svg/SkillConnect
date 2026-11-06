@@ -11,9 +11,6 @@ const ENDPOINT = '/api/audit-logs/index.php'
 
 const TABS = [
   { key: 'all',    label: 'All Activity' },
-  { key: 'admin',  label: 'Admin Users'  },
-  { key: 'worker', label: 'Workers'      },
-  { key: 'client', label: 'Clients'      },
 ]
 
 const ACTIONS = [
@@ -371,6 +368,16 @@ export default function AuditLogsPage() {
             </button>
           )
         })}
+      </div>
+
+      {/* All Activity label */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 16 }}>
+        <div style={{
+          padding: '10px 18px', fontSize: 13, fontWeight: 700, color: GREEN,
+          borderBottom: `2px solid ${GREEN}`, marginBottom: -1, whiteSpace: 'nowrap',
+        }}>
+          All Activity
+        </div>
       </div>
 
       {/* Filter bar */}
