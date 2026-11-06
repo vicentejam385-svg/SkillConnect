@@ -68,18 +68,52 @@ export function StatusBadge({ status }) {
 }
 
 // ─── Sidebar ───────────────────────────────────────────────────────────────────
-const NAV = [
-  { path: '/superadmin/dashboard',   label: 'Dashboard',       icon: LayoutDashboard },
-  { path: '/superadmin/admin-users', label: 'Admin Users',     icon: Users           },
-  { path: '/superadmin/workers',     label: 'Workers Access',  icon: HardHat         },
-  { path: '/superadmin/clients',     label: 'Client Access', icon: UserRound       },
-  { path: '/superadmin/audit-logs', label: 'Audit Logs',     icon: ClipboardList   },
+const NAV_TOP = [
+  { path: '/superadmin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
 ]
+const USER_CHILDREN = [
+  { path: '/superadmin/admin-users', label: 'Admin Users',    icon: Users     },
+  { path: '/superadmin/workers',     label: 'Workers Access', icon: HardHat   },
+  { path: '/superadmin/clients',     label: 'Client Access',  icon: UserRound },
+]
+const NAV_BOTTOM = [
+  { path: '/superadmin/audit-logs', label: 'Audit Logs', icon: ClipboardList },
+]
+
+function NavBtn({ icon: Icon, label, on, collapsed, onClick, indent = false, children }) {
+  return (
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      width: '100%', padding: '10px 20px', border: 'none',
+      paddingLeft: indent && !collapsed ? 40 : 20,
+      background: on ? GREEN_LIGHT : 'transparent',
+      color: on ? GREEN : '#64748b',
+      fontWeight: on ? 700 : 500, fontSize: 13,
+      cursor: 'pointer', textAlign: 'left',
+      borderLeft: on ? `3px solid ${GREEN}` : '3px solid transparent',
+      transition: 'all .15s',
+      justifyContent: collapsed ? 'center' : 'flex-start'
+    }}
+      onMouseEnter={e => { if (!on) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#334155' } }}
+      onMouseLeave={e => { if (!on) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b' } }}
+      title={collapsed ? label : ''}
+    >
+      <Icon size={16} />
+      {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
+      {!collapsed && children}
+    </button>
+  )
+}
 
 function Sidebar({ collapsed }) {
   const navigate = useNavigate()
   const location = useLocation()
   const active   = (p) => location.pathname.startsWith(p)
+  const usersActive = USER_CHILDREN.some(c => active(c.path))
+  const [usersOpen, setUsersOpen] = useState(usersActive)
+
+  // keep the dropdown open while one of its pages is active
+  useEffect(() => { if (usersActive) setUsersOpen(true) }, [usersActive])
 
   return (
     <aside style={{
@@ -107,31 +141,31 @@ function Sidebar({ collapsed }) {
         )}
       </div>
 
-      {/* Nav Items */}
+            {/* Nav Items */}
       <nav style={{ flex: 1, padding: '10px 0' }}>
-        {NAV.map(({ path, label, icon: Icon }) => {
-          const on = active(path)
-          return (
-            <button key={path} onClick={() => navigate(path)} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              width: '100%', padding: '10px 20px', border: 'none',
-              background: on ? GREEN_LIGHT : 'transparent',
-              color: on ? GREEN : '#64748b',
-              fontWeight: on ? 700 : 500, fontSize: 13,
-              cursor: 'pointer', textAlign: 'left',
-              borderLeft: on ? `3px solid ${GREEN}` : '3px solid transparent',
-              transition: 'all .15s',
-              justifyContent: collapsed ? 'center' : 'flex-start'
-            }}
-              onMouseEnter={e => { if (!on) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#334155' } }}
-              onMouseLeave={e => { if (!on) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b' } }}
-              title={collapsed ? label : ''}
-            >
-              <Icon size={16} />
-              {!collapsed && label}
-            </button>
-          )
-        })}
+        {NAV_TOP.map(({ path, label, icon }) => (
+          <NavBtn key={path} icon={icon} label={label} collapsed={collapsed}
+            on={active(path)} onClick={() => navigate(path)} />
+        ))}
+
+        {/* Users dropdown */}
+        <NavBtn icon={Users} label="Users" collapsed={collapsed}
+          on={usersActive && !usersOpen}
+          onClick={() => setUsersOpen(o => !o)}>
+          <ChevronDown size={14} style={{
+            transition: 'transform .2s',
+            transform: usersOpen ? 'rotate(180deg)' : 'rotate(0)'
+          }} />
+        </NavBtn>
+        {usersOpen && USER_CHILDREN.map(({ path, label, icon }) => (
+          <NavBtn key={path} icon={icon} label={label} collapsed={collapsed} indent
+            on={active(path)} onClick={() => navigate(path)} />
+        ))}
+
+        {NAV_BOTTOM.map(({ path, label, icon }) => (
+          <NavBtn key={path} icon={icon} label={label} collapsed={collapsed}
+            on={active(path)} onClick={() => navigate(path)} />
+        ))}
       </nav>
     </aside>
   )
