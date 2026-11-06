@@ -105,7 +105,7 @@ function NavBtn({ icon: Icon, label, on, collapsed, onClick, indent = false, chi
   )
 }
 
-function Sidebar({ collapsed }) {
+function Sidebar({ collapsed, setCollapsed }) {
   const navigate = useNavigate()
   const location = useLocation()
   const active   = (p) => location.pathname.startsWith(p)
@@ -125,8 +125,9 @@ function Sidebar({ collapsed }) {
       {/* Logo */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
-        padding: '18px 20px 14px', borderBottom: '1px solid #e2e8f0',
-        justifyContent: collapsed ? 'center' : 'flex-start'
+        padding: collapsed ? '14px 0' : '18px 20px 14px', borderBottom: '1px solid #e2e8f0',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        flexDirection: collapsed ? 'column' : 'row'
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 8, background: GREEN,
@@ -139,6 +140,24 @@ function Sidebar({ collapsed }) {
             <div style={{ fontSize: 10, color: '#94a3b8' }}>Emerald Builders</div>
           </div>
         )}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 6, border: 'none', background: 'transparent',
+            color: '#64748b', cursor: 'pointer', borderRadius: 6,
+            marginLeft: collapsed ? 0 : 'auto', transition: 'all .15s'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = GREEN }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b' }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
             {/* Nav Items */}
@@ -172,7 +191,7 @@ function Sidebar({ collapsed }) {
 }
 
 // ─── Top Bar ───────────────────────────────────────────────────────────────────
-function TopBar({ collapsed, setCollapsed }) {
+function TopBar() {
   const [open, setOpen] = useState(false)
   const ref = useRef()
   const { logout } = useAuth()
@@ -192,33 +211,9 @@ function TopBar({ collapsed, setCollapsed }) {
   return (
     <div style={{
       height: 52, background: '#fff', borderBottom: '1px solid #e2e8f0',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
       padding: '0 24px', position: 'sticky', top: 0, zIndex: 40
     }}>
-      {/* Hamburger Button on Left */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '8px',
-          border: 'none',
-          background: 'transparent',
-          color: '#64748b',
-          cursor: 'pointer',
-          borderRadius: 6,
-          transition: 'all .15s'
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = GREEN }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b' }}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
 
       {/* User Dropdown on Right */}
       <div ref={ref} style={{ position: 'relative' }}>
@@ -272,9 +267,9 @@ function Layout({ children }) {
       display: 'flex', minHeight: '100vh', background: '#f4f6f8',
       fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif"
     }}>
-      <Sidebar collapsed={collapsed} />
+      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TopBar collapsed={collapsed} setCollapsed={setCollapsed} />
+        <TopBar />
         <main style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
           {children}
         </main>
