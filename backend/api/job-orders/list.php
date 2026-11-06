@@ -63,6 +63,7 @@ try {
                 w.user_code AS worker_code,
                 CONCAT(c.first_name,' ',c.last_name) AS client_name,
                 c.user_code AS client_code,
+                COALESCE(NULLIF(c.address, ''), i.address) AS client_address,
                 s.label AS status,
                 ct.name AS contract_type,
                 i.inquiry_code,
