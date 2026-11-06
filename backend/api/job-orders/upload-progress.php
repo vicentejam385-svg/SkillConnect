@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -13,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-requireAuth();
+$auth = requireAuth();
 $pdo = getDB();
 
 $jobOrderId  = isset($_POST['job_order_id'])  ? (int)$_POST['job_order_id']  : 0;
@@ -34,7 +35,7 @@ $maxFileSize = 1 * 1024 * 1024;
 
 if ($_FILES['photo']['size'] > $maxFileSize) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'File size exceeds the limit of 50MB.']);
+    echo json_encode(['success' => false, 'error' => 'File size exceeds the limit of 1MB.']);
     exit;
 }
 // Check one upload per day per job order
@@ -76,6 +77,19 @@ $filePath = 'uploads/progress_photos/' . $filename;
 // Insert record
 $stmt = $pdo->prepare("INSERT INTO job_order_progress_photos (job_order_id, file_path, upload_date) VALUES (?, ?, ?)");
 $stmt->execute([$jobOrderId, $filePath, $uploadDate]);
+
+$joStmt = $pdo->prepare("SELECT job_order_code FROM job_orders WHERE id = ?");
+$joStmt->execute([$jobOrderId]);
+$joCode = $joStmt->fetchColumn() ?: ('#' . $jobOrderId);
+
+auditLog(array_merge(auditActor($auth), [
+    'action'       => 'CREATE',
+    'module'       => 'Job Orders',
+    'description'  => 'Uploaded a progress photo for job order ' . $joCode . ' (' . $uploadDate . ')',
+    'target_type'  => 'job_order',
+    'target_id'    => $jobOrderId,
+    'target_label' => $joCode,
+]));
 
 echo json_encode([
     'success'   => true,

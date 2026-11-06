@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -13,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-requireAdminAccess();
+$auth = requireAdminAccess();
 $pdo  = getDB();
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 
@@ -150,11 +151,33 @@ try {
     );
     $rowStmt->execute([$joId]);
 
+    $jo = $rowStmt->fetch();
+
+    auditLog(array_merge(auditActor($auth), [
+        'action'         => 'CREATE',
+        'module'         => 'Job Orders',
+        'description'    => ($isAutoCreated ? 'Auto-created job order ' : 'Created job order ')
+                            . ($jo['job_order_code'] ?? ('#' . $joId))
+                            . ' for client "' . trim($jo['client_name'] ?? '') . '"',
+        'target_user_id' => $clientId,
+        'target_type'    => 'job_order',
+        'target_id'      => $joId,
+        'target_label'   => ($jo['job_order_code'] ?? ('#' . $joId)) . ' — ' . trim($jo['client_name'] ?? ''),
+        'new_values'     => [
+            'worker'        => trim($jo['worker_name'] ?? '') ?: null,
+            'client'        => trim($jo['client_name'] ?? ''),
+            'contract_type' => $jo['contract_type'] ?? null,
+            'start_date'    => $jo['start_date'] ?? null,
+            'end_date'      => $jo['end_date'] ?? null,
+            'status'        => $jo['status'] ?? null,
+        ],
+    ]));
+
     http_response_code(201);
     echo json_encode([
         'success'   => true,
         'message'   => $isAutoCreated ? 'Job order auto-created from Won inquiry.' : 'Job order created.',
-        'job_order' => $rowStmt->fetch(),
+        'job_order' => $jo,
     ]);
 } catch (PDOException $e) {
     http_response_code(500);

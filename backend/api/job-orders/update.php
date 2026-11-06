@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../middleware/audit.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -13,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'PUT') {
     exit;
 }
 
-requireAdminAccess();
+$auth = requireAdminAccess();
 $pdo = getDB();
 
 $data = json_decode(file_get_contents('php://input'), true);
@@ -87,6 +88,24 @@ if (empty($setClauses)) {
     exit;
 }
 
+$beforeStmt = $pdo->prepare(
+    "SELECT jo.*, s.label AS status_label,
+            CONCAT(w.first_name,' ',w.last_name) AS worker_name,
+            CONCAT(c.first_name,' ',c.last_name) AS client_name
+     FROM job_orders jo
+     LEFT JOIN statuses s ON s.id = jo.status_id
+     LEFT JOIN users w ON w.id = jo.worker_user_id
+     LEFT JOIN users c ON c.id = jo.client_user_id
+     WHERE jo.id = ?"
+);
+$beforeStmt->execute([$id]);
+$before = $beforeStmt->fetch(PDO::FETCH_ASSOC);
+if (!$before) {
+    http_response_code(404);
+    echo json_encode(['success' => false, 'error' => 'Job order not found.']);
+    exit;
+}
+
 $params[':id'] = $id;
 $pdo->prepare("UPDATE job_orders SET " . implode(', ', $setClauses) . " WHERE id = :id")->execute($params);
 
@@ -107,4 +126,50 @@ $rowStmt = $pdo->prepare(
 );
 $rowStmt->execute([$id]);
 $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+
+// Work out which fields really changed
+$chgOld = []; $chgNew = [];
+foreach ($fields as $f) {
+    if (!array_key_exists($f, $data)) continue;
+    $new = ($data[$f] === '' || $data[$f] === null) ? null : $data[$f];
+    if ((string)($before[$f] ?? '') !== (string)($new ?? '')) {
+        $chgOld[$f] = $before[$f] ?? null;
+        $chgNew[$f] = $new;
+    }
+}
+// Show readable labels and names instead of ids
+if (isset($chgNew['status_id'])) {
+    $chgOld['status'] = $before['status_label'] ?? null;
+    $chgNew['status'] = $row['status'] ?? null;
+    unset($chgOld['status_id'], $chgNew['status_id']);
+}
+if (isset($chgNew['worker_user_id'])) {
+    $chgOld['worker'] = trim($before['worker_name'] ?? '') ?: null;
+    $chgNew['worker'] = trim($row['worker_name'] ?? '') ?: null;
+    unset($chgOld['worker_user_id'], $chgNew['worker_user_id']);
+}
+if (isset($chgNew['client_user_id'])) {
+    $chgOld['client'] = trim($before['client_name'] ?? '') ?: null;
+    $chgNew['client'] = trim($row['client_name'] ?? '') ?: null;
+    unset($chgOld['client_user_id'], $chgNew['client_user_id']);
+}
+
+if ($chgNew) {
+    $statusChanged = isset($chgNew['status']);
+    $code = $before['job_order_code'] ?? ('#' . $id);
+    auditLog(array_merge(auditActor($auth), [
+        'action'         => $statusChanged ? 'STATUS_CHANGE' : 'UPDATE',
+        'module'         => 'Job Orders',
+        'description'    => $statusChanged
+            ? 'Changed job order ' . $code . ' status from "' . ($chgOld['status'] ?? '—') . '" to "' . ($chgNew['status'] ?? '—') . '"'
+            : 'Updated job order ' . $code . ' (' . implode(', ', array_keys($chgNew)) . ')',
+        'target_user_id' => $before['client_user_id'] ?? null,
+        'target_type'    => 'job_order',
+        'target_id'      => $id,
+        'target_label'   => $code . ' — ' . trim($before['client_name'] ?? ''),
+        'old_values'     => $chgOld,
+        'new_values'     => $chgNew,
+    ]));
+}
+
 echo json_encode(['success' => true, 'message' => 'Job order updated.', 'job_order' => $row]);
