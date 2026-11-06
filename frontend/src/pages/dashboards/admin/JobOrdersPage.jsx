@@ -227,7 +227,7 @@ const getWorkerNextAvailable = (workerId, excludeJobOrderId = null) => {
   }
 
   useEffect(() => {
-  fetch('http://localhost/skillconnect/backend/api/time/now.php')
+  fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/time/now.php')
     .then(r => r.json())
     .then(data => {
       if (data?.datetime) setToday(new Date(data.datetime))
@@ -326,7 +326,7 @@ useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
 
     const token = JSON.parse(localStorage.getItem('sc_user'))?.token
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-    const base = 'http://localhost/skillconnect/backend/api'
+    const base = 'https://saddlebrown-swan-877763.hostingersite.com/backend/api'
     try {
       let res
       if (editTarget) {

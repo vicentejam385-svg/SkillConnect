@@ -110,7 +110,7 @@ function InquiryForm() {
     if (!validate()) return
     setSubmitting(true)
     try {
-      const res = await fetch('http://localhost/skillconnect/backend/api/inquiries/create.php', {
+      const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/inquiries/create.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, address: buildAddress() }),

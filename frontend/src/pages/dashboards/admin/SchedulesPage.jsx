@@ -160,7 +160,7 @@ useEffect(() => {
   }
 }, [today, showForm])
  useEffect(() => {
-  fetch('http://localhost/skillconnect/backend/api/time/now.php')
+  fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/time/now.php')
     .then(r => r.json())
     .then(data => {
       if (data?.datetime) {

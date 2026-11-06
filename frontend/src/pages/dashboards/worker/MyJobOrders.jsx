@@ -85,7 +85,7 @@ const JOB_PER_PAGE = 3
     const token = JSON.parse(localStorage.getItem('sc_user'))?.token
     Promise.all(
       jobs.map(jo =>
-        fetch(`http://localhost/skillconnect/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
+        fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
           .then(r => r.json())
@@ -112,7 +112,7 @@ const JOB_PER_PAGE = 3
       ) {
         try {
           const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-          await fetch(`http://localhost/skillconnect/backend/api/job-orders/update.php?id=${jo.id}`, {
+          await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/update.php?id=${jo.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ status_id: 'Complete' }),
@@ -211,7 +211,7 @@ geocode(cleanAddr)
   setProgressPhotos([])
   try {
     const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-    const res = await fetch(`http://localhost/skillconnect/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
+    const res = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     const data = await res.json()
@@ -516,9 +516,9 @@ geocode(cleanAddr)
         <div
           key={photo.id}
           className="relative group rounded-lg overflow-hidden border border-slate-200 cursor-pointer"
-          onClick={() => window.open(`http://localhost/skillconnect/${photo.file_path}`, '_blank')}>
+          onClick={() => window.open(`https://saddlebrown-swan-877763.hostingersite.com/${photo.file_path}`, '_blank')}>
           <img
-            src={`http://localhost/skillconnect/${photo.file_path}`}
+            src={`https://saddlebrown-swan-877763.hostingersite.com/${photo.file_path}`}
             alt={`Progress ${photo.upload_date}`}
             className="w-full h-24 object-cover group-hover:opacity-80 transition-opacity"
           />
@@ -569,7 +569,7 @@ geocode(cleanAddr)
           formData.append('photo', progressJob._photo)
           formData.append('job_order_id', progressJob.id)
           formData.append('upload_date', new Date().toISOString().slice(0, 10))
-          await fetch('http://localhost/skillconnect/backend/api/job-orders/upload-progress.php', {
+          await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/upload-progress.php', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
             body: formData,
@@ -580,7 +580,7 @@ geocode(cleanAddr)
         setJobs(prev => prev.map(j => j.id === progressJob.id ? { ...j, status: progressJob.status } : j))
 
         // Refresh photos for this job so progress bar updates immediately
-        const photoRes = await fetch(`http://localhost/skillconnect/backend/api/job-orders/get-progress.php?job_order_id=${progressJob.id}`, {
+        const photoRes = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${progressJob.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         const photoData = await photoRes.json()

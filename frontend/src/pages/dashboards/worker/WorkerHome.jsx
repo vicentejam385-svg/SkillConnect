@@ -170,7 +170,7 @@ setSchedules(mySchedules)
 const token = JSON.parse(localStorage.getItem('sc_user'))?.token
 const photoResults = await Promise.all(
   myJobs.map(jo =>
-    fetch(`http://localhost/skillconnect/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
+    fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())

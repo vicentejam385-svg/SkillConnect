@@ -180,7 +180,7 @@ useEffect(() => {
         r.readAsDataURL(file)
       })
      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-      const response = await fetch('http://localhost/skillconnect/backend/api/licenses/scan.php', {
+      const response = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/scan.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -222,7 +222,7 @@ formData.append('expiry_date', licForm.expiry_date)
 formData.append('user_id',     profile?.id || '')
 formData.append('contact_id',  profile?.id || '')   // old name, kept for compatibility
       const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-      const res   = await fetch('http://localhost/skillconnect/backend/api/licenses/create.php', {
+      const res   = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/create.php', {
         method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
       })
       const data = await res.json()
@@ -539,7 +539,7 @@ formData.append('contact_id',  profile?.id || '')   // old name, kept for compat
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {lic.file_path && (
                           <button
-                            onClick={() => window.open(`http://localhost/skillconnect/${lic.file_path}`, '_blank')}
+                            onClick={() => window.open(`https://saddlebrown-swan-877763.hostingersite.com/${lic.file_path}`, '_blank')}
                             className="px-2 py-1 text-[10px] font-semibold bg-white border border-slate-200 text-slate-500 rounded hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors flex items-center gap-1">
                             <Eye size={10} />View
                           </button>
@@ -549,7 +549,7 @@ formData.append('contact_id',  profile?.id || '')   // old name, kept for compat
                     if (!window.confirm('Delete this license?')) return
                     try {
                       const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-                      const res = await fetch(`http://localhost/skillconnect/backend/api/licenses/delete.php?id=${lic.id}`, {
+                      const res = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/delete.php?id=${lic.id}`, {
                         method: 'DELETE',
                         headers: { Authorization: `Bearer ${token}` },
                       })

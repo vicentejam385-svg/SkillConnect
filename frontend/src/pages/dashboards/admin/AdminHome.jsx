@@ -343,7 +343,7 @@ setCounts(p => ({ ...p, licensesExpired, licensesExpiring, licensesValid }))
                           setReviewSaving(req.id)
                           try {
                             const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-                            const res = await fetch('http://localhost/skillconnect/backend/api/schedules/reschedule-requests/review.php', {
+                            const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/schedules/reschedule-requests/review.php', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                               body: JSON.stringify({ request_id: req.id, action: 'approve' }),
@@ -365,7 +365,7 @@ setCounts(p => ({ ...p, licensesExpired, licensesExpiring, licensesValid }))
                           setReviewSaving(req.id)
                           try {
                             const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-                            const res = await fetch('http://localhost/skillconnect/backend/api/schedules/reschedule-requests/review.php', {
+                            const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/schedules/reschedule-requests/review.php', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                               body: JSON.stringify({ request_id: req.id, action: 'reject' }),

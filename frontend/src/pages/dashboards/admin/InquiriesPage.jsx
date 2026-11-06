@@ -182,7 +182,7 @@ export default function InquiriesPage() {
 
     setSaving(true)
     try {
-      const res = await fetch('http://localhost/skillconnect/backend/api/inquiries/create.php', {
+      const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/inquiries/create.php', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ ...form, first_name: firstFull, last_name: lastFull, address })
       })
@@ -261,7 +261,7 @@ export default function InquiriesPage() {
 
       let credMsg = 'Marked as Won — account created & email sent!'
       try {
-        const credRes = await fetch('http://localhost/skillconnect/backend/api/contacts/send-credentials.php', {
+        const credRes = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/contacts/send-credentials.php', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({

@@ -269,7 +269,7 @@ useEffect(() => {
       // Send welcome email
       let emailOk = true
       try {
-        const mailRes = await fetch('http://localhost/skillconnect/backend/api/workers/send-welcome.php', {
+        const mailRes = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/workers/send-welcome.php', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({
@@ -662,7 +662,7 @@ useEffect(() => {
     const l = workerLicenses[0]
     const expired  = l.expiry_date && new Date(l.expiry_date) < new Date()
     const expiring = l.expiry_date && !expired && (new Date(l.expiry_date) - new Date()) < 30 * 24 * 60 * 60 * 1000
-    const fileUrl  = l.file_path ? `http://localhost/skillconnect/${l.file_path}` : null
+    const fileUrl  = l.file_path ? `https://saddlebrown-swan-877763.hostingersite.com/${l.file_path}` : null
     return (
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">

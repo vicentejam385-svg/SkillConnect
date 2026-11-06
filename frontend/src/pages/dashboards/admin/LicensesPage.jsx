@@ -103,13 +103,13 @@ const PER_PAGE = 3
     setScanResult(null)
     try {
       const proxyResp = await authFetch(
-        `http://localhost/skillconnect/backend/api/licenses/fetch-image.php?path=${encodeURIComponent(license.file_path)}`
+        `https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/fetch-image.php?path=${encodeURIComponent(license.file_path)}`
       )
       const proxyData = await proxyResp.json()
       if (!proxyData.success) throw new Error(proxyData.error || 'Failed to fetch image')
 
       const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-      const scanResp = await fetch('http://localhost/skillconnect/backend/api/licenses/scan.php', {
+      const scanResp = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/scan.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +124,7 @@ const PER_PAGE = 3
       if (!scanData.success) throw new Error(scanData.error || 'Scan failed')
 
       const token2 = JSON.parse(localStorage.getItem('sc_user'))?.token
-      await fetch('http://localhost/skillconnect/backend/api/licenses/update.php', {
+      await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/update.php', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -322,7 +322,7 @@ const PER_PAGE = 3
                         </div>
                         {l.file_path && (
   <button
-    onClick={() => setViewFile({ url: `http://localhost/skillconnect/${l.file_path}`, name: l.document_name, worker: l.worker_name || l.contact_name })}
+    onClick={() => setViewFile({ url: `https://saddlebrown-swan-877763.hostingersite.com/${l.file_path}`, name: l.document_name, worker: l.worker_name || l.contact_name })}
     className="text-xs text-emerald-500 hover:underline mt-0.5 block"
   >
     View file
