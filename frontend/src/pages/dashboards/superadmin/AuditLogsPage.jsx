@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Download, RefreshCw, X, Eye, ChevronLeft, ChevronRight,
-  Activity, Trash2, ShieldAlert, UserCog, Lock
+  Activity, PlusCircle, Pencil, Trash2, Lock
 } from 'lucide-react'
 import api, { apiGet } from '../../../utils/api'
 import { GREEN, GREEN_LIGHT, Avatar, TableShell, TR, TD, IconBtn, inputStyle } from './SuperAdminDashboard'
@@ -395,10 +395,10 @@ export default function AuditLogsPage() {
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
         gap: 16, marginBottom: 20,
       }}>
-        <SummaryCard icon={Activity}    color="#3b82f6" bg="#eff6ff" value={summary?.logs_today}            label="Total Logs Today" />
-        <SummaryCard icon={Trash2}      color="#ef4444" bg="#fef2f2" value={summary?.deletions_today}       label="Deletions Today" />
-        <SummaryCard icon={ShieldAlert} color="#f59e0b" bg="#fffbeb" value={summary?.access_denied_today}   label="Access Denied Today" />
-        <SummaryCard icon={UserCog}     color="#1a8a50" bg="#e8f5ee" value={summary?.account_changes_today} label="Account Changes Today" />
+                <SummaryCard icon={Activity}   color="#3b82f6" bg="#eff6ff" value={summary?.total_logs} label="Total Logs" />
+        <SummaryCard icon={PlusCircle} color="#1a8a50" bg="#e8f5ee" value={summary?.creates}    label="Created" />
+        <SummaryCard icon={Pencil}     color="#f59e0b" bg="#fffbeb" value={summary?.updates}    label="Updated" />
+        <SummaryCard icon={Trash2}     color="#ef4444" bg="#fef2f2" value={summary?.deletes}    label="Deleted" />
       </div>
 
       {/* Filter bar */}

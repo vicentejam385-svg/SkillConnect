@@ -155,19 +155,18 @@ try {
     }
     unset($r);
 
-    // ── Summary cards (always "today", ignores filters) ───────
-        $summary = $pdo->query(
+        // ── Summary cards (follow the same filters as the table) ──
+    $sum = $pdo->prepare(
         "SELECT
-           COUNT(*)                                                        AS logs_today,
-           SUM(action = 'DELETE')                                          AS deletions_today,
-           SUM(action = 'ACCESS_DENIED')                                   AS access_denied_today,
-           SUM(action IN ('CREATE','UPDATE','DELETE','STATUS_CHANGE','ROLE_CHANGE',
-                          'PASSWORD_CHANGE','PASSWORD_RESET')
-               AND module IN ('Admin Users','Workers Access','Client Access')) AS account_changes_today
-         FROM audit_logs
-         WHERE created_at >= CURDATE()
-           AND action NOT IN ('LOGIN','LOGOUT','LOGIN_FAILED')"
-    )->fetch();
+           COUNT(*) AS total_logs,
+           COALESCE(SUM(action = 'CREATE'), 0) AS creates,
+           COALESCE(SUM(action IN ('UPDATE','STATUS_CHANGE','ROLE_CHANGE',
+                                   'PASSWORD_CHANGE','PASSWORD_RESET')), 0) AS updates,
+           COALESCE(SUM(action = 'DELETE'), 0) AS deletes
+         FROM audit_logs $whereSql"
+    );
+    $sum->execute($params);
+    $summary = $sum->fetch();
 
     out([
         'success' => true,
