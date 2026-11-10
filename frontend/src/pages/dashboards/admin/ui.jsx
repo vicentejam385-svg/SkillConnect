@@ -7,7 +7,7 @@ import {
 
 export const cx = (...c) => c.filter(Boolean).join(' ')
 
-// ── Global styles (injected once, also works when admin pages run inside the worker layout)
+// ── Global styles (injected once, also works when admin pages run inside the worker layout
 if (typeof document !== 'undefined' && !document.getElementById('admin-ui-styles')) {
   const s = document.createElement('style')
   s.id = 'admin-ui-styles'
