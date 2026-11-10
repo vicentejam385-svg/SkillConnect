@@ -59,6 +59,11 @@ try {
             exit;
         }
         $file  = $_FILES['document'];
+        if ($file['size'] > 5 * 1024 * 1024) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'error' => 'File is too large. Maximum is 5 MB.']);
+            exit;
+        }
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $mime  = $finfo->file($file['tmp_name']);
 
@@ -87,14 +92,14 @@ try {
     } else {
         $documentName = $body['document_name'] ?? 'document';
         $filePath     = $body['file_path'] ?? '';
-        if (!preg_match('#^uploads/licenses/[A-Za-z0-9._-]+$#', $filePath)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'Invalid file_path.']);
-    exit;
-}
         if (!$filePath) {
             http_response_code(422);
             echo json_encode(['success' => false, 'error' => 'file_path is required.']);
+            exit;
+        }
+        if (!preg_match('#^uploads/licenses/[A-Za-z0-9._-]+$#', $filePath)) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'error' => 'Invalid file_path.']);
             exit;
         }
     }
@@ -126,6 +131,11 @@ try {
     http_response_code(201);
     echo json_encode(['success' => true, 'license' => $row->fetch()]);
 } catch (PDOException $e) {
+    // Remove the uploaded file so it isn't left without a license record
+    if (!empty($storedName) && isset($uploadDir) && is_file($uploadDir . $storedName)) {
+        @unlink($uploadDir . $storedName);
+    }
+    error_log($e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'Database error.']);
 }
