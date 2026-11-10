@@ -191,7 +191,7 @@ function DetailPanel({ log, onClose }) {
                   <tbody>
                     {fields.map(f => (
                       <tr key={f} style={{ borderTop: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '8px 10px', fontWeight: 600, color: '#334155' }}>{f}</td>
+                        <td style={{ padding: '8px 10px', fontWeight: 600, color: '#334155' }}>{prettyField(f)}</td>
                         <td style={{ padding: '8px 10px', color: '#991b1b', background: '#fef2f2', wordBreak: 'break-word' }}>{valueText(oldV?.[f])}</td>
                         <td style={{ padding: '8px 10px', color: '#065f46', background: '#f0fdf4', wordBreak: 'break-word' }}>{valueText(newV?.[f])}</td>
                       </tr>
@@ -219,9 +219,42 @@ function getChanges(log) {
   return keys.map(k => ({ field: k, old: oldV?.[k], new: newV?.[k] }))
 }
 
-const changeCell = {
-  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-  maxWidth: 200, lineHeight: '22px',
+const MAX_FIELDS = 3
+const LINE_H = 28
+
+const prettyField = (s = '') =>
+  s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+const isEmpty = (v) => v === null || v === undefined || v === ''
+
+function Line({ children }) {
+  return (
+    <div style={{ height: LINE_H, display: 'flex', alignItems: 'center', maxWidth: 220, minWidth: 0 }}>
+      {children}
+    </div>
+  )
+}
+
+function Dash() {
+  return <span style={{ color: '#cbd5e1', fontSize: 13 }}>—</span>
+}
+
+function ValueChip({ value, tone }) {
+  if (isEmpty(value)) return <Dash />
+  const text = valueText(value)
+  const s = tone === 'old'
+    ? { bg: '#fef2f2', color: '#991b1b', border: '#fecaca' }
+    : { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' }
+  return (
+    <span title={text} style={{
+      display: 'inline-block', maxWidth: '100%', overflow: 'hidden',
+      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+      borderRadius: 6, padding: '2px 8px', fontSize: 12, lineHeight: '18px',
+    }}>
+      {text}
+    </span>
+  )
 }
 // ─── Page ──────────────────────────────────────────────────────────────────────
 const EMPTY_FILTERS = { q: '', action: '', module: '', status: '', date_from: '', date_to: '' }
@@ -368,24 +401,6 @@ export default function AuditLogsPage() {
         <SummaryCard icon={UserCog}     color="#1a8a50" bg="#e8f5ee" value={summary?.account_changes_today} label="Account Changes Today" />
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e2e8f0', marginBottom: 16, overflowX: 'auto' }}>
-        {TABS.map(t => {
-          const on = group === t.key
-          return (
-            <button key={t.key} onClick={() => changeGroup(t.key)} style={{
-              padding: '10px 18px', border: 'none', background: 'transparent', cursor: 'pointer',
-              fontSize: 13, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap',
-              color: on ? GREEN : '#64748b',
-              borderBottom: on ? `2px solid ${GREEN}` : '2px solid transparent',
-              marginBottom: -1, transition: 'all .15s',
-            }}>
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
-
       {/* Filter bar */}
       <div style={{
         background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
@@ -446,7 +461,7 @@ export default function AuditLogsPage() {
         </div>
       )}
 
-            {/* Table */}
+                  {/* Table */}
       <TableShell headers={['User', 'Action', 'Field Name', 'Old Value', 'New Value', 'Time Stamp', '']}>
         {loading && rows.length === 0 && (
           <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading audit logs…</td></tr>
@@ -457,39 +472,67 @@ export default function AuditLogsPage() {
           </td></tr>
         )}
         {rows.map((r, i) => {
-          const changes = getChanges(r)
-          const none = <span style={{ color: '#cbd5e1' }}>—</span>
+          const all   = getChanges(r)
+          const shown = all.slice(0, MAX_FIELDS)
+          const extra = all.length - shown.length
+          const noChanges = all.length === 0
+
           return (
             <TR key={r.id} last={i === rows.length - 1}>
               <TD>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Avatar name={r.actor_name} size={28} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Avatar name={r.actor_name} size={32} />
                   <div>
-                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13 }}>{r.actor_name}</div>
+                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13, marginBottom: 2 }}>{r.actor_name}</div>
                     <RoleTag type={r.actor_type} />
                   </div>
                 </div>
               </TD>
-              <TD><ActionBadge action={r.action} /></TD>
+
+              <TD>
+                <ActionBadge action={r.action} />
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{r.module}</div>
+              </TD>
+
               <TD small>
-                {changes.length === 0 ? none : changes.map(c => (
-                  <div key={c.field} style={{ ...changeCell, fontWeight: 600, color: '#334155' }} title={c.field}>{c.field}</div>
+                {noChanges ? <Line><Dash /></Line> : shown.map(c => (
+                  <Line key={c.field}>
+                    <span title={c.field} style={{ fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {prettyField(c.field)}
+                    </span>
+                  </Line>
                 ))}
+                {extra > 0 && (
+                  <Line>
+                    <button onClick={() => setSelected(r)} style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      color: GREEN, fontSize: 12, fontWeight: 600,
+                    }}>
+                      +{extra} more
+                    </button>
+                  </Line>
+                )}
               </TD>
+
               <TD small>
-                {changes.length === 0 ? none : changes.map(c => (
-                  <div key={c.field} style={{ ...changeCell, color: '#991b1b' }} title={valueText(c.old)}>{valueText(c.old)}</div>
+                {noChanges ? <Line><Dash /></Line> : shown.map(c => (
+                  <Line key={c.field}><ValueChip value={c.old} tone="old" /></Line>
                 ))}
+                {extra > 0 && <Line />}
               </TD>
+
               <TD small>
-                {changes.length === 0 ? none : changes.map(c => (
-                  <div key={c.field} style={{ ...changeCell, color: '#065f46' }} title={valueText(c.new)}>{valueText(c.new)}</div>
+                {noChanges ? <Line><Dash /></Line> : shown.map(c => (
+                  <Line key={c.field}><ValueChip value={c.new} tone="new" /></Line>
                 ))}
+                {extra > 0 && <Line />}
               </TD>
+
               <TD small>
-                <div style={{ whiteSpace: 'nowrap', color: '#334155' }}>{fmtDate(r.created_at)}</div>
-                <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#94a3b8' }}>{r.log_code}</div>
+                <div style={{ whiteSpace: 'nowrap', color: '#334155', fontWeight: 500 }}>{fmtDate(r.created_at)}</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{r.log_code}</div>
               </TD>
+
               <TD>
                 <IconBtn onClick={() => setSelected(r)} hoverColor={GREEN}><Eye size={15} /></IconBtn>
               </TD>
