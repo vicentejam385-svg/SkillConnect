@@ -171,8 +171,7 @@ function DetailPanel({ log, onClose }) {
           <Row k="Description">{log.description}</Row>
           <Row k="Target">{log.target_label ? `${log.target_label}${log.target_type ? ` (${log.target_type})` : ''}` : '—'}</Row>
           <Row k="Result"><ResultBadge status={log.status} /></Row>
-          <Row k="IP Address"><span style={{ fontFamily: 'monospace' }}>{log.ip_address || '—'}</span></Row>
-          <Row k="Device">{log.user_agent || '—'}</Row>
+          
 
           {fields.length > 0 && (
             <div style={{ marginTop: 20 }}>
@@ -470,7 +469,7 @@ export default function AuditLogsPage() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search user, description, target, IP, log ID…"
+            placeholder="Search user, description, target, log ID…"
             style={{ ...inputStyle, paddingLeft: 32 }}
           />
         </div>
