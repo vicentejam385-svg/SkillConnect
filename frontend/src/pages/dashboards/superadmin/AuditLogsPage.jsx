@@ -314,7 +314,7 @@ function LogCard({ log, onView }) {
   )
 }
 // ─── Page ──────────────────────────────────────────────────────────────────────
-const EMPTY_FILTERS = { q: '', action: '', module: '', status: '', date_from: '', date_to: '' }
+const EMPTY_FILTERS = { q: '', action: '', module: '', status: '' }
 
 export default function AuditLogsPage() {
   const [group, setGroup]         = useState('all')
@@ -489,14 +489,6 @@ export default function AuditLogsPage() {
           <option value="success">Success</option>
           <option value="failed">Failed</option>
         </select>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: isMobile ? '1 1 100%' : undefined }}>
-          <input type="date" value={filters.date_from} max={filters.date_to || undefined}
-            onChange={e => updateFilter('date_from', e.target.value)} style={fieldStyle} title="From date" />
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>to</span>
-          <input type="date" value={filters.date_to} min={filters.date_from || undefined}
-            onChange={e => updateFilter('date_to', e.target.value)} style={fieldStyle} title="To date" />
-        </div>
 
         {hasFilters && (
           <button onClick={clearFilters} style={{
