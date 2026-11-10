@@ -206,7 +206,23 @@ function DetailPanel({ log, onClose }) {
     </div>
   )
 }
+// Turns old_values / new_values into a list of { field, old, new }
+function getChanges(log) {
+  const parse = (v) => {
+    if (!v) return null
+    if (typeof v === 'object') return v
+    try { const o = JSON.parse(v); return o && typeof o === 'object' ? o : null } catch { return null }
+  }
+  const oldV = parse(log.old_values)
+  const newV = parse(log.new_values)
+  const keys = Array.from(new Set([...Object.keys(oldV ?? {}), ...Object.keys(newV ?? {})]))
+  return keys.map(k => ({ field: k, old: oldV?.[k], new: newV?.[k] }))
+}
 
+const changeCell = {
+  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  maxWidth: 200, lineHeight: '22px',
+}
 // ─── Page ──────────────────────────────────────────────────────────────────────
 const EMPTY_FILTERS = { q: '', action: '', module: '', status: '', date_from: '', date_to: '' }
 
@@ -430,43 +446,56 @@ export default function AuditLogsPage() {
         </div>
       )}
 
-      {/* Table */}
-      <TableShell headers={['Timestamp', 'User', 'Action', 'Module', 'Description', 'IP Address', 'Result', '']}>
+            {/* Table */}
+      <TableShell headers={['User', 'Action', 'Field Name', 'Old Value', 'New Value', 'Time Stamp', '']}>
         {loading && rows.length === 0 && (
-          <tr><td colSpan={8} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading audit logs…</td></tr>
+          <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading audit logs…</td></tr>
         )}
         {!loading && rows.length === 0 && !error && (
-          <tr><td colSpan={8} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+          <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
             No audit logs match your filters.
           </td></tr>
         )}
-        {rows.map((r, i) => (
-          <TR key={r.id} last={i === rows.length - 1}>
-            <TD small>
-              <div style={{ whiteSpace: 'nowrap', color: '#334155' }}>{fmtDate(r.created_at)}</div>
-              <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#94a3b8' }}>{r.log_code}</div>
-            </TD>
-            <TD>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar name={r.actor_name} size={28} />
-                <div>
-                  <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13 }}>{r.actor_name}</div>
-                  <RoleTag type={r.actor_type} />
+        {rows.map((r, i) => {
+          const changes = getChanges(r)
+          const none = <span style={{ color: '#cbd5e1' }}>—</span>
+          return (
+            <TR key={r.id} last={i === rows.length - 1}>
+              <TD>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar name={r.actor_name} size={28} />
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13 }}>{r.actor_name}</div>
+                    <RoleTag type={r.actor_type} />
+                  </div>
                 </div>
-              </div>
-            </TD>
-            <TD><ActionBadge action={r.action} /></TD>
-            <TD small>{r.module}</TD>
-            <TD small>
-              <div style={{ maxWidth: 340, wordBreak: 'break-word' }}>{r.description}</div>
-            </TD>
-            <TD mono small>{r.ip_address || '—'}</TD>
-            <TD><ResultBadge status={r.status} /></TD>
-            <TD>
-              <IconBtn onClick={() => setSelected(r)} hoverColor={GREEN}><Eye size={15} /></IconBtn>
-            </TD>
-          </TR>
-        ))}
+              </TD>
+              <TD><ActionBadge action={r.action} /></TD>
+              <TD small>
+                {changes.length === 0 ? none : changes.map(c => (
+                  <div key={c.field} style={{ ...changeCell, fontWeight: 600, color: '#334155' }} title={c.field}>{c.field}</div>
+                ))}
+              </TD>
+              <TD small>
+                {changes.length === 0 ? none : changes.map(c => (
+                  <div key={c.field} style={{ ...changeCell, color: '#991b1b' }} title={valueText(c.old)}>{valueText(c.old)}</div>
+                ))}
+              </TD>
+              <TD small>
+                {changes.length === 0 ? none : changes.map(c => (
+                  <div key={c.field} style={{ ...changeCell, color: '#065f46' }} title={valueText(c.new)}>{valueText(c.new)}</div>
+                ))}
+              </TD>
+              <TD small>
+                <div style={{ whiteSpace: 'nowrap', color: '#334155' }}>{fmtDate(r.created_at)}</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#94a3b8' }}>{r.log_code}</div>
+              </TD>
+              <TD>
+                <IconBtn onClick={() => setSelected(r)} hoverColor={GREEN}><Eye size={15} /></IconBtn>
+              </TD>
+            </TR>
+          )
+        })}
       </TableShell>
 
       {/* Pagination */}
