@@ -18,14 +18,26 @@ if ($path === '') fail(422, 'No path provided.');
 // file_path is saved as "uploads/licenses/xxx.jpg", so drop the leading "uploads/"
 $path = preg_replace('#^/?uploads/#', '', $path);
 
-$baseDir = realpath(__DIR__ . '/../../../uploads');
-if ($baseDir === false) fail(500, 'Uploads folder not found.');
+// Uploads may live in different places depending on which page uploaded them
+$candidates = array_unique(array_filter(array_map('realpath', [
+    __DIR__ . '/../../../uploads',                      // public_html/uploads
+    __DIR__ . '/../../uploads',                         // public_html/backend/uploads
+    rtrim($_SERVER['DOCUMENT_ROOT'] ?? '', '/') . '/uploads',
+])));
 
-$fullPath = realpath($baseDir . DIRECTORY_SEPARATOR . $path);
-if ($fullPath === false || !is_file($fullPath)) fail(404, 'File not found.');
+if (!$candidates) fail(500, 'Uploads folder not found.');
 
-// Block anything outside the uploads folder
-if (strpos($fullPath, $baseDir . DIRECTORY_SEPARATOR) !== 0) fail(403, 'Invalid path.');
+$fullPath = null;
+foreach ($candidates as $baseDir) {
+    $try = realpath($baseDir . DIRECTORY_SEPARATOR . $path);
+    // Must be a real file AND stay inside that uploads folder
+    if ($try && is_file($try) && strpos($try, $baseDir . DIRECTORY_SEPARATOR) === 0) {
+        $fullPath = $try;
+        break;
+    }
+}
+
+if (!$fullPath) fail(404, 'File not found.');
 
 $mime = mime_content_type($fullPath);
 if (!in_array($mime, ['image/jpeg', 'image/png', 'application/pdf'], true)) {
