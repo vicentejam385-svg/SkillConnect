@@ -37,10 +37,11 @@ export default function SAHome() {
     <div>
       {/* Green Banner */}
       <div style={{
-        background: GREEN, borderRadius: 12, padding: '24px 28px',
+        background: GREEN, borderRadius: 12,
+        padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 28px)',
         marginBottom: 24, color: '#fff'
       }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Welcome to SkillConnect Super Admin</h2>
+        <h2 style={{ margin: 0, fontSize: 'clamp(17px, 4.5vw, 22px)', fontWeight: 800, lineHeight: 1.3 }}>Welcome to SkillConnect Super Admin</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, opacity: .85 }}>
           Emerald Builders &amp; Construction. Here's your overview today.
         </p>
@@ -61,7 +62,7 @@ export default function SAHome() {
       </div>
 
       {/* Recent Lists */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
         {[
           { title: 'Recent Admin Users',  data: recentAdmins,  nameKey: 'name',      subKey: 'username', nav: '/superadmin/admin-users' },
           { title: 'Recent Worker Users', data: recentWorkers, nameKey: 'full_name', subKey: 'username', nav: '/superadmin/workers'     },

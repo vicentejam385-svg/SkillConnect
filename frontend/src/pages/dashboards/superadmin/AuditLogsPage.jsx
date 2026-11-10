@@ -5,7 +5,7 @@ import {
   Activity, PlusCircle, Pencil, Trash2, Lock
 } from 'lucide-react'
 import api, { apiGet } from '../../../utils/api'
-import { GREEN, GREEN_LIGHT, Avatar, TableShell, TR, TD, IconBtn, inputStyle } from './SuperAdminDashboard'
+import { GREEN, GREEN_LIGHT, Avatar, TableShell, TR, TD, IconBtn, inputStyle, useIsMobile } from './SuperAdminDashboard'
 
 const ENDPOINT = '/api/audit-logs/index.php'
 
@@ -14,7 +14,7 @@ const TABS = [
 ]
 
 const ACTIONS = [
-  'LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_CHANGE', 'PASSWORD_RESET',
+  'PASSWORD_CHANGE', 'PASSWORD_RESET',
   'CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', 'ROLE_CHANGE', 'ACCESS_DENIED', 'EXPORT',
 ]
 const MODULES = [
@@ -256,6 +256,64 @@ function ValueChip({ value, tone }) {
     </span>
   )
 }
+// ─── Mobile card (one per log) ─────────────────────────────────────────────────
+function LogCard({ log, onView }) {
+  const changes = getChanges(log)
+  const shown   = changes.slice(0, MAX_FIELDS)
+  const extra   = changes.length - shown.length
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Avatar name={log.actor_name} size={34} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13 }}>{log.actor_name}</div>
+          <RoleTag type={log.actor_type} />
+        </div>
+        <IconBtn onClick={onView} hoverColor={GREEN}><Eye size={16} /></IconBtn>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        <ActionBadge action={log.action} />
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{log.module}</span>
+      </div>
+
+      {shown.length > 0 && (
+        <div style={{
+          marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9',
+          display: 'flex', flexDirection: 'column', gap: 8
+        }}>
+          {shown.map(c => (
+            <div key={c.field} style={{ fontSize: 12, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: '#334155', marginBottom: 4 }}>{prettyField(c.field)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+                <ValueChip value={c.old} tone="old" />
+                <span style={{ color: '#94a3b8' }}>→</span>
+                <ValueChip value={c.new} tone="new" />
+              </div>
+            </div>
+          ))}
+          {extra > 0 && (
+            <button onClick={onView} style={{
+              alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
+              cursor: 'pointer', color: GREEN, fontSize: 12, fontWeight: 600
+            }}>
+              +{extra} more
+            </button>
+          )}
+        </div>
+      )}
+
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', marginTop: 10,
+        fontSize: 11, color: '#94a3b8'
+      }}>
+        <span>{fmtDate(log.created_at)}</span>
+        <span style={{ fontFamily: 'monospace' }}>{log.log_code}</span>
+      </div>
+    </div>
+  )
+}
 // ─── Page ──────────────────────────────────────────────────────────────────────
 const EMPTY_FILTERS = { q: '', action: '', module: '', status: '', date_from: '', date_to: '' }
 
@@ -274,7 +332,8 @@ export default function AuditLogsPage() {
   const [exporting, setExporting] = useState(false)
   const reqId = useRef(0)
 
-  const fieldStyle = { ...inputStyle, width: 'auto', minWidth: 0 }
+  const isMobile = useIsMobile()
+  const fieldStyle = { ...inputStyle, width: 'auto', minWidth: 0, flex: isMobile ? '1 1 140px' : undefined }
 
   // Debounce the search box so we don't hit the server on every keystroke
   useEffect(() => {
@@ -392,7 +451,7 @@ export default function AuditLogsPage() {
 
       {/* Summary cards (today) */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
         gap: 16, marginBottom: 20,
       }}>
                 <SummaryCard icon={Activity}   color="#3b82f6" bg="#eff6ff" value={summary?.total_logs} label="Total Logs" />
@@ -432,7 +491,7 @@ export default function AuditLogsPage() {
           <option value="failed">Failed</option>
         </select>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: isMobile ? '1 1 100%' : undefined }}>
           <input type="date" value={filters.date_from} max={filters.date_to || undefined}
             onChange={e => updateFilter('date_from', e.target.value)} style={fieldStyle} title="From date" />
           <span style={{ fontSize: 12, color: '#94a3b8' }}>to</span>
@@ -462,6 +521,17 @@ export default function AuditLogsPage() {
       )}
 
                   {/* Table */}
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {loading && rows.length === 0 && (
+            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>Loading audit logs…</div>
+          )}
+          {!loading && rows.length === 0 && !error && (
+            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>No audit logs match your filters.</div>
+          )}
+          {rows.map(r => <LogCard key={r.id} log={r} onView={() => setSelected(r)} />)}
+        </div>
+      ) : (
       <TableShell headers={['User', 'Action', 'Field Name', 'Old Value', 'New Value', 'Time Stamp', '']}>
         {loading && rows.length === 0 && (
           <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading audit logs…</td></tr>
@@ -540,6 +610,7 @@ export default function AuditLogsPage() {
           )
         })}
       </TableShell>
+      )}
 
       {/* Pagination */}
       <div style={{
@@ -549,7 +620,7 @@ export default function AuditLogsPage() {
         <div style={{ fontSize: 12, color: '#94a3b8' }}>
           Showing {from}–{to} of {pagination.total} entries
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <select value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }} style={{ ...fieldStyle, padding: '6px 10px', fontSize: 12 }}>
             {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
           </select>

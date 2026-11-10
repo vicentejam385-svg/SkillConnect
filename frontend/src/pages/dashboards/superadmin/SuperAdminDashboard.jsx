@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, HardHat, UserRound,
   Key, Eye, EyeOff,
   RefreshCw, CheckCircle,
-  ChevronDown, LogOut, ClipboardList
+  ChevronDown, LogOut, ClipboardList, Menu, X
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { validate } from '../../../utils/validators'
@@ -18,6 +18,22 @@ import AuditLogsPage from './AuditLogsPage'
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
 export const GREEN       = '#1a8a50'
 export const GREEN_LIGHT = '#e8f5ee'
+
+// ─── Mobile detection ──────────────────────────────────────────────────────────
+export function useIsMobile(bp = 768) {
+  const q = `(max-width: ${bp}px)`
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(q).matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(q)
+    const fn = (e) => setIsMobile(e.matches)
+    setIsMobile(mq.matches)
+    mq.addEventListener('change', fn)
+    return () => mq.removeEventListener('change', fn)
+  }, [q])
+  return isMobile
+}
 
 // ─── Avatar ────────────────────────────────────────────────────────────────────
 const AVATAR_PALETTE = [
@@ -105,7 +121,7 @@ function NavBtn({ icon: Icon, label, on, collapsed, onClick, indent = false, chi
   )
 }
 
-function Sidebar({ collapsed, setCollapsed }) {
+function Sidebar({ collapsed, setCollapsed, isMobile, mobileOpen, setMobileOpen }) {
   const navigate = useNavigate()
   const location = useLocation()
   const active   = (p) => location.pathname.startsWith(p)
@@ -115,60 +131,76 @@ function Sidebar({ collapsed, setCollapsed }) {
   // keep the dropdown open while one of its pages is active
   useEffect(() => { if (usersActive) setUsersOpen(true) }, [usersActive])
 
+  const isCollapsed = isMobile ? false : collapsed
+  const go = (path) => { navigate(path); if (isMobile) setMobileOpen(false) }
+
+  const sizeStyle = isMobile
+    ? {
+        position: 'fixed', top: 0, left: 0, bottom: 0, width: 250, zIndex: 70,
+        transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform .25s ease',
+        boxShadow: mobileOpen ? '4px 0 24px rgba(0,0,0,.15)' : 'none',
+        overflowY: 'auto',
+      }
+    : {
+        width: collapsed ? 70 : 220, minHeight: '100vh', flexShrink: 0,
+        transition: 'width 0.3s ease',
+      }
+
   return (
     <aside style={{
-      width: collapsed ? 70 : 220, minHeight: '100vh', background: '#fff',
-      borderRight: '1px solid #e2e8f0',
-      display: 'flex', flexDirection: 'column', flexShrink: 0,
-      transition: 'width 0.3s ease'
+      background: '#fff', borderRight: '1px solid #e2e8f0',
+      display: 'flex', flexDirection: 'column', ...sizeStyle,
     }}>
       {/* Logo */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
-        padding: collapsed ? '14px 0' : '18px 20px 14px', borderBottom: '1px solid #e2e8f0',
-        justifyContent: collapsed ? 'center' : 'flex-start',
-        flexDirection: collapsed ? 'column' : 'row'
+        padding: isCollapsed ? '14px 0' : '18px 20px 14px', borderBottom: '1px solid #e2e8f0',
+        justifyContent: isCollapsed ? 'center' : 'flex-start',
+        flexDirection: isCollapsed ? 'column' : 'row'
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 8, background: GREEN,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: 800, fontSize: 12, letterSpacing: '-0.5px'
+          color: '#fff', fontWeight: 800, fontSize: 12, letterSpacing: '-0.5px', flexShrink: 0
         }}>EB</div>
-        {!collapsed && (
+        {!isCollapsed && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b', lineHeight: 1.2 }}>SkillConnect</div>
             <div style={{ fontSize: 10, color: '#94a3b8' }}>Emerald Builders</div>
           </div>
         )}
         <button
-          onClick={() => setCollapsed(!collapsed)}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => (isMobile ? setMobileOpen(false) : setCollapsed(!collapsed))}
+          title={isMobile ? 'Close menu' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 6, border: 'none', background: 'transparent',
             color: '#64748b', cursor: 'pointer', borderRadius: 6,
-            marginLeft: collapsed ? 0 : 'auto', transition: 'all .15s'
+            marginLeft: isCollapsed ? 0 : 'auto', transition: 'all .15s'
           }}
           onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = GREEN }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b' }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
+          {isMobile ? <X size={20} /> : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          )}
         </button>
       </div>
 
-            {/* Nav Items */}
+      {/* Nav Items */}
       <nav style={{ flex: 1, padding: '10px 0' }}>
         {NAV_TOP.map(({ path, label, icon }) => (
-          <NavBtn key={path} icon={icon} label={label} collapsed={collapsed}
-            on={active(path)} onClick={() => navigate(path)} />
+          <NavBtn key={path} icon={icon} label={label} collapsed={isCollapsed}
+            on={active(path)} onClick={() => go(path)} />
         ))}
 
         {/* Users dropdown */}
-        <NavBtn icon={Users} label="Users" collapsed={collapsed}
+        <NavBtn icon={Users} label="Users" collapsed={isCollapsed}
           on={usersActive && !usersOpen}
           onClick={() => setUsersOpen(o => !o)}>
           <ChevronDown size={14} style={{
@@ -177,13 +209,13 @@ function Sidebar({ collapsed, setCollapsed }) {
           }} />
         </NavBtn>
         {usersOpen && USER_CHILDREN.map(({ path, label, icon }) => (
-          <NavBtn key={path} icon={icon} label={label} collapsed={collapsed} indent
-            on={active(path)} onClick={() => navigate(path)} />
+          <NavBtn key={path} icon={icon} label={label} collapsed={isCollapsed} indent
+            on={active(path)} onClick={() => go(path)} />
         ))}
 
         {NAV_BOTTOM.map(({ path, label, icon }) => (
-          <NavBtn key={path} icon={icon} label={label} collapsed={collapsed}
-            on={active(path)} onClick={() => navigate(path)} />
+          <NavBtn key={path} icon={icon} label={label} collapsed={isCollapsed}
+            on={active(path)} onClick={() => go(path)} />
         ))}
       </nav>
     </aside>
@@ -191,7 +223,7 @@ function Sidebar({ collapsed, setCollapsed }) {
 }
 
 // ─── Top Bar ───────────────────────────────────────────────────────────────────
-function TopBar() {
+function TopBar({ isMobile, onMenu }) {
   const [open, setOpen] = useState(false)
   const ref = useRef()
   const { logout } = useAuth()
@@ -211,9 +243,21 @@ function TopBar() {
   return (
     <div style={{
       height: 52, background: '#fff', borderBottom: '1px solid #e2e8f0',
-      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-      padding: '0 24px', position: 'sticky', top: 0, zIndex: 40
+      display: 'flex', alignItems: 'center',
+      justifyContent: isMobile ? 'space-between' : 'flex-end',
+      padding: isMobile ? '0 12px' : '0 24px', position: 'sticky', top: 0, zIndex: 40
     }}>
+      {isMobile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={onMenu} aria-label="Open menu" style={{
+            display: 'flex', padding: 6, border: 'none', background: 'transparent',
+            color: '#475569', cursor: 'pointer', borderRadius: 6
+          }}>
+            <Menu size={22} />
+          </button>
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>SkillConnect</span>
+        </div>
+      )}
 
       {/* User Dropdown on Right */}
       <div ref={ref} style={{ position: 'relative' }}>
@@ -223,10 +267,12 @@ function TopBar() {
           borderRadius: 6
         }}>
           <Avatar name="Super Admin" size={30} />
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>Super Admin</div>
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>Super Admin</div>
-          </div>
+          {!isMobile && (
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>Super Admin</div>
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>Super Admin</div>
+            </div>
+          )}
           <ChevronDown size={14} color="#94a3b8" style={{ transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'rotate(0)' }} />
         </button>
 
@@ -260,17 +306,36 @@ function TopBar() {
 
 // ─── Layout ────────────────────────────────────────────────────────────────────
 function Layout({ children }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed]   = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const isMobile = useIsMobile()
+
+  // close the drawer when going back to desktop size
+  useEffect(() => { if (!isMobile) setMobileOpen(false) }, [isMobile])
+
+  // stop the page behind the drawer from scrolling
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
 
   return (
     <div style={{
       display: 'flex', minHeight: '100vh', background: '#f4f6f8',
       fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif"
     }}>
-      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TopBar />
-        <main style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
+      <Sidebar
+        collapsed={collapsed} setCollapsed={setCollapsed}
+        isMobile={isMobile} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
+      />
+      {isMobile && mobileOpen && (
+        <div onClick={() => setMobileOpen(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 65
+        }} />
+      )}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <TopBar isMobile={isMobile} onMenu={() => setMobileOpen(true)} />
+        <main style={{ flex: 1, padding: isMobile ? 14 : 24 }}>
           {children}
         </main>
       </div>
@@ -437,15 +502,25 @@ export function ResetPasswordModal({ label, onClose, onReset }) {
 }
 
 // ─── Table Shell ───────────────────────────────────────────────────────────────
-export function TableShell({ headers, children, empty }) {
+export function TableShell({ headers, children }) {
+  const ref = useRef(null)
+
+  // Give every cell its column name so the mobile card view can label it
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    ref.current.querySelectorAll('tbody > tr').forEach(tr => {
+      Array.from(tr.children).forEach((td, i) => td.setAttribute('data-label', headers[i] ?? ''))
+    })
+  })
+
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table ref={ref} className="sa-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              {headers.map(h => (
-                <th key={h} style={{
+              {headers.map((h, i) => (
+                <th key={h || i} style={{
                   padding: '10px 16px', textAlign: 'left', fontSize: 11,
                   fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em',
                   whiteSpace: 'nowrap'
@@ -475,7 +550,7 @@ export function TR({ children, last }) {
 
 export const TD = ({ children, mono, small }) => (
   <td style={{ padding: '12px 16px', color: '#475569', fontFamily: mono ? 'monospace' : 'inherit', fontSize: small ? 12 : 13 }}>
-    {children}
+    <div className="sa-td">{children}</div>
   </td>
 )
 
@@ -497,11 +572,34 @@ export function IconBtn({ onClick, children, hoverColor = '#334155' }) {
   )
 }
 
-// ─── Spin keyframe injection ───────────────────────────────────────────────────
-if (typeof document !== 'undefined' && !document.getElementById('sa-keyframes')) {
+// ─── Global styles (spin + mobile tables) ──────────────────────────────────────
+if (typeof document !== 'undefined' && !document.getElementById('sa-styles')) {
   const s = document.createElement('style')
-  s.id = 'sa-keyframes'
-  s.textContent = '@keyframes spin { to { transform: rotate(360deg) } }'
+  s.id = 'sa-styles'
+  s.textContent = `
+    @keyframes spin { to { transform: rotate(360deg) } }
+
+    @media (max-width: 768px) {
+      .sa-table thead { display: none; }
+      .sa-table, .sa-table tbody, .sa-table tr { display: block; width: 100%; }
+      .sa-table tr { padding: 12px 16px; }
+      .sa-table td {
+        display: grid; grid-template-columns: 105px minmax(0, 1fr);
+        gap: 10px; align-items: center;
+        padding: 6px 0 !important; max-width: none !important;
+        white-space: normal !important; word-break: break-word;
+      }
+      .sa-table td::before {
+        content: attr(data-label);
+        font-size: 11px; font-weight: 700; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: .04em;
+      }
+      .sa-table td[data-label=""] { grid-template-columns: 1fr; justify-items: end; }
+      .sa-table td[data-label=""]::before { display: none; }
+      .sa-table td[colspan] { display: block; text-align: center; padding: 24px 0 !important; }
+      .sa-table td[colspan]::before { display: none; }
+    }
+  `
   document.head.appendChild(s)
 }
 
