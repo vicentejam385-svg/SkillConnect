@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
-  ClipboardList, Calendar, Users, RefreshCw,
-  CheckCircle, X, ArrowRight, FileText, HardHat
+  ClipboardList, Calendar, Users, CheckCircle, X, ArrowRight, Inbox, HardHat, ShieldCheck,
 } from 'lucide-react'
 import { apiGet } from '../../../utils/api'
+import {
+  PageHeader, Card, CardHeader, StatusBadge, Avatar, Button, TextButton, Loading,
+  EmptyState, Code, Table, Toast, IconTile, trCls, tdCls,
+} from './ui'
 
 // ── useNavigate (admin wrapper) ────────────────────────────────
 function useNavigate() {
@@ -16,63 +19,65 @@ function useNavigate() {
       : nav(to, opts)
 }
 
-// ── Status Badge ───────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const colors = {
-    'Pending':      'bg-yellow-100 text-yellow-700',
-    'Active':       'bg-emerald-100 text-emerald-700',
-    'Complete':     'bg-blue-100 text-blue-700',
-    'Completed':    'bg-blue-100 text-blue-700',
-    'On Hold':      'bg-orange-100 text-orange-700',
-    'Under Review': 'bg-purple-100 text-purple-700',
-    'Scheduled':    'bg-cyan-100 text-cyan-700',
-    'In Progress':  'bg-amber-100 text-amber-700',
-    'Cancelled':    'bg-red-100 text-red-700',
-    'New':          'bg-sky-100 text-sky-700',
-    'Won':          'bg-emerald-100 text-emerald-700',
-    'Lost':         'bg-red-100 text-red-700',
-    'Inactive':     'bg-gray-100 text-gray-600',
-    'On Leave':     'bg-orange-100 text-orange-700',
-    'Blacklisted':  'bg-red-100 text-red-700',
-  }
+// ── Stat Card ──────────────────────────────────────────────────
+function StatCard({ icon, label, value, tone = 'emerald' }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${colors[status] || 'bg-gray-100 text-gray-600'}`}>
-      {status || '—'}
-    </span>
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-stone-500">{label}</p>
+        <IconTile icon={icon} tone={tone} size="sm" />
+      </div>
+      <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-stone-900">
+        {value ?? <span className="text-stone-300">—</span>}
+      </p>
+    </Card>
   )
 }
 
-// ── Stat Card ──────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, color = 'emerald' }) {
-  const colors = {
-    emerald: { bg: 'bg-emerald-50', icon: 'text-emerald-500', border: 'border-emerald-100' },
-    blue:    { bg: 'bg-blue-50',    icon: 'text-blue-500',    border: 'border-blue-100'    },
-    amber:   { bg: 'bg-amber-50',   icon: 'text-amber-500',   border: 'border-amber-100'   },
-    purple:  { bg: 'bg-purple-50',  icon: 'text-purple-500',  border: 'border-purple-100'  },
-  }
-  const c = colors[color] || colors.emerald
+// ── License status bar ─────────────────────────────────────────
+function LicenseBar({ valid, expiring, expired }) {
+  const v = valid ?? 0, s = expiring ?? 0, e = expired ?? 0
+  const total = v + s + e
+  const pct = n => (total ? (n / total) * 100 : 0)
+  const rows = [
+    { label: 'Valid',         value: valid,    dot: 'bg-emerald-500' },
+    { label: 'Expiring soon', value: expiring, dot: 'bg-amber-500'   },
+    { label: 'Expired',       value: expired,  dot: 'bg-red-500'     },
+  ]
   return (
-    <div className={`bg-white rounded-xl border ${c.border} p-3 sm:p-5 flex items-center gap-3 sm:gap-4 shadow-sm`}>
-      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl ${c.bg} flex items-center justify-center flex-shrink-0`}>
-        <Icon size={16} className={`${c.icon} sm:w-5 sm:h-5`} />
+    <div>
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-stone-100" aria-hidden="true">
+        <div className="bg-emerald-500 transition-all" style={{ width: `${pct(v)}%` }} />
+        <div className="bg-amber-500 transition-all"   style={{ width: `${pct(s)}%` }} />
+        <div className="bg-red-500 transition-all"     style={{ width: `${pct(e)}%` }} />
       </div>
-      <div>
-        <p className="text-xl sm:text-2xl font-bold text-gray-800">{value ?? <span className="text-gray-300 text-lg">—</span>}</p>
-        <p className="text-xs sm:text-sm text-gray-500">{label}</p>
-      </div>
+      <ul className="mt-3 space-y-2">
+        {rows.map(r => (
+          <li key={r.label} className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 text-stone-600">
+              <span className={`h-2 w-2 rounded-full ${r.dot}`} />{r.label}
+            </span>
+            <span className="font-semibold tabular-nums text-stone-900">{r.value ?? '—'}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
+
+const fmtTime = (s) => s?.slice(0, 16).replace('T', ' ') || '—'
 
 // ── Admin Home ─────────────────────────────────────────────────
 export default function AdminHome() {
   const navigate = useNavigate()
   const [counts, setCounts] = useState({ inquiries: null, jobOrders: null, contacts: null, workers: null, schedules: null, licensesValid: null, licensesExpiring: null, licensesExpired: null, pendingReschedules: null })
-const [rescheduleRequests, setRescheduleRequests] = useState([])
-const [reviewSaving, setReviewSaving] = useState(null) // id being saved
+  const [rescheduleRequests, setRescheduleRequests] = useState([])
+  const [reviewSaving, setReviewSaving] = useState(null) // id being saved
   const [recentJobOrders, setRecentJobOrders] = useState([])
   const [joStats, setJoStats] = useState({ total: 0, completed: 0, inProgress: 0 })
   const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState(null)
+  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -102,17 +107,17 @@ const [reviewSaving, setReviewSaving] = useState(null) // id being saved
 
         // Fetch workers count
         const workersData = await apiGet('/api/contacts/list.php', { per_page: 1, type: 'worker' })
-setCounts(p => ({ ...p, workers: workersData.pagination?.total ?? 0 }))
+        setCounts(p => ({ ...p, workers: workersData.pagination?.total ?? 0 }))
 
-// Fetch license stats
-const licData = await apiGet('/api/licenses/list.php', { per_page: 100 })
-const allLic = licData.licenses || []
-const now = new Date()
-const soon = 60 * 24 * 60 * 60 * 1000
-const licensesExpired  = allLic.filter(l => l.expiry_date && new Date(l.expiry_date) < now).length
-const licensesExpiring = allLic.filter(l => l.expiry_date && new Date(l.expiry_date) >= now && (new Date(l.expiry_date) - now) < soon).length
-const licensesValid    = allLic.filter(l => l.expiry_date && new Date(l.expiry_date) >= now && (new Date(l.expiry_date) - now) >= soon).length
-setCounts(p => ({ ...p, licensesExpired, licensesExpiring, licensesValid }))
+        // Fetch license stats
+        const licData = await apiGet('/api/licenses/list.php', { per_page: 100 })
+        const allLic = licData.licenses || []
+        const now = new Date()
+        const soon = 60 * 24 * 60 * 60 * 1000
+        const licensesExpired  = allLic.filter(l => l.expiry_date && new Date(l.expiry_date) < now).length
+        const licensesExpiring = allLic.filter(l => l.expiry_date && new Date(l.expiry_date) >= now && (new Date(l.expiry_date) - now) < soon).length
+        const licensesValid    = allLic.filter(l => l.expiry_date && new Date(l.expiry_date) >= now && (new Date(l.expiry_date) - now) >= soon).length
+        setCounts(p => ({ ...p, licensesExpired, licensesExpiring, licensesValid }))
 
         // Fetch pending reschedule requests
         const rrData = await apiGet('/api/schedules/reschedule-requests/list.php', { status: 'pending' })
@@ -130,263 +135,176 @@ setCounts(p => ({ ...p, licensesExpired, licensesExpiring, licensesValid }))
     return () => clearInterval(interval)
   }, [])
 
+  const reviewRequest = async (req, action) => {
+    setReviewSaving(req.id)
+    try {
+      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
+      const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/schedules/reschedule-requests/review.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ request_id: req.id, action }),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error)
+      setRescheduleRequests(prev => prev.filter(r => r.id !== req.id))
+      setCounts(p => ({ ...p, pendingReschedules: (p.pendingReschedules || 1) - 1 }))
+      showToast(action === 'approve' ? 'Reschedule request approved.' : 'Reschedule request rejected.')
+    } catch (e) { showToast('Could not update the request: ' + e.message, 'error') }
+    setReviewSaving(null)
+  }
+
   return (
-    <div className="space-y-6 max-w-6xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Welcome to SkillConnect Admin</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Emerald Builders & Construction. Here's your overview today</p>
+    <div className="space-y-6">
+      <Toast toast={toast} />
+      <PageHeader
+        title="Welcome to SkillConnect Admin"
+        subtitle="Emerald Builders & Construction. Here's your overview for today."
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard icon={Inbox}         label="Total inquiries" value={counts.inquiries} tone="emerald" />
+        <StatCard icon={ClipboardList} label="Job orders"      value={counts.jobOrders} tone="blue"    />
+        <StatCard icon={Users}         label="All contacts"    value={counts.contacts}  tone="amber"   />
+        <StatCard icon={HardHat}       label="Workers"         value={counts.workers}   tone="violet"  />
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={FileText}      label="Total Inquiries"  value={counts.inquiries}  color="emerald" />
-        <StatCard icon={ClipboardList} label="Job Orders"       value={counts.jobOrders}  color="blue"    />
-        <StatCard icon={Users}         label="All Contacts"     value={counts.contacts}   color="amber"   />
-        <StatCard icon={HardHat}       label="Workers"          value={counts.workers}    color="purple"  />
-      </div>
-
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6" style={{alignItems: 'start'}}>
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
         {/* Recent Job Orders */}
-        <div className="xl:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" style={{minWidth:0}}>
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-800">Recent Job Orders</p>
-              <p className="text-xs text-gray-400 mt-0.5">Latest projects</p>
-            </div>
-            <button
-              onClick={() => navigate('/admin/job-orders')}
-              className="text-xs text-emerald-600 font-semibold hover:text-emerald-700 flex items-center gap-1"
-            >
-              View all <ArrowRight size={12} />
-            </button>
-          </div>
-          {loading ? (
-  <div className="flex items-center justify-center py-12 gap-2">
-    <RefreshCw size={16} className="animate-spin text-emerald-400" />
-    <span className="text-sm text-gray-400">Loading...</span>
-  </div>
-) : (
-  <>
-    {/* Mobile card view */}
-    <div className="block sm:hidden divide-y divide-gray-50">
-      {recentJobOrders.length === 0 ? (
-        <p className="text-center py-10 text-gray-400 text-sm">No job orders yet</p>
-      ) : recentJobOrders.map((jo) => {
-        const initials = (jo.worker_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-        const colorMap = ['bg-blue-100 text-blue-600','bg-emerald-100 text-emerald-600','bg-purple-100 text-purple-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600']
-        const color = colorMap[jo.id % colorMap.length]
-        return (
-          <div key={jo.id} className="px-4 py-3 flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${color}`}>
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-xs text-emerald-600 font-semibold">{jo.job_order_code}</span>
-                <StatusBadge status={jo.status} />
-              </div>
-              <p className="text-sm font-medium text-gray-700 truncate">{jo.worker_name || '—'}</p>
-              <p className="text-xs text-gray-400 truncate">{jo.client_name || '—'} · {jo.contract_type || '—'}</p>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-
-    {/* Desktop table view */}
-    <div className="hidden sm:block overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-50">
-            {['Code', 'Worker', 'Client', 'Contract', 'Status'].map(h => (
-              <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {recentJobOrders.length === 0 ? (
-            <tr><td colSpan={5} className="text-center py-10 text-gray-400 text-sm">No job orders yet</td></tr>
-          ) : recentJobOrders.map((jo) => {
-            const initials = (jo.worker_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-            const colorMap = ['bg-blue-100 text-blue-600','bg-emerald-100 text-emerald-600','bg-purple-100 text-purple-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600']
-            const color = colorMap[jo.id % colorMap.length]
-            return (
-              <tr key={jo.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                <td className="px-5 py-3 font-mono text-xs text-emerald-600 font-semibold">{jo.job_order_code}</td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${color}`}>
-                      {initials}
-                    </div>
-                    <span className="text-gray-700 font-medium text-sm">{jo.worker_name || '—'}</span>
-                  </div>
-                </td>
-                <td className="px-5 py-3 text-gray-600 text-sm">{jo.client_name || '—'}</td>
-                <td className="px-5 py-3 text-gray-500 text-sm">{jo.contract_type || '—'}</td>
-                <td className="px-5 py-3"><StatusBadge status={jo.status} /></td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  </>
-)}
-        </div>
-
-        {/* Right Column: Stats + Reschedule Requests */}
-        <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4 items-start">
-  {/* Job Order Stats */}
-  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <p className="font-semibold text-gray-800">Job Order Stats</p>
-            <p className="text-xs text-gray-400 mt-0.5 mb-3">Current overview</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="text-center">
-                <p className="text-xl font-bold text-gray-800">{joStats.total}</p>
-                <p className="text-xs text-gray-400">Total</p>
-              </div>
-              <div className="text-center border-x border-gray-100">
-                <p className="text-xl font-bold text-emerald-500">{joStats.completed}</p>
-                <p className="text-xs text-gray-400">Completed</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xl font-bold text-amber-500">{joStats.inProgress}</p>
-                <p className="text-xs text-gray-400">In Progress</p>
-              </div>
-            </div>
-
-            {/* Schedules quick stat */}
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar size={14} className="text-cyan-500" />
-                <span className="text-xs text-gray-500">Active Schedules</span>
-              </div>
-              <span className="text-sm font-bold text-gray-700">{counts.schedules ?? '—'}</span>
-            </div>
-
-            {/* License stats */}
-            <div className="mt-3 pt-3 border-t border-gray-100">
-  <p className="text-xs font-semibold text-gray-500 mb-2">License Status</p>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs text-gray-500">Valid</span>
-                  </div>
-                  <span className="text-xs font-bold text-emerald-600">{counts.licensesValid ?? '—'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-xs text-gray-500">Expiring Soon</span>
-                  </div>
-                  <span className="text-xs font-bold text-amber-500">{counts.licensesExpiring ?? '—'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-red-400" />
-                    <span className="text-xs text-gray-500">Expired</span>
-                  </div>
-                  <span className="text-xs font-bold text-red-500">{counts.licensesExpired ?? '—'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Reschedule Requests */}
-          <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-amber-100 flex items-center gap-3 bg-amber-50/60">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Calendar size={15} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800 text-sm">Reschedule Requests</p>
-                <p className="text-xs text-amber-600">
-                  {rescheduleRequests.length > 0 ? `${rescheduleRequests.length} pending approval` : 'No pending requests'}
-                </p>
-              </div>
-            </div>
-
-            {rescheduleRequests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-2">
-                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
-                  <Calendar size={16} className="text-gray-400" />
-                </div>
-                <p className="text-xs text-gray-400">No pending reschedule requests</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {rescheduleRequests.map(req => (
-                  <div key={req.id} className="px-5 py-4 hover:bg-gray-50/50 transition-colors">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs font-bold text-amber-600">{req.schedule_code}</span>
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs font-medium text-gray-700 truncate">{req.worker_name}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mb-2 line-clamp-1">{req.reason}</p>
-                    <div className="space-y-1 mb-3">
-                      <div className="flex gap-2">
-                        <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider w-16 flex-shrink-0">Current</span>
-                        <span className="text-[10px] text-gray-600">{req.current_start_time?.slice(0,16).replace('T',' ')} → {req.current_end_time?.slice(0,16).replace('T',' ')}</span>
+        <Card className="overflow-hidden xl:col-span-2">
+          <CardHeader
+            title="Recent job orders"
+            subtitle="Latest projects"
+            action={
+              <TextButton onClick={() => navigate('/admin/job-orders')}>
+                View all <ArrowRight size={14} />
+              </TextButton>
+            }
+          />
+          {loading && recentJobOrders.length === 0 ? (
+            <Loading />
+          ) : recentJobOrders.length === 0 ? (
+            <EmptyState icon={ClipboardList} title="No job orders yet" description="Job orders appear here once an inquiry is marked as won." />
+          ) : (
+            <>
+              {/* Mobile */}
+              <ul className="divide-y divide-stone-100 sm:hidden">
+                {recentJobOrders.map(jo => (
+                  <li key={jo.id} className="flex items-center gap-3 px-4 py-3">
+                    <Avatar name={jo.worker_name || '?'} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Code>{jo.job_order_code}</Code>
+                        <StatusBadge status={jo.status} />
                       </div>
-                      <div className="flex gap-2">
-                        <span className="text-[10px] text-amber-500 font-medium uppercase tracking-wider w-16 flex-shrink-0">Requested</span>
-                        <span className="text-[10px] text-gray-700 font-medium">{req.new_start_time?.slice(0,16).replace('T',' ')} → {req.new_end_time?.slice(0,16).replace('T',' ')}</span>
-                      </div>
+                      <p className="mt-0.5 truncate text-sm font-medium text-stone-900">{jo.worker_name || '—'}</p>
+                      <p className="truncate text-xs text-stone-500">{jo.client_name || '—'}, {jo.contract_type || 'no contract'}</p>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        disabled={reviewSaving === req.id}
-                        onClick={async () => {
-                          setReviewSaving(req.id)
-                          try {
-                            const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-                            const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/schedules/reschedule-requests/review.php', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                              body: JSON.stringify({ request_id: req.id, action: 'approve' }),
-                            })
-                            const data = await res.json()
-                            if (!data.success) throw new Error(data.error)
-                            setRescheduleRequests(prev => prev.filter(r => r.id !== req.id))
-                            setCounts(p => ({ ...p, pendingReschedules: (p.pendingReschedules || 1) - 1 }))
-                          } catch (e) { alert('Failed: ' + e.message) }
-                          setReviewSaving(null)
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50">
-                        {reviewSaving === req.id ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle size={11} />}
-                        Approve
-                      </button>
-                      <button
-                        disabled={reviewSaving === req.id}
-                        onClick={async () => {
-                          setReviewSaving(req.id)
-                          try {
-                            const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-                            const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/schedules/reschedule-requests/review.php', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                              body: JSON.stringify({ request_id: req.id, action: 'reject' }),
-                            })
-                            const data = await res.json()
-                            if (!data.success) throw new Error(data.error)
-                            setRescheduleRequests(prev => prev.filter(r => r.id !== req.id))
-                            setCounts(p => ({ ...p, pendingReschedules: (p.pendingReschedules || 1) - 1 }))
-                          } catch (e) { alert('Failed: ' + e.message) }
-                          setReviewSaving(null)
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold bg-white border border-red-200 hover:bg-red-50 text-red-500 rounded-lg transition-colors disabled:opacity-50">
-                        <X size={11} />
-                        Reject
-                      </button>
-                    </div>
+                  </li>
+                ))}
+              </ul>
+              {/* Desktop */}
+              <div className="hidden sm:block">
+                <Table headers={['Code', 'Worker', 'Client', 'Contract', 'Status']}>
+                  {recentJobOrders.map(jo => (
+                    <tr key={jo.id} className={trCls}>
+                      <td className={tdCls}><Code>{jo.job_order_code}</Code></td>
+                      <td className={tdCls}>
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={jo.worker_name || '?'} size="sm" />
+                          <span className="font-medium text-stone-900">{jo.worker_name || '—'}</span>
+                        </div>
+                      </td>
+                      <td className={tdCls}>{jo.client_name || '—'}</td>
+                      <td className={tdCls}>{jo.contract_type || '—'}</td>
+                      <td className={tdCls}><StatusBadge status={jo.status} /></td>
+                    </tr>
+                  ))}
+                </Table>
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* Right column */}
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-1">
+          {/* Job Order Stats */}
+          <Card>
+            <CardHeader title="Job order stats" subtitle="Current overview" />
+            <div className="p-5">
+              <div className="grid grid-cols-3 divide-x divide-stone-100 text-center">
+                {[
+                  { label: 'Total',       value: joStats.total,      color: 'text-stone-900'   },
+                  { label: 'Completed',   value: joStats.completed,  color: 'text-emerald-700' },
+                  { label: 'In progress', value: joStats.inProgress, color: 'text-amber-600'   },
+                ].map(s => (
+                  <div key={s.label} className="px-2">
+                    <p className={`text-2xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
+                    <p className="mt-0.5 text-xs text-stone-500">{s.label}</p>
                   </div>
                 ))}
               </div>
+
+              <div className="mt-5 flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2.5">
+                <span className="flex items-center gap-2 text-sm text-stone-600">
+                  <Calendar size={15} className="text-cyan-700" />Active schedules
+                </span>
+                <span className="text-sm font-semibold tabular-nums text-stone-900">{counts.schedules ?? '—'}</span>
+              </div>
+
+              <div className="mt-5">
+                <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-900">
+                  <ShieldCheck size={15} className="text-stone-500" />License status
+                </p>
+                <LicenseBar valid={counts.licensesValid} expiring={counts.licensesExpiring} expired={counts.licensesExpired} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Reschedule Requests */}
+          <Card className="overflow-hidden">
+            <CardHeader
+              icon={Calendar}
+              tone="amber"
+              title="Reschedule requests"
+              subtitle={rescheduleRequests.length > 0 ? `${rescheduleRequests.length} waiting for approval` : 'No pending requests'}
+            />
+            {rescheduleRequests.length === 0 ? (
+              <EmptyState icon={CheckCircle} title="All caught up" description="New reschedule requests from workers will show up here." />
+            ) : (
+              <ul className="divide-y divide-stone-100">
+                {rescheduleRequests.map(req => (
+                  <li key={req.id} className="px-5 py-4">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Code tone="amber">{req.schedule_code}</Code>
+                      <span className="truncate text-sm font-medium text-stone-900">{req.worker_name}</span>
+                    </div>
+                    {req.reason && <p className="mt-1 line-clamp-2 text-sm text-stone-500">{req.reason}</p>}
+                    <dl className="mt-3 space-y-1.5 rounded-lg bg-stone-50 p-3 text-xs">
+                      <div className="flex gap-2">
+                        <dt className="w-20 flex-shrink-0 text-stone-500">Current</dt>
+                        <dd className="text-stone-700">{fmtTime(req.current_start_time)} to {fmtTime(req.current_end_time)}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt className="w-20 flex-shrink-0 font-medium text-amber-700">Requested</dt>
+                        <dd className="font-medium text-stone-900">{fmtTime(req.new_start_time)} to {fmtTime(req.new_end_time)}</dd>
+                      </div>
+                    </dl>
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" variant="danger" icon={X} className="flex-1"
+                        disabled={reviewSaving === req.id} onClick={() => reviewRequest(req, 'reject')}>
+                        Reject
+                      </Button>
+                      <Button size="sm" icon={CheckCircle} className="flex-1"
+                        loading={reviewSaving === req.id} onClick={() => reviewRequest(req, 'approve')}>
+                        Approve
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
+          </Card>
         </div>
       </div>
     </div>
