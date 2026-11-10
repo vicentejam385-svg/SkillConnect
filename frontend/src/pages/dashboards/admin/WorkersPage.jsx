@@ -11,7 +11,17 @@ const authHeaders = () => ({
   'Content-Type': 'application/json',
   Authorization: `Bearer ${JSON.parse(localStorage.getItem('sc_user') || 'null')?.token}`,
 })
-
+// Loads a license file through fetch-image.php and returns a temporary link to it
+async function loadLicenseFile(path) {
+  const res  = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/fetch-image.php?path=${encodeURIComponent(path)}`, { headers: authHeaders() })
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Could not load file')
+  const bytes = Uint8Array.from(atob(data.base64), c => c.charCodeAt(0))
+  return {
+    url:  URL.createObjectURL(new Blob([bytes], { type: data.media_type })),
+    type: data.media_type,
+  }
+}
 // ── useNavigate (admin wrapper) ────────────────────────────────
 function useNavigate() {
   const nav = useRouterNavigate()
@@ -149,6 +159,7 @@ const [workerSchedules, setWorkerSchedules] = useState([])
 const [schedLoading,    setSchedLoading]    = useState(false)
 const [workerLicenses,  setWorkerLicenses]  = useState([])
 const [licenseLoading,  setLicenseLoading]  = useState(false)
+const [licenseFile,     setLicenseFile]     = useState(null)
 const [viewFile,        setViewFile]        = useState(null)
 const [page,            setPage]            = useState(1)
 const [total,           setTotal]           = useState(0)
@@ -229,11 +240,22 @@ useEffect(() => {
       const workerOnes = all.filter(l => String(l.contact_id) === String(realContactId))
       const latest = workerOnes.sort((a, b) => b.id - a.id)[0] || null
       setWorkerLicenses(latest ? [latest] : [])
+      if (latest?.file_path) {
+        try { setLicenseFile(await loadLicenseFile(latest.file_path)) }
+        catch (e) { console.warn('License file load failed:', e); setLicenseFile(null) }
+      } else {
+        setLicenseFile(null)
+      }
     } catch (e) { console.error('license fetch error:', e) }
     setLicenseLoading(false)
   }
   fetchLicenses()
 }, [licenseWorker])
+
+  // Free the temporary link when the license popup closes or changes
+  useEffect(() => () => {
+    if (licenseFile?.url) URL.revokeObjectURL(licenseFile.url)
+  }, [licenseFile])
 
   const handleCreate = async () => {
     // First Name
@@ -662,7 +684,8 @@ useEffect(() => {
     const l = workerLicenses[0]
     const expired  = l.expiry_date && new Date(l.expiry_date) < new Date()
     const expiring = l.expiry_date && !expired && (new Date(l.expiry_date) - new Date()) < 30 * 24 * 60 * 60 * 1000
-    const fileUrl  = l.file_path ? `https://saddlebrown-swan-877763.hostingersite.com/${l.file_path}` : null
+    const fileUrl  = licenseFile?.url || null
+    const fileType = licenseFile?.type || ''
     return (
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
@@ -681,11 +704,11 @@ useEffect(() => {
           )}
         </div>
         {fileUrl ? (
-          /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(fileUrl) ? (
+          fileType.startsWith('image/') ? (
             <div className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center min-h-[300px]">
               <img src={fileUrl} alt={l.document_name} className="max-w-full max-h-[400px] object-contain" />
             </div>
-          ) : /\.pdf$/i.test(fileUrl) ? (
+          ) : fileType === 'application/pdf' ? (
             <iframe src={fileUrl} title={l.document_name} className="w-full min-h-[400px] rounded-xl border border-gray-100" />
           ) : (
             <div className="flex flex-col items-center justify-center py-10 gap-3 bg-gray-50 rounded-xl border border-gray-100">

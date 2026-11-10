@@ -12,6 +12,18 @@ const authHeaders = () => ({
 const authFetch = (url, opts = {}) =>
   fetch(url, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } })
 
+
+// Loads a license file through fetch-image.php and returns a temporary link to it
+async function loadLicenseFile(path) {
+  const res  = await authFetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/fetch-image.php?path=${encodeURIComponent(path)}`)
+  const data = await res.json()
+  if (!data.success) throw new Error(data.error || 'Could not load file')
+  const bytes = Uint8Array.from(atob(data.base64), c => c.charCodeAt(0))
+  return {
+    url:  URL.createObjectURL(new Blob([bytes], { type: data.media_type })),
+    type: data.media_type,
+  }
+}
 // ── Toast ──────────────────────────────────────────────────────
 function Toast({ toast }) {
   if (!toast) return null
@@ -98,6 +110,23 @@ const PER_PAGE = 3
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
   const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
 
+  const openFile = async (l) => {
+    const worker = l.worker_name || l.contact_name
+    setViewFile({ loading: true, name: l.document_name, worker })
+    try {
+      const file = await loadLicenseFile(l.file_path)
+      setViewFile({ ...file, name: l.document_name, worker })
+    } catch (err) {
+      setViewFile(null)
+      showToast('Could not open file: ' + err.message, 'error')
+    }
+  }
+
+  // Free the temporary link when the viewer closes or changes
+  useEffect(() => () => {
+    if (viewFile?.url?.startsWith('blob:')) URL.revokeObjectURL(viewFile.url)
+  }, [viewFile])
+
  const handleAiScan = async (license) => {
     setScanningId(license.id)
     setScanResult(null)
@@ -176,7 +205,7 @@ const PER_PAGE = 3
         ? allLicenses.filter(l => l.expiry_date && !isExpired(l.expiry_date) && !isExpiringSoon(l.expiry_date))
         : allLicenses
       setLicenses(filteredLicenses)
-      setTotal(filteredLicenses.length)
+      setTotal(filterStatus ? filteredLicenses.length : (lData.pagination?.total ?? filteredLicenses.length))
       setContacts(cData.contacts || [])
     } catch { showToast('Failed to load licenses.', 'error') }
     setLoading(false)
@@ -315,7 +344,7 @@ const PER_PAGE = 3
                     </p>
                     {l.file_path && (
                       <button
-                        onClick={() => setViewFile({ url: `https://saddlebrown-swan-877763.hostingersite.com/${l.file_path}`, name: l.document_name, worker: name })}
+                        onClick={() => openFile(l)}
                         className="text-xs text-emerald-500 hover:underline mt-0.5"
                       >
                         View file
@@ -371,7 +400,7 @@ const PER_PAGE = 3
                         </div>
                         {l.file_path && (
   <button
-    onClick={() => setViewFile({ url: `https://saddlebrown-swan-877763.hostingersite.com/${l.file_path}`, name: l.document_name, worker: l.worker_name || l.contact_name })}
+    onClick={() => openFile(l)}
     className="text-xs text-emerald-500 hover:underline mt-0.5 block"
   >
     View file
@@ -404,7 +433,7 @@ const PER_PAGE = 3
         )}
       </div>
 
-      
+
     <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />
     {scanResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -474,12 +503,17 @@ const PER_PAGE = 3
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-hidden bg-gray-100 min-h-[400px]">
-              {/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(viewFile.url) ? (
-                <div className="flex items-center justify-center h-full p-6">
-                  <img src={viewFile.url} alt={viewFile.name} className="max-w-full max-h-full object-contain rounded-lg shadow" />
+            <div className="flex-1 overflow-auto bg-gray-100 min-h-[300px] sm:min-h-[400px]">
+              {viewFile.loading ? (
+                <div className="flex items-center justify-center h-full py-24 gap-2">
+                  <RefreshCw size={16} className="animate-spin text-emerald-500" />
+                  <span className="text-sm text-gray-400">Loading file...</span>
                 </div>
-              ) : /\.pdf$/i.test(viewFile.url) ? (
+              ) : viewFile.type?.startsWith('image/') ? (
+                <div className="flex items-center justify-center h-full p-4 sm:p-6">
+                  <img src={viewFile.url} alt={viewFile.name} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow" />
+                </div>
+              ) : viewFile.type === 'application/pdf' ? (
                 <iframe src={viewFile.url} title={viewFile.name} className="w-full h-full min-h-[500px] border-0" />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full gap-4 py-16">
@@ -487,9 +521,6 @@ const PER_PAGE = 3
                     <FileText size={28} className="text-gray-400" />
                   </div>
                   <p className="text-sm text-gray-500">Preview not available for this file type.</p>
-                  <a href={viewFile.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg transition-colors">
-                    <Eye size={14} />Open file
-                  </a>
                 </div>
               )}
             </div>
