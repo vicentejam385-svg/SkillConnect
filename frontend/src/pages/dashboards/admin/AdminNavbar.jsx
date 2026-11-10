@@ -30,9 +30,26 @@ export const NAV_ITEMS = [
   { path: '/admin/config',     label: 'Configuration', icon: Settings        },
 ]
 
+// ── Desktop detection (lg = 1024px) ────────────────────────────
+function useIsDesktop() {
+  const q = '(min-width: 1024px)'
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(q).matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(q)
+    const fn = (e) => setIsDesktop(e.matches)
+    mq.addEventListener('change', fn)
+    return () => mq.removeEventListener('change', fn)
+  }, [])
+  return isDesktop
+}
 // ── Sidebar ────────────────────────────────────────────────────
-export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
+export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobileClose }) {
   const location = useLocation()
+  const isDesktop = useIsDesktop()
+  // On phones the drawer always shows full labels
+  const collapsed = collapsedProp && isDesktop
 
   return (
     <>

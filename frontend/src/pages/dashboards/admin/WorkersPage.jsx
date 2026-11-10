@@ -76,7 +76,7 @@ function Pagination({ page, total, perPage, onChange }) {
     }
   }
   return (
-    <div className="flex items-center justify-between px-1 mt-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
       <p className="text-xs text-gray-400">
         Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
       </p>
@@ -305,7 +305,7 @@ useEffect(() => {
       <Toast toast={toast} />
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Workers</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage your workforce</p>
@@ -787,7 +787,7 @@ useEffect(() => {
                 <div>
                   <p className={sec}>Personal Information</p>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className={lbl}>First Name{req}</label>
                         <input className={inp} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="First Name" />
@@ -814,7 +814,7 @@ useEffect(() => {
                 <div className="border-t border-gray-100 pt-5">
                   <p className={sec}>Contact</p>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className={lbl}>Mobile Number{req}</label>
                         <input
@@ -869,7 +869,7 @@ useEffect(() => {
                         </div>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className={lbl}>Specialization{req}</label>
                         <select className={inp} value={form.specialization_id} onChange={e => f('specialization_id', e.target.value)}>

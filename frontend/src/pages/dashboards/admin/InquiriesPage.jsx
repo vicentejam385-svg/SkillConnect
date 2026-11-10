@@ -74,7 +74,7 @@ function Pagination({ page, total, perPage, onChange }) {
     }
   }
   return (
-    <div className="flex items-center justify-between px-1 mt-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
       <p className="text-xs text-gray-400">
         Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
       </p>
@@ -293,7 +293,7 @@ export default function InquiriesPage() {
   return (
     <div className="space-y-6 max-w-6xl">
       <Toast toast={toast} />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Inquiries</h1>
           <p className="text-sm text-gray-500 mt-0.5">Client inquiries</p>
@@ -328,7 +328,34 @@ export default function InquiriesPage() {
             <span className="text-gray-400 text-sm">Loading...</span>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile card view */}
+          <div className="block sm:hidden divide-y divide-gray-50">
+            {inquiries.length === 0 ? (
+              <p className="text-center py-12 text-gray-400 text-sm">No inquiries found</p>
+            ) : inquiries.map(inq => (
+              <div key={inq.id} className="px-4 py-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600 flex-shrink-0">
+                  {inq.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs text-emerald-600 font-semibold">{inq.inquiry_code}</span>
+                    <StatusBadge status={inq.status} />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700 truncate">{inq.full_name}</p>
+                  <p className="text-xs text-gray-400 truncate">{inq.mobile || inq.email || '—'} · {inq.created_at?.slice(0, 10)}</p>
+                </div>
+                <button onClick={() => setSelected(inq)}
+                  className="p-1.5 rounded-md border border-gray-200 text-gray-400 hover:text-emerald-600 hover:border-emerald-300 transition-colors flex-shrink-0">
+                  <Eye size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
@@ -360,6 +387,7 @@ export default function InquiriesPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
       <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />
@@ -459,7 +487,7 @@ export default function InquiriesPage() {
                 <X size={18} />
               </button>
 
-              <div className="px-8 pt-8 pb-8">
+              <div className="px-5 pt-8 pb-6 sm:px-8 sm:pb-8">
                 {/* Title */}
                 <div className="text-center mb-6">
                   <h3 className="text-2xl font-bold text-gray-900">Submit an Inquiry</h3>
@@ -468,7 +496,7 @@ export default function InquiriesPage() {
 
                 <div className="space-y-4">
                   {/* First name | Middle initial */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>First Name{req}</label>
                       <input className={inputCls} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="First Name" />
@@ -481,7 +509,7 @@ export default function InquiriesPage() {
                   </div>
 
                   {/* Last name + Suffix | Mobile */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="grid grid-cols-[1fr_88px] gap-3">
                       <div>
                         <label className={labelCls}>Last Name{req}</label>
@@ -523,7 +551,7 @@ export default function InquiriesPage() {
                   </div>
 
                   {/* City | Barangay */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>City / Municipality{req}</label>
                       <select className={inputCls} value={form.city} disabled={!form.province}

@@ -102,10 +102,10 @@ export default function ConfigPage() {
         <h1 className="text-2xl font-bold text-gray-800">Configuration</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage lookup tables and system settings</p>
       </div>
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-gray-200 overflow-x-auto">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className={`px-5 py-3 text-sm font-semibold transition-colors border-b-2 -mb-px
+            className={`px-4 sm:px-5 py-3 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 -mb-px
               ${activeTab === t.key ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
             {t.label}
           </button>

@@ -70,7 +70,7 @@ function Pagination({ page, total, perPage, onChange }) {
     }
   }
   return (
-    <div className="flex items-center justify-between px-1 mt-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
       <p className="text-xs text-gray-400">
         Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
       </p>
@@ -400,7 +400,7 @@ const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg foc
   return (
     <div className="space-y-6 max-w-6xl">
       <Toast toast={toast} />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Job Orders</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage all job orders</p>
@@ -446,7 +446,34 @@ const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg foc
             <span className="text-gray-400 text-sm">Loading...</span>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile card view */}
+          <div className="block sm:hidden divide-y divide-gray-50">
+            {displayedJobOrders.length === 0 ? (
+              <p className="text-center py-12 text-gray-400 text-sm">
+                {highlightInquiryCode ? 'No job order found for this inquiry.' : highlightClientName ? `No job orders found for ${highlightClientName}.` : 'No job orders found'}
+              </p>
+            ) : displayedJobOrders.map(jo => (
+              <div key={jo.id} className="px-4 py-3 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs text-emerald-600 font-semibold">{jo.job_order_code}</span>
+                    <StatusBadge status={jo.status} />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700 truncate">{jo.worker_name || '—'}</p>
+                  <p className="text-xs text-gray-500 truncate">{jo.client_name || '—'} · {jo.contract_type || '—'}</p>
+                  <p className="text-xs text-gray-400">{jo.start_date && jo.end_date ? `${jo.start_date} → ${jo.end_date}` : 'No dates'}</p>
+                </div>
+                <button onClick={() => openEdit(jo)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-md hover:text-amber-600 hover:border-amber-300 hover:bg-amber-50 transition-colors flex-shrink-0">
+                  <Edit2 size={11} />Edit
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
@@ -476,6 +503,7 @@ const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg foc
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
       <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />

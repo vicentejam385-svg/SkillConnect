@@ -44,7 +44,7 @@ function Pagination({ page, total, perPage, onChange }) {
     }
   }
   return (
-    <div className="flex items-center justify-between px-1 mt-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
       <p className="text-xs text-gray-400">
         Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
       </p>
@@ -385,7 +385,12 @@ const scheduledDays = !today ? new Set() : new Set(
       inquiry_reason: inquiryReason,
     }
   })
-
+  const listFiltered = fullList.filter(sc =>
+    !listSearch ||
+    [sc.description, sc.worker_name, sc.client_name, sc.job_order_code, sc.schedule_code]
+      .some(v => v?.toLowerCase().includes(listSearch.toLowerCase()))
+  )
+  const listPaginated = listFiltered.slice((listPage - 1) * LIST_PER_PAGE, listPage * LIST_PER_PAGE)
   const colorMap = ['bg-blue-500','bg-emerald-500','bg-purple-500','bg-amber-500','bg-rose-500']
   const workerColor = (name = '') => colorMap[(name.charCodeAt(0) || 0) % colorMap.length]
 
@@ -405,7 +410,7 @@ const scheduledDays = !today ? new Set() : new Set(
       <Toast toast={toast} />
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Scheduling for Site Visit</h1>
           <p className="text-sm text-gray-500 mt-0.5">Clients, Workers</p>
@@ -542,7 +547,30 @@ const scheduledDays = !today ? new Set() : new Set(
               </div>
             </div>
             <div className="flex-1 overflow-y-auto custom-scroll">
-              <div className="overflow-x-auto">
+              {/* Mobile card view */}
+              <div className="block sm:hidden divide-y divide-gray-50">
+                {listPaginated.length === 0 ? (
+                  <p className="text-center py-12 text-gray-400 text-sm">No schedules found</p>
+                ) : listPaginated.map(sc => (
+                  <div key={sc.id} className="px-4 py-3 flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700">{sc.inquiry_reason}</p>
+                      {sc.jo_description !== '—' && (
+                        <p className="text-xs text-gray-500 truncate">{sc.jo_description}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">{sc.worker_name || '—'} · {sc.client_name || '—'}</p>
+                      <p className="text-xs text-gray-400">{sc.start_time?.slice(0, 10) || '—'} → {sc.end_time?.slice(0, 10) || '—'}</p>
+                    </div>
+                    <button onClick={() => setViewSchedule(sc)}
+                      className="p-1.5 rounded-md border border-gray-200 text-gray-400 hover:text-emerald-600 hover:border-emerald-300 transition-colors flex-shrink-0">
+                      <Eye size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table view */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100">

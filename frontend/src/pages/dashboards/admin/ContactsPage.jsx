@@ -70,7 +70,7 @@ function Pagination({ page, total, perPage, onChange }) {
     }
   }
   return (
-    <div className="flex items-center justify-between px-1 mt-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
       <p className="text-xs text-gray-400">
         Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
       </p>
