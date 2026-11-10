@@ -43,7 +43,7 @@ if (!in_array($auth['role'] ?? '', ['super_admin', 'superadmin'], true)) {
 
 // ── Build filters ─────────────────────────────────────────────
 function buildFilters(array $q): array {
-    $where  = [];
+    $where  = ["action NOT IN ('LOGIN','LOGOUT','LOGIN_FAILED')"];
     $params = [];
 
     switch ($q['group'] ?? 'all') {
@@ -66,7 +66,7 @@ function buildFilters(array $q): array {
     }
 
     // Enum filters are validated against a whitelist
-    $actions = ['LOGIN','LOGOUT','LOGIN_FAILED','PASSWORD_CHANGE','PASSWORD_RESET','CREATE','UPDATE',
+    $actions = ['PASSWORD_CHANGE','PASSWORD_RESET','CREATE','UPDATE',
                 'DELETE','STATUS_CHANGE','ROLE_CHANGE','ACCESS_DENIED','EXPORT'];
     $modules = ['Auth','Admin Users','Workers Access','Client Access','Inquiries',
                 'Job Orders','Schedules','Licenses','System'];
@@ -156,15 +156,17 @@ try {
     unset($r);
 
     // ── Summary cards (always "today", ignores filters) ───────
-    $summary = $pdo->query(
+        $summary = $pdo->query(
         "SELECT
            COUNT(*)                                                        AS logs_today,
-           SUM(action = 'LOGIN')                                           AS logins_today,
-           SUM(action = 'LOGIN_FAILED')                                    AS failed_logins_today,
+           SUM(action = 'DELETE')                                          AS deletions_today,
+           SUM(action = 'ACCESS_DENIED')                                   AS access_denied_today,
            SUM(action IN ('CREATE','UPDATE','DELETE','STATUS_CHANGE','ROLE_CHANGE',
                           'PASSWORD_CHANGE','PASSWORD_RESET')
                AND module IN ('Admin Users','Workers Access','Client Access')) AS account_changes_today
-         FROM audit_logs WHERE created_at >= CURDATE()"
+         FROM audit_logs
+         WHERE created_at >= CURDATE()
+           AND action NOT IN ('LOGIN','LOGOUT','LOGIN_FAILED')"
     )->fetch();
 
     out([

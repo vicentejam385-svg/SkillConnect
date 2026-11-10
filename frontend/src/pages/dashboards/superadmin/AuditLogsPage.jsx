@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Download, RefreshCw, X, Eye, ChevronLeft, ChevronRight,
-  Activity, LogIn, ShieldAlert, UserCog, Lock
+  Activity, Trash2, ShieldAlert, UserCog, Lock
 } from 'lucide-react'
 import api, { apiGet } from '../../../utils/api'
 import { GREEN, GREEN_LIGHT, Avatar, TableShell, TR, TD, IconBtn, inputStyle } from './SuperAdminDashboard'
@@ -363,9 +363,9 @@ export default function AuditLogsPage() {
         gap: 16, marginBottom: 20,
       }}>
         <SummaryCard icon={Activity}    color="#3b82f6" bg="#eff6ff" value={summary?.logs_today}            label="Total Logs Today" />
-        <SummaryCard icon={LogIn}       color="#1a8a50" bg="#e8f5ee" value={summary?.logins_today}          label="Logins Today" />
-        <SummaryCard icon={ShieldAlert} color="#ef4444" bg="#fef2f2" value={summary?.failed_logins_today}   label="Failed Logins Today" />
-        <SummaryCard icon={UserCog}     color="#f59e0b" bg="#fffbeb" value={summary?.account_changes_today} label="Account Changes Today" />
+        <SummaryCard icon={Trash2}      color="#ef4444" bg="#fef2f2" value={summary?.deletions_today}       label="Deletions Today" />
+        <SummaryCard icon={ShieldAlert} color="#f59e0b" bg="#fffbeb" value={summary?.access_denied_today}   label="Access Denied Today" />
+        <SummaryCard icon={UserCog}     color="#1a8a50" bg="#e8f5ee" value={summary?.account_changes_today} label="Account Changes Today" />
       </div>
 
       {/* Tabs */}
