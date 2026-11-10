@@ -612,7 +612,7 @@ export default function AdminHome() {
   const statusData = groupStatuses(allJobOrders)
   const workerShare = counts.contacts ? Math.round(((counts.workers || 0) / counts.contacts) * 100) : 0
   const hasActivity = monthly.inquiries.some(Boolean) || monthly.jobOrders.some(Boolean)
-  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+
 
   const stats = [
     {
@@ -655,8 +655,7 @@ export default function AdminHome() {
 
       {/* Header */}
       <div className="pb-1">
-        <p className="text-sm text-slate-500">{today}</p>
-        <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight mt-0.5">{greeting()}, welcome back</h1>
+        <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">{greeting()}, welcome back</h1>
         <p className="text-sm text-slate-500 mt-1">Here’s how Emerald Builders & Construction is doing.</p>
       </div>
 
