@@ -707,7 +707,7 @@ export default function ContactsPage() {
             options={[
               { value: 'all',          label: 'All contacts',  count: contacts.length,              icon: Users },
               { value: 'client',       label: 'Clients',       count: contacts.length - stats.orgs, icon: User },
-              { value: 'organisation', label: 'Organisations', count: stats.orgs,                   icon: Building2 },
+
             ]}
           />
           <div className="flex flex-1 items-center gap-2 sm:justify-end">
