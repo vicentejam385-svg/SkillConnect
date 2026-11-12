@@ -205,6 +205,46 @@ function Pagination({ page, total, perPage, onPage, onPerPage }) {
 }
 
 
+function MiniStat({ icon: Icon, label, value, tone, loading, delay, footer }) {
+  return (
+    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex flex-col" style={{ animationDelay: `${delay}ms` }}>
+      <div className="flex items-center gap-3.5">
+        <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
+        <div className="min-w-0">
+          {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
+          <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
+        </div>
+      </div>
+      <div className="mt-3 min-h-[20px]">{loading ? <Skel className="h-3 w-28" /> : footer}</div>
+    </div>
+  )
+}
+
+function Segmented({ options, value, onChange }) {
+  return (
+    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
+      {options.map(o => (
+        <button key={o.value} onClick={() => onChange(o.value)}
+          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+          {o.dot && <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />}
+          {o.label}
+          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function Chip({ children, onRemove }) {
+  return (
+    <span className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700">
+      {children}
+      <button onClick={onRemove} aria-label="Remove filter" className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X size={12} {...ICON} /></button>
+    </span>
+  )
+}
+
 function PeriodCell({ jo, today }) {
   if (!jo.start_date || !jo.end_date) return <span className="text-slate-400">No dates</span>
   const info = ['Complete', 'Completed', 'Cancelled'].includes(jo.status) ? null : periodInfo(jo, today)
@@ -219,6 +259,15 @@ function PeriodCell({ jo, today }) {
       )}
     </div>
   )
+}
+
+// ── Status groups for the tabs ─────────────────────────────────
+const GROUPS = {
+  review:    ['Pending', 'Under Review'],
+  hold:      ['On Hold'],
+  running:   ['Active', 'Scheduled', 'In Progress'],
+  done:      ['Complete', 'Completed'],
+  cancelled: ['Cancelled'],
 }
 
 // ── Job statuses & flow (unchanged) ────────────────────────────
@@ -357,7 +406,7 @@ export default function JobOrdersPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     const list = scoped.filter(jo =>
-      (!filterStatus || jo.status === filterStatus) &&
+      (!filterStatus || GROUPS[filterStatus]?.includes(jo.status)) &&
       (!filterContract || jo.contract_type === filterContract) &&
       (!q || [jo.job_order_code, jo.worker_name, jo.client_name, jo.description, jo.contract_type, jo.inquiry_code].some(v => String(v || '').toLowerCase().includes(q)))
     )
@@ -512,26 +561,23 @@ export default function JobOrdersPage() {
     } catch (err) { showToast(err.message || 'Failed to save job order.', 'error'); setSaving(false) }
   }
 
-  const tabCount = s => s === 'Complete' ? (statusCounts['Complete'] || 0) + (statusCounts['Completed'] || 0) : (statusCounts[s] || 0)
-  const tabs = [{ value: '', label: 'All', count: scoped.length }, ...JO_STATUSES.map(s => ({ value: s.l, label: s.l, count: tabCount(s.l) }))]
-
-  const kpis = [
-    { label: 'Total job orders', value: stats.total,   sub: `${filtered.length} shown` },
-    { label: 'Awaiting review',  value: stats.review,  sub: `${statusCounts['Pending'] || 0} pending · ${statusCounts['Under Review'] || 0} under review`, dot: 'bg-yellow-500' },
-    { label: 'Running',          value: stats.running, sub: `${statusCounts['Active'] || 0} active · ${statusCounts['Scheduled'] || 0} scheduled · ${statusCounts['In Progress'] || 0} in progress`, dot: 'bg-amber-500' },
-    { label: 'Completed',        value: stats.done,    sub: stats.total ? `${Math.round((stats.done / stats.total) * 100)}% of all job orders` : 'No job orders yet', dot: 'bg-blue-500' },
-  ]
+  const groupCount = g => scoped.filter(jo => GROUPS[g].includes(jo.status)).length
+  const todayStart = today ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : null
+  const endingSoon = todayStart ? scoped.filter(jo => GROUPS.running.includes(jo.status) && jo.end_date && parseDay(jo.end_date) >= todayStart && (parseDay(jo.end_date) - todayStart) / DAY <= 7).length : 0
+  const unassigned = scoped.filter(jo => !jo.worker_name && !GROUPS.done.includes(jo.status) && jo.status !== 'Cancelled').length
+  const doneRate = stats.total ? Math.round((stats.done / stats.total) * 100) : 0
+  const groupLabel = { review: 'Needs review', hold: 'On hold', running: 'Running', done: 'Completed', cancelled: 'Cancelled' }
 
   return (
-    <div className="sc-page max-w-7xl space-y-6">
+    <div className="sc-page max-w-7xl space-y-5">
       <style>{styles}</style>
       <Toast toast={toast} />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Job orders</h1>
-          <p className="text-sm text-slate-500 mt-1">Assign workers to client projects and track each job through to completion.</p>
+          <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Job orders</h1>
+          <p className="text-sm text-slate-500 mt-1">Assign workers to client projects and track each job from review to completion.</p>
         </div>
         <button onClick={openCreate} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> New job order</button>
       </div>
@@ -545,145 +591,166 @@ export default function JobOrdersPage() {
         </Notice>
       )}
 
-      {/* KPI strip */}
-      <div className="bg-white rounded-xl border border-slate-200 grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-slate-200 [&>*:nth-child(odd)]:border-r lg:[&>*]:border-r lg:[&>*:last-child]:border-r-0 [&>*]:border-slate-200">
-        {kpis.map(k => (
-          <div key={k.label} className="px-5 py-4">
-            <p className="text-sm text-slate-500 flex items-center gap-2">
-              {k.dot && <span className={`w-1.5 h-1.5 rounded-full ${k.dot}`} />}{k.label}
-            </p>
-            {loading ? <Skel className="h-7 w-12 mt-2" /> : <p className="mt-1 text-[28px] leading-9 font-semibold text-slate-900 tabular-nums tracking-tight">{k.value}</p>}
-            {loading ? <Skel className="h-3 w-32 mt-2" /> : <p className="mt-0.5 text-xs text-slate-500 truncate">{k.sub}</p>}
-          </div>
-        ))}
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <MiniStat icon={Briefcase} label="Total job orders" value={stats.total} tone="bg-slate-100 text-slate-600" loading={loading} delay={0}
+          footer={unassigned
+            ? <p className="text-xs text-amber-700 flex items-center gap-1.5"><AlertTriangle size={12} {...ICON} />{unassigned} still need a worker</p>
+            : <p className="text-xs text-slate-500">Every open job has a worker</p>} />
+        <MiniStat icon={Clock} label="Needs review" value={stats.review} tone="bg-violet-50 text-violet-600" loading={loading} delay={50}
+          footer={stats.review
+            ? <button onClick={() => setFilterStatus('review')} className="text-xs font-medium text-violet-700 hover:text-violet-800">Review now →</button>
+            : <p className="text-xs text-slate-500">You’re all caught up</p>} />
+        <MiniStat icon={HardHat} label="Running" value={stats.running} tone="bg-amber-50 text-amber-600" loading={loading} delay={100}
+          footer={<p className="text-xs text-slate-500">{endingSoon ? <><span className="font-medium text-slate-700">{endingSoon}</span> ending within 7 days</> : 'None ending this week'}</p>} />
+        <MiniStat icon={CheckCircle2} label="Completed" value={stats.done} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={150}
+          footer={
+            <div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="sc-bar h-full bg-emerald-500 rounded-full" style={{ width: `${doneRate}%` }} /></div>
+              <p className="text-xs text-slate-500 mt-1.5">{doneRate}% of all job orders</p>
+            </div>
+          } />
       </div>
 
       {/* Table card */}
-      <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {/* Status tabs */}
-        <div className="border-b border-slate-200 px-2 overflow-x-auto">
-          <nav className="flex -mb-px" aria-label="Filter by status">
-            {tabs.map(t => {
-              const on = filterStatus === t.value
-              return (
-                <button
-                  key={t.label}
-                  onClick={() => setFilterStatus(t.value)}
-                  aria-current={on ? 'page' : undefined}
-                  className={`flex-shrink-0 inline-flex items-center gap-2 px-3 py-3 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:bg-slate-50
-                    ${on ? 'border-emerald-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
-                >
-                  {t.label}
-                  <span className={`min-w-[20px] px-1.5 py-px rounded-full text-[11px] tabular-nums text-center
-                    ${on ? 'bg-emerald-600 text-white' : t.count ? 'bg-slate-100 text-slate-600' : 'bg-slate-50 text-slate-400'}`}>
-                    {loading ? '·' : t.count}
-                  </span>
-                </button>
-              )
-            })}
-          </nav>
+      <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
+        {/* Toolbar */}
+        <div className="px-4 sm:px-5 py-4 flex flex-col xl:flex-row xl:items-center gap-3 border-b border-slate-100">
+          <div className="overflow-x-auto -mx-1 px-1">
+            <Segmented
+              value={filterStatus}
+              onChange={setFilterStatus}
+              options={[
+                { value: '',          label: 'All',          count: loading ? null : scoped.length },
+                { value: 'review',    label: 'Needs review', count: loading ? null : groupCount('review'),    dot: 'bg-violet-500' },
+                { value: 'running',   label: 'Running',      count: loading ? null : groupCount('running'),   dot: 'bg-amber-500' },
+                { value: 'hold',      label: 'On hold',      count: loading ? null : groupCount('hold'),      dot: 'bg-orange-500' },
+                { value: 'done',      label: 'Completed',    count: loading ? null : groupCount('done'),      dot: 'bg-blue-500' },
+                { value: 'cancelled', label: 'Cancelled',    count: loading ? null : groupCount('cancelled'), dot: 'bg-red-500' },
+              ]}
+            />
+          </div>
+          <div className="flex flex-1 items-center gap-2 xl:justify-end">
+            <div className="relative flex-1 xl:max-w-xs">
+              <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                placeholder="Search code, client, worker or project"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              {search && <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700"><X size={14} {...ICON} /></button>}
+            </div>
+            <SelectBox value={filterContract} onChange={setFilterContract} className="w-40 flex-shrink-0">
+              <option value="">All contracts</option>
+              {contracts.map(ct => <option key={ct.id} value={ct.name}>{ct.name}</option>)}
+            </SelectBox>
+          </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search size={15} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              className="w-full h-9 pl-9 pr-8 text-sm border border-slate-200 rounded-lg bg-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-              placeholder="Search job orders"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {search && <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700"><X size={14} {...ICON} /></button>}
+        {hasFilters && !loading && (
+          <div className="px-5 py-2.5 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/50 text-sm">
+            <span className="text-slate-500">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+            {search && <Chip onRemove={() => setSearch('')}>“{search}”</Chip>}
+            {filterStatus && <Chip onRemove={() => setFilterStatus('')}>{groupLabel[filterStatus]}</Chip>}
+            {filterContract && <Chip onRemove={() => setFilterContract('')}>{filterContract}</Chip>}
+            <button onClick={clearFilters} className="ml-auto text-sm font-medium text-emerald-700 hover:text-emerald-800">Clear all</button>
           </div>
-          <SelectBox value={filterContract} onChange={setFilterContract} className="sm:w-40">
-            <option value="">All contracts</option>
-            {contracts.map(ct => <option key={ct.id} value={ct.name}>{ct.name}</option>)}
-          </SelectBox>
-          <div className="sm:ml-auto flex items-center gap-3 text-sm">
-            {hasFilters && <button onClick={clearFilters} className="font-medium text-slate-600 hover:text-slate-900">Clear filters</button>}
-            {!loading && <span className="text-slate-500 tabular-nums">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>}
-          </div>
-        </div>
+        )}
 
         {loading ? (
-          <div className="border-t border-slate-200 divide-y divide-slate-100">
+          <div className="divide-y divide-slate-100">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="px-4 h-14 flex items-center gap-6">
-                <div className="w-44 space-y-1.5"><Skel className="h-3 w-16" /><Skel className="h-2.5 w-28" /></div>
-                <Skel className="h-3 w-28" /><Skel className="h-3 w-24" />
-                <Skel className="hidden md:block h-3 w-20 ml-auto" /><Skel className="h-3 w-16" />
+              <div key={i} className="px-5 py-3.5 flex items-center gap-3">
+                <Skel className="w-9 h-9 rounded-lg" />
+                <div className="w-40 space-y-2"><Skel className="h-3 w-20" /><Skel className="h-2.5 w-28" /></div>
+                <Skel className="w-7 h-7 rounded-full" /><Skel className="h-3 w-24" />
+                <Skel className="hidden md:block h-3 w-28 ml-auto" /><Skel className="h-5 w-20 rounded-md" />
               </div>
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="border-t border-slate-200">
-            {hasFilters
-              ? <EmptyState icon={Search} title="No matching job orders" text="Try a different search, status or contract." action={<button onClick={clearFilters} className={btnSecondary}>Clear filters</button>} />
-              : <EmptyState icon={Briefcase}
-                  title={highlightInquiryCode ? 'No job order for this inquiry yet' : highlightClientName ? `No job orders for ${highlightClientName}` : 'No job orders yet'}
-                  text="Job orders are created when an inquiry is won, or you can add one yourself."
-                  action={<button onClick={openCreate} className={btnPrimary}><Plus size={16} {...ICON} /> New job order</button>} />}
-          </div>
+          hasFilters
+            ? <EmptyState icon={Search} title="No matching job orders" text="Try a different search or remove a filter." action={<button onClick={clearFilters} className={btnSecondary}>Clear filters</button>} />
+            : <EmptyState icon={Briefcase}
+                title={highlightInquiryCode ? 'No job order for this inquiry yet' : highlightClientName ? `No job orders for ${highlightClientName}` : 'No job orders yet'}
+                text="Job orders are created when an inquiry is won, or you can add one yourself."
+                action={<button onClick={openCreate} className={btnPrimary}><Plus size={16} {...ICON} /> New job order</button>} />
         ) : (
           <>
             {/* Mobile list */}
-            <ul className="sm:hidden border-t border-slate-200 divide-y divide-slate-100">
-              {pageItems.map(jo => (
+            <ul className="sm:hidden divide-y divide-slate-100">
+              {pageItems.map((jo, i) => (
                 <li key={jo.id}>
-                  <button onClick={() => openEdit(jo)} className="w-full text-left px-4 py-3 active:bg-slate-50">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{jo.job_order_code}</span>
-                      <StatusText status={jo.status} />
+                  <button onClick={() => openEdit(jo)} className="sc-rise w-full text-left px-4 py-3.5 flex items-start gap-3 active:bg-slate-50" style={{ animationDelay: `${i * 30}ms` }}>
+                    <span className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center flex-shrink-0"><Briefcase size={17} {...ICON} /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-900">{jo.job_order_code}</p>
+                        <StatusBadge status={jo.status} />
+                      </div>
+                      <p className="text-xs text-slate-600 truncate mt-0.5">{jo.description || 'No description'} · {jo.client_name || '—'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{jo.worker_name || 'No worker yet'} · {jo.start_date && jo.end_date ? `${fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – ${fmtDay(jo.end_date)}` : 'Not scheduled'}</p>
                     </div>
-                    <p className="text-sm text-slate-600 mt-0.5 truncate">{jo.description || 'No description'} · {jo.client_name || '—'}</p>
-                    <p className="text-xs text-slate-500 mt-1">{jo.worker_name || 'No worker assigned'} · {jo.start_date && jo.end_date ? `${fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – ${fmtDay(jo.end_date)}` : 'Not scheduled'}</p>
+                    <ChevronRight size={16} {...ICON} className="text-slate-300 mt-3 flex-shrink-0" />
                   </button>
                 </li>
               ))}
             </ul>
 
             {/* Desktop table */}
-            <div className="hidden sm:block overflow-x-auto border-t border-slate-200">
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-slate-500 bg-slate-50 border-b border-slate-200">
+                  <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
                     <SortHeader label="Job order" sortKey="job_order_code" sort={sort} onSort={onSort} />
                     <SortHeader label="Client"    sortKey="client_name"    sort={sort} onSort={onSort} />
                     <SortHeader label="Worker"    sortKey="worker_name"    sort={sort} onSort={onSort} />
                     <SortHeader label="Contract"  sortKey="contract_type"  sort={sort} onSort={onSort} />
                     <SortHeader label="Period"    sortKey="start_date"     sort={sort} onSort={onSort} />
                     <SortHeader label="Status"    sortKey="status"         sort={sort} onSort={onSort} />
-                    <th className="w-12" />
+                    <th className="px-5 py-2.5 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pageItems.map(jo => (
-                    <tr key={jo.id} onClick={() => openEdit(jo)} className="group cursor-pointer hover:bg-slate-50 transition-colors">
+                  {pageItems.map((jo, i) => (
+                    <tr key={jo.id} className="sc-rise group hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
                       <td className="px-5 py-3">
-                        <p className="font-medium text-slate-900 tabular-nums">{jo.job_order_code}</p>
-                        <p className="text-xs text-slate-500 truncate max-w-[200px]">{jo.description || 'No description'}</p>
-                      </td>
-                      <td className="px-5 py-3 text-slate-700 whitespace-nowrap">{jo.client_name || <span className="text-slate-400">—</span>}</td>
-                      <td className="px-5 py-3 whitespace-nowrap">
-                        {jo.worker_name ? (
-                          <span className="inline-flex items-center gap-2 text-slate-700">
-                            <Avatar name={jo.worker_name} size="w-6 h-6" text="text-[9px]" />{jo.worker_name}
+                        <button onClick={() => openEdit(jo)} className="flex items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                          <span className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center flex-shrink-0"><Briefcase size={16} {...ICON} /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-slate-900 group-hover:text-emerald-700 transition-colors tabular-nums">{jo.job_order_code}</span>
+                            <span className="block text-xs text-slate-500 truncate max-w-[190px]">{jo.description || 'No description'}</span>
                           </span>
-                        ) : <span className="text-slate-400">Not assigned</span>}
-                      </td>
-                      <td className="px-5 py-3 text-slate-700 whitespace-nowrap">{jo.contract_type || <span className="text-slate-400">—</span>}</td>
-                      <td className="px-5 py-3">{jo.start_date && jo.end_date ? <PeriodCell jo={jo} today={today} /> : <span className="text-slate-400">Not scheduled</span>}</td>
-                      <td className="px-5 py-3"><StatusText status={jo.status} /></td>
-                      <td className="pr-3 py-3 text-right">
-                        <button
-                          onClick={e => { e.stopPropagation(); openEdit(jo) }}
-                          aria-label={`Edit ${jo.job_order_code}`}
-                          title="Edit"
-                          className={`${iconBtn} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
-                        >
-                          <Pencil size={15} {...ICON} />
                         </button>
+                      </td>
+                      <td className="px-5 py-3">
+                        {jo.client_name ? (
+                          <span className="flex items-center gap-2.5">
+                            <Avatar name={jo.client_name} size="w-8 h-8" text="text-[11px]" />
+                            <span className="text-slate-900 font-medium whitespace-nowrap">{jo.client_name}</span>
+                          </span>
+                        ) : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-5 py-3">
+                        {jo.worker_name ? (
+                          <span className="flex items-center gap-2.5">
+                            <Avatar name={jo.worker_name} size="w-8 h-8" text="text-[11px]" />
+                            <span className="text-slate-700 whitespace-nowrap">{jo.worker_name}</span>
+                          </span>
+                        ) : (
+                          <button onClick={() => openEdit(jo)} className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-dashed border-slate-300 text-xs font-medium text-slate-500 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/50 transition-colors whitespace-nowrap">
+                            <Plus size={13} {...ICON} /> Assign worker
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 whitespace-nowrap">{jo.contract_type ? <span className="text-slate-700">{jo.contract_type}</span> : <span className="text-slate-400">—</span>}</td>
+                      <td className="px-5 py-3">{jo.start_date && jo.end_date ? <PeriodCell jo={jo} today={today} /> : <span className="text-slate-400 whitespace-nowrap">Not scheduled</span>}</td>
+                      <td className="px-5 py-3"><StatusBadge status={jo.status} /></td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end">
+                          <button onClick={() => openEdit(jo)} title="Edit job order" aria-label={`Edit ${jo.job_order_code}`} className={iconBtn}><Pencil size={16} {...ICON} /></button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -703,15 +770,6 @@ export default function JobOrdersPage() {
         />
       )}
     </div>
-  )
-}
-
-function StatusText({ status }) {
-  const dot = STATUS[status]?.[1] || 'bg-slate-400'
-  return (
-    <span className="inline-flex items-center gap-2 text-sm text-slate-700 whitespace-nowrap">
-      <span className={`w-2 h-2 rounded-full ${dot}`} />{status || '—'}
-    </span>
   )
 }
 
