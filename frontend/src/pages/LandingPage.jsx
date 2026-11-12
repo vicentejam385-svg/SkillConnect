@@ -279,8 +279,57 @@ function InquiryForm() {
   )
 }
 
-/* ── Service Card ── */
+/* ── Services data ── */
+const SERVICES = [
+  { icon: Hammer,        title: 'New Construction',        desc: 'Complete building construction for residential, commercial and industrial projects.', features: ['Residential buildings', 'Commercial installations', 'Industrial facilities', 'Project management', 'Quality assurance'] },
+  { icon: Wrench,        title: 'Renovation & Remodeling', desc: 'Transform your space while keeping its structure sound.', features: ['Kitchen renovation', 'Bathroom remodeling', 'Room additions', 'Structure modifications', 'Interior upgrades'] },
+  { icon: Shield,        title: 'Repair & Maintenance',    desc: 'Keep your property in top condition with repairs and preventive care.', features: ['Structural repairs', 'Preventive maintenance', 'Emergency repairs', 'Regular inspections', 'Damage restoration'] },
+  { icon: Zap,           title: 'Electrical Installation', desc: 'Safe, efficient and code-compliant electrical systems.', features: ['Home panel framing', 'Commercial fitting', 'Renovation projects', 'Industrial panel fitting', 'Safety & compliance'] },
+  { icon: Droplets,      title: 'Plumbing Services',       desc: 'Reliable water and drainage solutions, from installation to repairs.', features: ['Pipe installation', 'Leak detection', 'Drain cleaning', 'Water heater service', 'Leak search & repair'] },
+  { icon: PaintBucket,   title: 'Painting & Finishing',    desc: 'Premium paints and modern techniques for lasting finishes.', features: ['Interior painting', 'Exterior painting', 'Texture coating', 'Waterproofing', 'Decorative finishes'] },
+  { icon: Layers,        title: 'Carpentry',               desc: 'Custom woodwork, from furniture to structural framing.', features: ['Custom furniture', 'Cabinet installation', 'Door and window frames', 'Wooden flooring', 'Deck construction'] },
+  { icon: Building2,     title: 'Masonry',                 desc: 'Brickwork, stonework and concrete built to last.', features: ['Brick and block laying', 'Concrete work', 'Stone masonry', 'Retaining walls', 'Repointing work'] },
+  { icon: HardHat,       title: 'Roofing',                 desc: 'Installation, repair and replacement with quality materials.', features: ['New installation', 'Roof repair', 'Gutter installation', 'Waterproofing', 'Roof inspection'] },
+  { icon: TreePine,      title: 'Landscaping',             desc: 'Beautiful, functional outdoor spaces for your property.', features: ['Landscape design', 'Garden installation', 'Hardscaping', 'Irrigation systems', 'Lawn maintenance'] },
+  { icon: LayoutGrid,    title: 'Interior Design',         desc: 'Spaces that balance looks and function, tailored to you.', features: ['Space planning', 'Furniture selection', 'Color consultation', 'Lighting design', '3D visualization'] },
+  { icon: ClipboardList, title: 'Project Management',      desc: 'End-to-end coordination, on time and on budget.', features: ['Planning & scheduling', 'Budget management', 'Quality control', 'Contractor coordination', 'Progress reporting'] },
+]
+
+/* ── Service Card (compact, tap to expand) ── */
 function ServiceCard({ icon: Icon, title, desc, features }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`bg-white border rounded-lg transition-all duration-200 ${open ? 'border-emerald-300 shadow-sm' : 'border-gray-200 hover:border-emerald-200'}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-3 p-3 sm:p-4 text-left"
+      >
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${open ? 'bg-emerald-600' : 'bg-emerald-50'}`}>
+          <Icon size={18} className={open ? 'text-white' : 'text-emerald-600'} />
+        </div>
+        <span className="flex-1 font-semibold text-gray-800 text-sm leading-snug">{title}</span>
+        <ChevronDown size={16} className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      <div className={`grid transition-[grid-template-rows] duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        <div className="overflow-hidden">
+          <div className="px-4 pb-4 pt-1 border-t border-gray-100 mx-3 sm:mx-4 px-0">
+            <p className="text-gray-500 text-xs leading-relaxed mt-3">{desc}</p>
+            <ul className="mt-3 grid grid-cols-1 gap-1.5">
+              {features.map(feat => (
+                <li key={feat} className="flex items-center gap-2 text-xs text-gray-600">
+                  <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />{feat}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md hover:border-emerald-200 transition-all duration-200">
       <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center mb-4">
