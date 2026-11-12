@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 import { useNavigate } from 'react-router-dom'
 import {
-  HardHat, ClipboardList, ArrowRight, CheckCircle2, Building2, Wrench, Shield, Send,
-  AlertCircle, Mail, Phone, MapPin, Clock, CalendarDays, Zap, Award, Hammer, TreePine,
+  HardHat, Users, ClipboardList, ArrowRight, CheckCircle2, Building2, Wrench, Shield, Send,
+  AlertCircle, Mail, Phone, MapPin, Clock, CalendarDays, Star, Zap, Award, Hammer, TreePine,
   PaintBucket, Layers, Droplets, LayoutGrid, Menu, X, ChevronDown, Loader2, BadgeCheck,
-  MessageSquareText, UserCheck, LineChart,
+  MessageSquareText, UserCheck, LineChart, Sparkles, Quote,
 } from 'lucide-react'
 
 const ICON = { strokeWidth: 1.75 }
@@ -338,7 +338,7 @@ const SERVICES = [
 ]
 
 const NAV_LINKS = [
-  { id: 'about',    label: 'About us' },
+  { id: 'home',     label: 'About us' },
   { id: 'services', label: 'Services' },
   { id: 'process',  label: 'How it works' },
   { id: 'contact',  label: 'Contact' },
@@ -347,20 +347,23 @@ const NAV_LINKS = [
 /* ── Main page ── */
 export default function LandingPage() {
   const navigate = useNavigate()
+  const statsRef = useRef(null)
   const [statsVisible, setStatsVisible] = useState(false)
-  const [activeSection, setActiveSection] = useState('')
+  const [activeSection, setActiveSection] = useState('home')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [openService, setOpenService] = useState(null)
 
   const projects = useCountUp(500, 1800, statsVisible)
   const workers  = useCountUp(120, 1800, statsVisible)
+  const clients  = useCountUp(85,  1800, statsVisible)
   const years    = useCountUp(12,  1800, statsVisible)
 
-  // Hero numbers count up shortly after the page loads
+  // Stats count-up when visible
   useEffect(() => {
-    const t = setTimeout(() => setStatsVisible(true), 600)
-    return () => clearTimeout(t)
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStatsVisible(true) }, { threshold: 0.3 })
+    if (statsRef.current) io.observe(statsRef.current)
+    return () => io.disconnect()
   }, [])
 
   // Solid nav after scrolling
@@ -483,7 +486,7 @@ export default function LandingPage() {
               </button>
             </div>
             <div className="lp-up mt-12 flex flex-wrap items-center gap-x-8 gap-y-4" style={{ animationDelay: '560ms' }}>
-              {[[`${projects}+`, 'Projects delivered'], [`${workers}+`, 'Skilled workers'], [`${years} yrs`, 'In the industry']].map(([v, l]) => (
+              {[['500+', 'Projects delivered'], ['120+', 'Skilled workers'], ['12 yrs', 'In the industry']].map(([v, l]) => (
                 <div key={l}>
                   <p className="text-2xl font-semibold text-white tabular-nums">{v}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{l}</p>
@@ -560,13 +563,38 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ══════════════ ABOUT ══════════════ */}
-      <section id="about" className="py-20 bg-slate-50 overflow-hidden">
+      {/* ══════════════ PLATFORM FEATURES ══════════════ */}
+      <section className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8">
+          <SectionHeading eyebrow="One platform" title="Everything your project needs, connected" text="From booking to handover, SkillConnect keeps clients, workers and our team on the same page." />
+          <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              { icon: CalendarDays,  title: 'Flexible scheduling',   desc: 'Book visits that fit your week, with real-time availability on every worker.' },
+              { icon: ClipboardList, title: 'Job order tracking',    desc: 'Follow each job from review to completion, with clear status at every step.' },
+              { icon: Users,         title: 'Verified workforce',    desc: 'Licensed, experienced tradespeople matched to the exact skill your project needs.' },
+              { icon: Building2,     title: 'End-to-end delivery',   desc: 'Residential and commercial projects handled by one accountable team.' },
+            ].map((s, i) => (
+              <Reveal key={s.title} delay={i * 90}>
+                <div className="group h-full rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-900/5">
+                  <span className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center transition-colors group-hover:bg-emerald-600 group-hover:text-white">
+                    <s.icon size={20} {...ICON} />
+                  </span>
+                  <h3 className="mt-5 text-base font-semibold text-slate-900">{s.title}</h3>
+                  <p className="mt-2 text-sm text-slate-600 leading-relaxed">{s.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════ WHY EMERALD ══════════════ */}
+      <section className="py-24 bg-slate-50 overflow-hidden">
         <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-14 items-center">
           <Reveal className="relative order-2 lg:order-1">
             <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/10 ring-1 ring-slate-900/5">
               <img src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1000&q=80" alt="Construction worker on site"
-                className="w-full h-[340px] object-cover transition-transform duration-700 hover:scale-105" />
+                className="w-full h-[420px] object-cover transition-transform duration-700 hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent" />
             </div>
             <div className="lp-float absolute -bottom-6 -right-2 sm:right-6 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 p-4 flex items-center gap-3">
@@ -575,6 +603,10 @@ export default function LandingPage() {
                 <p className="text-xl font-semibold text-slate-900 tabular-nums">500+</p>
                 <p className="text-xs text-slate-500">Completed projects</p>
               </div>
+            </div>
+            <div className="absolute -top-5 -left-2 sm:left-6 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 px-4 py-3 flex items-center gap-2">
+              <div className="flex text-amber-400">{Array.from({ length: 5 }).map((_, i) => <Star key={i} size={14} fill="currentColor" strokeWidth={0} />)}</div>
+              <p className="text-sm font-medium text-slate-900">Rated 4.9 by clients</p>
             </div>
           </Reveal>
 
@@ -598,25 +630,44 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ══════════════ STATS ══════════════ */}
+      <section ref={statsRef} className="relative py-20 bg-emerald-700 overflow-hidden">
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-emerald-500/30 blur-3xl" />
+        <div className="relative max-w-6xl mx-auto px-5 sm:px-8 grid grid-cols-2 lg:grid-cols-4 gap-y-10">
+          {[
+            { value: projects, label: 'Projects completed', suffix: '+' },
+            { value: workers,  label: 'Skilled workers',    suffix: '+' },
+            { value: clients,  label: 'Happy clients',      suffix: '+' },
+            { value: years,    label: 'Years of experience', suffix: '' },
+          ].map((s, i) => (
+            <div key={s.label} className={`text-center ${i > 0 ? 'lg:border-l lg:border-white/15' : ''}`}>
+              <p className="text-4xl sm:text-5xl font-semibold text-white tabular-nums tracking-tight">{s.value}{s.suffix}</p>
+              <p className="mt-2 text-sm text-emerald-100/80">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ══════════════ SERVICES ══════════════ */}
-      <section id="services" className="py-20 bg-white">
+      <section id="services" className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <SectionHeading eyebrow="Products & services" title="Every trade your project needs"
             text="Twelve specialties delivered by licensed professionals, from new builds to everyday maintenance." />
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {SERVICES.map((s, i) => {
               const open = openService === s.title
               return (
-                <Reveal key={s.title} delay={(i % 4) * 80}>
-                  <article className="group h-full flex flex-col rounded-2xl border border-slate-200 bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-900/5">
+                <Reveal key={s.title} delay={(i % 3) * 90}>
+                  <article className="group h-full flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-900/5">
                     <div className="flex items-start justify-between">
                       <span className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center transition-all duration-300 group-hover:bg-emerald-600 group-hover:text-white group-hover:scale-105">
                         <s.icon size={22} {...ICON} />
                       </span>
                       <span className="text-xs font-medium text-slate-300 tabular-nums">{String(i + 1).padStart(2, '0')}</span>
                     </div>
-                    <h3 className="mt-4 text-base font-semibold text-slate-900">{s.title}</h3>
-                    <p className="mt-1.5 text-sm text-slate-600 leading-relaxed flex-1 line-clamp-3">{s.desc}</p>
+                    <h3 className="mt-5 text-lg font-semibold text-slate-900">{s.title}</h3>
+                    <p className="mt-2 text-sm text-slate-600 leading-relaxed flex-1">{s.desc}</p>
 
                     <div className={`grid transition-[grid-template-rows] duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
                       <div className="overflow-hidden">
@@ -630,7 +681,7 @@ export default function LandingPage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between">
+                    <div className="mt-5 flex items-center justify-between">
                       <button onClick={() => setOpenService(open ? null : s.title)} aria-expanded={open}
                         className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900">
                         {open ? 'Hide details' : 'What’s included'}
@@ -649,10 +700,10 @@ export default function LandingPage() {
       </section>
 
       {/* ══════════════ HOW IT WORKS ══════════════ */}
-      <section id="process" className="py-20 bg-slate-50">
+      <section id="process" className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <SectionHeading eyebrow="How it works" title="From inquiry to handover in four steps" text="A simple, transparent process so you always know what happens next." />
-          <div className="relative mt-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="relative mt-16 grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="hidden md:block absolute top-7 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-emerald-200 via-emerald-400 to-emerald-200" />
             {[
               { icon: MessageSquareText, title: 'Send an inquiry',   desc: 'Tell us what you need and where. It takes about two minutes.' },
@@ -673,12 +724,77 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ══════════════ WHY CHOOSE US ══════════════ */}
+      <section className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-[0.8fr_1.2fr] gap-14 items-start">
+          <div className="lg:sticky lg:top-28">
+            <SectionHeading align="left" eyebrow="Our promise" title="What sets us apart" text="Six commitments we make on every project, big or small." />
+            <Reveal delay={150}>
+              <figure className="mt-8 rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-6">
+                <Quote size={22} {...ICON} className="text-emerald-500" />
+                <blockquote className="mt-3 text-slate-700 leading-relaxed">“The team kept us updated every step of the way and finished our renovation on schedule. It felt effortless.”</blockquote>
+                <figcaption className="mt-4 flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-full bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-semibold">MS</span>
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-900">Maria Santos</span>
+                    <span className="block text-xs text-slate-500">Homeowner, Parañaque</span>
+                  </span>
+                </figcaption>
+              </figure>
+            </Reveal>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {[
+              { icon: Building2, title: 'Full-service delivery', desc: 'Professional construction and renovation for residential and commercial projects.' },
+              { icon: Star,      title: 'Quality materials',     desc: 'Only premium, tested materials trusted on every project we take on.' },
+              { icon: Clock,     title: 'On-time delivery',      desc: 'Committed to finishing within the timeline we agree on together.' },
+              { icon: Award,     title: 'Fair pricing',          desc: 'Professional work at rates that fit your budget, with no surprises.' },
+              { icon: Users,     title: 'Dedicated support',     desc: 'A real person to answer your questions throughout your project.' },
+              { icon: Shield,    title: 'Licensed and insured',  desc: 'Every worker is licensed and every job is insured for your protection.' },
+            ].map((item, i) => (
+              <Reveal key={item.title} delay={(i % 2) * 90}>
+                <div className="group h-full rounded-2xl border border-slate-200 p-6 transition-all duration-300 hover:border-emerald-200 hover:bg-emerald-50/30">
+                  <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"><item.icon size={19} {...ICON} /></span>
+                  <h3 className="mt-4 font-semibold text-slate-900">{item.title}</h3>
+                  <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{item.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════ CTA ══════════════ */}
+      <section className="px-5 sm:px-8 pb-24 bg-white">
+        <Reveal className="max-w-7xl mx-auto">
+          <div className="relative overflow-hidden rounded-3xl bg-slate-900 px-6 sm:px-14 py-14 sm:py-16">
+            <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/30 blur-3xl" />
+            <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-teal-500/20 blur-3xl" />
+            <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+              <div className="max-w-xl">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-300"><Sparkles size={14} {...ICON} />Free consultation</p>
+                <h2 className="mt-3 text-3xl sm:text-4xl font-semibold text-white tracking-tight">Ready to start your project?</h2>
+                <p className="mt-3 text-slate-300 leading-relaxed">Tell us what you have in mind and we’ll get back to you within one business day.</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => scrollTo('contact')} className="group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors">
+                  Request a quote <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
+                </button>
+                <a href="tel:+631234567890" className="inline-flex items-center gap-2 h-12 px-6 rounded-lg ring-1 ring-white/25 text-white text-sm font-semibold hover:bg-white/10 transition-colors">
+                  <Phone size={16} {...ICON} /> Call us
+                </a>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
       {/* ══════════════ CONTACT ══════════════ */}
-      <section id="contact" className="py-20 bg-slate-50 border-t border-slate-200">
+      <section id="contact" className="py-24 bg-slate-50 border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <SectionHeading eyebrow="Contact us" title="Let’s talk about your project" text="Send us an inquiry and our team will reach out. You can also call, email or visit our office." />
 
-          <div className="mt-12 grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">
+          <div className="mt-14 grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">
             {/* Info + map */}
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
