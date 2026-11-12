@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
   Briefcase, Plus, Search, Pencil, CheckCircle2, AlertCircle, X, AlertTriangle, Filter,
@@ -205,33 +205,58 @@ function Pagination({ page, total, perPage, onPage, onPerPage }) {
 }
 
 
-function MiniStat({ icon: Icon, label, value, tone, loading, delay, footer }) {
-  return (
-    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex flex-col" style={{ animationDelay: `${delay}ms` }}>
-      <div className="flex items-center gap-3.5">
-        <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
-        <div className="min-w-0">
-          {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
-          <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
-        </div>
-      </div>
-      <div className="mt-3 min-h-[20px]">{loading ? <Skel className="h-3 w-28" /> : footer}</div>
-    </div>
-  )
-}
+function StatusDropdown({ options, value, onChange, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = options.find(o => o.value === value) || options[0]
 
-function Segmented({ options, value, onChange }) {
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [])
+
   return (
-    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
-      {options.map(o => (
-        <button key={o.value} onClick={() => onChange(o.value)}
-          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-          {o.dot && <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />}
-          {o.label}
-          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
-        </button>
-      ))}
+    <div className="relative w-full sm:w-52 flex-shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full h-9 pl-3 pr-2.5 flex items-center gap-2 rounded-lg border bg-white shadow-sm text-sm text-left transition-colors focus-visible:outline-none
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${current.dot || 'bg-slate-300'}`} />
+        <span className="flex-1 min-w-0 font-medium text-slate-800 truncate">{current.label}</span>
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{loading ? '·' : current.count}</span>
+        <ChevronDown size={15} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <ul role="listbox" className="sc-pop absolute left-0 right-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-xl ring-1 ring-slate-900/5 p-1">
+          {options.map(o => {
+            const on = o.value === value
+            return (
+              <li key={o.value || 'all'}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full h-9 px-2.5 flex items-center gap-2.5 rounded-lg text-sm text-left transition-colors ${on ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${o.dot || 'bg-slate-300'}`} />
+                  <span className="flex-1 font-medium">{o.label}</span>
+                  <span className={`text-xs tabular-nums ${on ? 'text-emerald-700' : 'text-slate-400'}`}>{loading ? '·' : o.count}</span>
+                  <Check size={14} strokeWidth={2.25} className={on ? 'text-emerald-600' : 'invisible'} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -397,12 +422,6 @@ export default function JobOrdersPage() {
       : jobOrders,
   [jobOrders, highlightInquiryCode, highlightClientName, highlightClientId])
 
-  const statusCounts = useMemo(() => {
-    const m = {}
-    scoped.forEach(jo => { m[jo.status] = (m[jo.status] || 0) + 1 })
-    return m
-  }, [scoped])
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     const list = scoped.filter(jo =>
@@ -424,13 +443,6 @@ export default function JobOrdersPage() {
   const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
   const hasFilters = search || filterStatus || filterContract
   const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterContract('') }
-
-  const stats = {
-    total:    scoped.length,
-    review:   (statusCounts['Pending'] || 0) + (statusCounts['Under Review'] || 0),
-    running:  (statusCounts['Active'] || 0) + (statusCounts['Scheduled'] || 0) + (statusCounts['In Progress'] || 0),
-    done:     (statusCounts['Complete'] || 0) + (statusCounts['Completed'] || 0),
-  }
 
   // ── Form helpers (unchanged logic)
   const handleClientChange = (clientId) => {
@@ -562,10 +574,6 @@ export default function JobOrdersPage() {
   }
 
   const groupCount = g => scoped.filter(jo => GROUPS[g].includes(jo.status)).length
-  const todayStart = today ? new Date(today.getFullYear(), today.getMonth(), today.getDate()) : null
-  const endingSoon = todayStart ? scoped.filter(jo => GROUPS.running.includes(jo.status) && jo.end_date && parseDay(jo.end_date) >= todayStart && (parseDay(jo.end_date) - todayStart) / DAY <= 7).length : 0
-  const unassigned = scoped.filter(jo => !jo.worker_name && !GROUPS.done.includes(jo.status) && jo.status !== 'Cancelled').length
-  const doneRate = stats.total ? Math.round((stats.done / stats.total) * 100) : 0
   const groupLabel = { review: 'Needs review', hold: 'On hold', running: 'Running', done: 'Completed', cancelled: 'Cancelled' }
 
   return (
@@ -591,47 +599,25 @@ export default function JobOrdersPage() {
         </Notice>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MiniStat icon={Briefcase} label="Total job orders" value={stats.total} tone="bg-slate-100 text-slate-600" loading={loading} delay={0}
-          footer={unassigned
-            ? <p className="text-xs text-amber-700 flex items-center gap-1.5"><AlertTriangle size={12} {...ICON} />{unassigned} still need a worker</p>
-            : <p className="text-xs text-slate-500">Every open job has a worker</p>} />
-        <MiniStat icon={Clock} label="Needs review" value={stats.review} tone="bg-violet-50 text-violet-600" loading={loading} delay={50}
-          footer={stats.review
-            ? <button onClick={() => setFilterStatus('review')} className="text-xs font-medium text-violet-700 hover:text-violet-800">Review now →</button>
-            : <p className="text-xs text-slate-500">You’re all caught up</p>} />
-        <MiniStat icon={HardHat} label="Running" value={stats.running} tone="bg-amber-50 text-amber-600" loading={loading} delay={100}
-          footer={<p className="text-xs text-slate-500">{endingSoon ? <><span className="font-medium text-slate-700">{endingSoon}</span> ending within 7 days</> : 'None ending this week'}</p>} />
-        <MiniStat icon={CheckCircle2} label="Completed" value={stats.done} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={150}
-          footer={
-            <div>
-              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="sc-bar h-full bg-emerald-500 rounded-full" style={{ width: `${doneRate}%` }} /></div>
-              <p className="text-xs text-slate-500 mt-1.5">{doneRate}% of all job orders</p>
-            </div>
-          } />
-      </div>
-
       {/* Table card */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
         {/* Toolbar */}
-        <div className="px-4 sm:px-5 py-4 flex flex-col xl:flex-row xl:items-center gap-3 border-b border-slate-100">
-          <div className="overflow-x-auto -mx-1 px-1">
-            <Segmented
-              value={filterStatus}
-              onChange={setFilterStatus}
-              options={[
-                { value: '',          label: 'All',          count: loading ? null : scoped.length },
-                { value: 'review',    label: 'Needs review', count: loading ? null : groupCount('review'),    dot: 'bg-violet-500' },
-                { value: 'running',   label: 'Running',      count: loading ? null : groupCount('running'),   dot: 'bg-amber-500' },
-                { value: 'hold',      label: 'On hold',      count: loading ? null : groupCount('hold'),      dot: 'bg-orange-500' },
-                { value: 'done',      label: 'Completed',    count: loading ? null : groupCount('done'),      dot: 'bg-blue-500' },
-                { value: 'cancelled', label: 'Cancelled',    count: loading ? null : groupCount('cancelled'), dot: 'bg-red-500' },
-              ]}
-            />
-          </div>
-          <div className="flex flex-1 items-center gap-2 xl:justify-end">
-            <div className="relative flex-1 xl:max-w-xs">
+        <div className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-slate-100">
+          <StatusDropdown
+            value={filterStatus}
+            onChange={setFilterStatus}
+            loading={loading}
+            options={[
+              { value: '',          label: 'All statuses', count: scoped.length },
+              { value: 'review',    label: 'Needs review', count: groupCount('review'),    dot: 'bg-violet-500' },
+              { value: 'running',   label: 'Running',      count: groupCount('running'),   dot: 'bg-amber-500' },
+              { value: 'hold',      label: 'On hold',      count: groupCount('hold'),      dot: 'bg-orange-500' },
+              { value: 'done',      label: 'Completed',    count: groupCount('done'),      dot: 'bg-blue-500' },
+              { value: 'cancelled', label: 'Cancelled',    count: groupCount('cancelled'), dot: 'bg-red-500' },
+            ]}
+          />
+          <div className="flex flex-1 items-center gap-2 sm:justify-end">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
@@ -749,7 +735,9 @@ export default function JobOrdersPage() {
                       <td className="px-5 py-3"><StatusBadge status={jo.status} /></td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end">
-                          <button onClick={() => openEdit(jo)} title="Edit job order" aria-label={`Edit ${jo.job_order_code}`} className={iconBtn}><Pencil size={16} {...ICON} /></button>
+                          <button onClick={() => openEdit(jo)} aria-label={`Edit ${jo.job_order_code}`} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                            <Pencil size={14} {...ICON} /> Edit
+                          </button>
                         </div>
                       </td>
                     </tr>

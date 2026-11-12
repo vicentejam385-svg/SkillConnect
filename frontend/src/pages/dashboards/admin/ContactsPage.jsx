@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
   ClipboardList, UserPlus, Search, CheckCircle2, AlertCircle, X, ArrowRight,
   Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
-  Mail, Phone, Smartphone, MapPin, Users, Briefcase, Building2, BadgeCheck,
+  Mail, Phone, Smartphone, MapPin, Users, Briefcase, Building2,
   LayoutGrid, List, Copy, Check, ArrowUp, ArrowDown, ArrowUpDown, Loader2,
   HardHat, CalendarDays, User,
 } from 'lucide-react'
@@ -154,38 +154,59 @@ function Toast({ toast }) {
   )
 }
 
-// ── Summary stat ───────────────────────────────────────────────
-function MiniStat({ icon: Icon, label, value, tone, loading, delay }) {
-  return (
-    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex items-center gap-3.5" style={{ animationDelay: `${delay}ms` }}>
-      <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
-      <div className="min-w-0">
-        {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
-        <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
-      </div>
-    </div>
-  )
-}
+// ── Filter dropdown ────────────────────────────────────────────
+function FilterDropdown({ options, value, onChange, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = options.find(o => o.value === value) || options[0]
 
-// ── Segmented tabs ─────────────────────────────────────────────
-function Segmented({ options, value, onChange }) {
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [])
+
   return (
-    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
-      {options.map(o => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          {o.icon && <o.icon size={14} {...ICON} />}
-          {o.label}
-          {o.count != null && (
-            <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>
-          )}
-        </button>
-      ))}
+    <div className="relative w-full sm:w-52 flex-shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full h-9 pl-3 pr-2.5 flex items-center gap-2 rounded-lg border bg-white shadow-sm text-sm text-left transition-colors focus-visible:outline-none
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        <current.icon size={15} {...ICON} className="text-slate-400 flex-shrink-0" />
+        <span className="flex-1 min-w-0 font-medium text-slate-800 truncate">{current.label}</span>
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{loading ? '·' : current.count}</span>
+        <ChevronDown size={15} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <ul role="listbox" className="sc-pop absolute left-0 right-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-xl ring-1 ring-slate-900/5 p-1">
+          {options.map(o => {
+            const on = o.value === value
+            return (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full h-9 px-2.5 flex items-center gap-2.5 rounded-lg text-sm text-left transition-colors ${on ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <o.icon size={15} {...ICON} className={on ? 'text-emerald-600' : 'text-slate-400'} />
+                  <span className="flex-1 font-medium">{o.label}</span>
+                  <span className={`text-xs tabular-nums ${on ? 'text-emerald-700' : 'text-slate-400'}`}>{loading ? '·' : o.count}</span>
+                  <Check size={14} strokeWidth={2.25} className={on ? 'text-emerald-600' : 'invisible'} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -281,7 +302,7 @@ function Pagination({ page, total, perPage, onPage, onPerPage }) {
   )
 }
 
-// ── Contact drawer ─────────────────────────────────────────────
+// ── Contact details modal ────────────────────────────────────────
 function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
   const [tab, setTab] = useState('overview')
   useEscapeAndLock(onClose)
@@ -290,17 +311,17 @@ function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
   const done = jobOrders.filter(j => ['Complete', 'Completed'].includes(j.status)).length
 
   const info = [
-    { icon: Mail,       label: 'Email',   value: contact.email,   href: contact.email ? `mailto:${contact.email}` : null },
-    { icon: Smartphone, label: 'Mobile',  value: contact.mobile,  href: contact.mobile ? `tel:${contact.mobile}` : null },
-    { icon: Phone,      label: 'Phone',   value: contact.phone,   href: contact.phone ? `tel:${contact.phone}` : null, hideEmpty: true },
+    { icon: Mail,       label: 'Email',   value: contact.email },
+    { icon: Smartphone, label: 'Mobile',  value: contact.mobile },
+    { icon: Phone,      label: 'Phone',   value: contact.phone, hideEmpty: true },
     { icon: MapPin,     label: 'Address', value: contact.address },
   ].filter(r => !(r.hideEmpty && !r.value))
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
-      <aside role="dialog" aria-modal="true" aria-label={`${contact.full_name} details`}
-        className="sc-drawer absolute right-0 top-0 h-full w-full max-w-[460px] bg-white shadow-2xl flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label={`${contact.full_name} details`}
+        className="sc-pop relative w-full max-w-lg h-[85vh] max-h-[680px] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
 
         {/* Top bar */}
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
@@ -322,19 +343,6 @@ function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mt-5">
-            <a href={contact.email ? `mailto:${contact.email}` : undefined}
-              className={`${btnSecondary} px-2 ${!contact.email ? 'pointer-events-none opacity-50' : ''}`}>
-              <Mail size={15} {...ICON} /> Email
-            </a>
-            <a href={contact.mobile ? `tel:${contact.mobile}` : undefined}
-              className={`${btnSecondary} px-2 ${!contact.mobile ? 'pointer-events-none opacity-50' : ''}`}>
-              <Phone size={15} {...ICON} /> Call
-            </a>
-            <button onClick={() => setTab('jobs')} className={`${btnSecondary} px-2`}>
-              <Briefcase size={15} {...ICON} /> Jobs
-            </button>
-          </div>
         </div>
 
         {/* Tabs */}
@@ -362,13 +370,13 @@ function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
               <section>
                 <h4 className="text-sm font-semibold text-slate-900 mb-2">Contact information</h4>
                 <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-                  {info.map(({ icon: Icon, label, value, href }) => (
+                  {info.map(({ icon: Icon, label, value }) => (
                     <div key={label} className="group flex items-start gap-3 px-4 py-3">
                       <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
                       <div className="min-w-0 flex-1">
                         <dt className="text-xs text-slate-500">{label}</dt>
                         <dd className="text-sm text-slate-900 break-words mt-0.5">
-                          {value ? (href ? <a href={href} className="hover:text-emerald-700 hover:underline">{value}</a> : value) : <span className="text-slate-400">Not provided</span>}
+                          {value || <span className="text-slate-400">Not provided</span>}
                         </dd>
                       </div>
                       <CopyButton value={value} />
@@ -431,7 +439,7 @@ function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
           </button>
           <button onClick={onClose} className={btnSecondary}>Close</button>
         </div>
-      </aside>
+      </div>
     </div>
   )
 }
@@ -638,12 +646,7 @@ export default function ContactsPage() {
 
   const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
 
-  const stats = {
-    total: contacts.length,
-    orgs: contacts.filter(c => c.type === 'organisation').length,
-    active: contacts.filter(c => c.status === 'Active').length,
-    withJobs: contacts.filter(c => jobCounts[c.id] > 0).length,
-  }
+  const stats = { orgs: contacts.filter(c => c.type === 'organisation').length }
 
   const hasFilters = search || typeFilter !== 'all' || statusFilter !== 'all'
   const clearFilters = () => { setSearch(''); setTypeFilter('all'); setStatusFilter('all') }
@@ -670,12 +673,10 @@ export default function ContactsPage() {
   const closeDrawer = useCallback(() => setSelected(null), [])
 
   const rowActions = c => (
-    <div className="flex items-center justify-end gap-0.5">
-      <a href={c.email ? `mailto:${c.email}` : undefined} title="Send email" aria-label="Send email"
-        className={`${iconBtn} ${!c.email ? 'pointer-events-none opacity-30' : ''}`}><Mail size={16} {...ICON} /></a>
-      <a href={c.mobile ? `tel:${c.mobile}` : undefined} title="Call" aria-label="Call"
-        className={`${iconBtn} ${!c.mobile ? 'pointer-events-none opacity-30' : ''}`}><Phone size={16} {...ICON} /></a>
-      <button onClick={() => setSelected(c)} title="View details" aria-label="View details" className={iconBtn}><Eye size={16} {...ICON} /></button>
+    <div className="flex items-center justify-end">
+      <button onClick={() => setSelected(c)} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+        <Eye size={15} {...ICON} /> View
+      </button>
     </div>
   )
 
@@ -695,32 +696,22 @@ export default function ContactsPage() {
         </button>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MiniStat icon={Users}      label="Total contacts"   value={stats.total}    tone="bg-emerald-50 text-emerald-600" loading={loading} delay={0} />
-        <MiniStat icon={BadgeCheck} label="Active"           value={stats.active}   tone="bg-sky-50 text-sky-600"         loading={loading} delay={50} />
-        <MiniStat icon={Building2}  label="Organisations"    value={stats.orgs}     tone="bg-violet-50 text-violet-600"   loading={loading} delay={100} />
-        <MiniStat icon={Briefcase}  label="With job orders"  value={stats.withJobs} tone="bg-amber-50 text-amber-600"     loading={loading} delay={150} />
-      </div>
-
       {/* Main card */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
         {/* Toolbar */}
-        <div className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center gap-3 border-b border-slate-100">
-          <div className="overflow-x-auto -mx-1 px-1">
-            <Segmented
-              value={typeFilter}
-              onChange={setTypeFilter}
-              options={[
-                { value: 'all',          label: 'All',           count: loading ? null : contacts.length },
-                { value: 'client',       label: 'Clients',       count: loading ? null : contacts.length - stats.orgs },
-                { value: 'organisation', label: 'Organisations', count: loading ? null : stats.orgs },
-              ]}
-            />
-          </div>
-
-          <div className="flex flex-1 items-center gap-2 lg:justify-end">
-            <div className="relative flex-1 lg:max-w-xs">
+        <div className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-slate-100">
+          <FilterDropdown
+            value={typeFilter}
+            onChange={setTypeFilter}
+            loading={loading}
+            options={[
+              { value: 'all',          label: 'All contacts',  count: contacts.length,              icon: Users },
+              { value: 'client',       label: 'Clients',       count: contacts.length - stats.orgs, icon: User },
+              { value: 'organisation', label: 'Organisations', count: stats.orgs,                   icon: Building2 },
+            ]}
+          />
+          <div className="flex flex-1 items-center gap-2 sm:justify-end">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors"

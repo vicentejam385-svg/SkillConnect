@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
   Plus, Search, Eye, X, ArrowRight, FileText, CalendarDays, HardHat, CheckCircle2, AlertCircle,
-  RefreshCw, Users, UserCheck, Briefcase, ShieldAlert, ShieldCheck, ShieldX, Shield,
+  RefreshCw, Users, ShieldAlert, ShieldCheck, ShieldX, Shield,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown, ArrowUpDown,
   Mail, Phone, Smartphone, MapPin, Copy, Check, Clock, ExternalLink, Wrench,
 } from 'lucide-react'
@@ -193,33 +193,58 @@ function Toast({ toast }) {
   )
 }
 
-function MiniStat({ icon: Icon, label, value, tone, loading, delay, footer }) {
-  return (
-    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex flex-col" style={{ animationDelay: `${delay}ms` }}>
-      <div className="flex items-center gap-3.5">
-        <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
-        <div className="min-w-0">
-          {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
-          <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
-        </div>
-      </div>
-      <div className="mt-3 min-h-[20px]">{loading ? <Skel className="h-3 w-28" /> : footer}</div>
-    </div>
-  )
-}
+function StatusDropdown({ options, value, onChange, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = options.find(o => o.value === value) || options[0]
 
-function Segmented({ options, value, onChange }) {
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [])
+
   return (
-    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
-      {options.map(o => (
-        <button key={o.value} onClick={() => onChange(o.value)}
-          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-          {o.dot && <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />}
-          {o.label}
-          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
-        </button>
-      ))}
+    <div className="relative w-full sm:w-52 flex-shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full h-9 pl-3 pr-2.5 flex items-center gap-2 rounded-lg border bg-white shadow-sm text-sm text-left transition-colors focus-visible:outline-none
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${current.dot || 'bg-slate-300'}`} />
+        <span className="flex-1 min-w-0 font-medium text-slate-800 truncate">{current.label}</span>
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{loading ? '·' : current.count}</span>
+        <ChevronDown size={15} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <ul role="listbox" className="sc-pop absolute left-0 right-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-xl ring-1 ring-slate-900/5 p-1">
+          {options.map(o => {
+            const on = o.value === value
+            return (
+              <li key={o.value || 'all'}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full h-9 px-2.5 flex items-center gap-2.5 rounded-lg text-sm text-left transition-colors ${on ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${o.dot || 'bg-slate-300'}`} />
+                  <span className="flex-1 font-medium">{o.label}</span>
+                  <span className={`text-xs tabular-nums ${on ? 'text-emerald-700' : 'text-slate-400'}`}>{loading ? '·' : o.count}</span>
+                  <Check size={14} strokeWidth={2.25} className={on ? 'text-emerald-600' : 'invisible'} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -294,7 +319,7 @@ function Chip({ children, onRemove }) {
   )
 }
 
-// ── Worker drawer ──────────────────────────────────────────────
+// ── Worker details modal ─────────────────────────────────────────
 function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showToast }) {
   const [tab, setTab] = useState('overview')
   const [schedules, setSchedules] = useState([])
@@ -335,9 +360,9 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
   const running = jobs.filter(j => RUNNING.includes(j.status))
   const lic = licenseState(license)
   const info = [
-    { icon: Mail,       label: 'Email',   value: worker.email,   href: worker.email ? `mailto:${worker.email}` : null },
-    { icon: Smartphone, label: 'Mobile',  value: worker.mobile,  href: worker.mobile ? `tel:${worker.mobile}` : null },
-    { icon: Phone,      label: 'Phone',   value: worker.phone,   href: worker.phone ? `tel:${worker.phone}` : null, hideEmpty: true },
+    { icon: Mail,       label: 'Email',   value: worker.email },
+    { icon: Smartphone, label: 'Mobile',  value: worker.mobile },
+    { icon: Phone,      label: 'Phone',   value: worker.phone, hideEmpty: true },
     { icon: MapPin,     label: 'Address', value: worker.address },
   ].filter(r => !(r.hideEmpty && !r.value))
 
@@ -348,9 +373,9 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
   ]
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
-      <aside role="dialog" aria-modal="true" className="sc-drawer absolute right-0 top-0 h-full w-full max-w-[480px] bg-white shadow-2xl flex flex-col">
+      <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-lg h-[85vh] max-h-[720px] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
           <p className="text-sm font-medium text-slate-500">Worker details</p>
           <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
@@ -368,11 +393,6 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
                 <SpecBadge name={worker.specialization} />
               </div>
             </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 mt-5">
-            <a href={worker.email ? `mailto:${worker.email}` : undefined} className={`${btnSecondary} px-2 ${!worker.email ? 'pointer-events-none opacity-50' : ''}`}><Mail size={15} {...ICON} /> Email</a>
-            <a href={worker.mobile ? `tel:${worker.mobile}` : undefined} className={`${btnSecondary} px-2 ${!worker.mobile ? 'pointer-events-none opacity-50' : ''}`}><Phone size={15} {...ICON} /> Call</a>
-            <button onClick={() => setTab('license')} className={`${btnSecondary} px-2`}><FileText size={15} {...ICON} /> License</button>
           </div>
         </div>
 
@@ -394,13 +414,13 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
               <section>
                 <h4 className="text-sm font-semibold text-slate-900 mb-2">Contact information</h4>
                 <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-                  {info.map(({ icon: Icon, label, value, href }) => (
+                  {info.map(({ icon: Icon, label, value }) => (
                     <div key={label} className="group flex items-start gap-3 px-4 py-3">
                       <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
                       <div className="min-w-0 flex-1">
                         <dt className="text-xs text-slate-500">{label}</dt>
                         <dd className="text-sm text-slate-900 break-words mt-0.5">
-                          {value ? (href ? <a href={href} className="hover:text-emerald-700 hover:underline">{value}</a> : value) : <span className="text-slate-400">Not provided</span>}
+                          {value || <span className="text-slate-400">Not provided</span>}
                         </dd>
                       </div>
                       <CopyButton value={value} />
@@ -517,7 +537,7 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
           </button>
           <button onClick={onClose} className={btnSecondary}>Close</button>
         </div>
-      </aside>
+      </div>
     </div>
   )
 }
@@ -632,7 +652,6 @@ export default function WorkersPage() {
   const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
   const hasFilters = search || filterStatus || filterSpec
   const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterSpec('') }
-  const activeRate = counts.all ? Math.round((counts.Active / counts.all) * 100) : 0
 
   // ── Create (unchanged validation + email)
   const handleCreate = async () => {
@@ -683,10 +702,10 @@ export default function WorkersPage() {
   const closeForm = useCallback(() => { if (!saving) setShowForm(false) }, [saving])
 
   const rowActions = w => (
-    <div className="flex items-center justify-end gap-0.5">
-      <a href={w.email ? `mailto:${w.email}` : undefined} title="Send email" aria-label="Send email" className={`${iconBtn} ${!w.email ? 'pointer-events-none opacity-30' : ''}`}><Mail size={16} {...ICON} /></a>
-      <a href={w.mobile ? `tel:${w.mobile}` : undefined} title="Call" aria-label="Call" className={`${iconBtn} ${!w.mobile ? 'pointer-events-none opacity-30' : ''}`}><Phone size={16} {...ICON} /></a>
-      <button onClick={() => setSelected(w)} title="View details" aria-label="View details" className={iconBtn}><Eye size={16} {...ICON} /></button>
+    <div className="flex items-center justify-end">
+      <button onClick={() => setSelected(w)} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+        <Eye size={15} {...ICON} /> View
+      </button>
     </div>
   )
 
@@ -704,42 +723,22 @@ export default function WorkersPage() {
         <button onClick={() => setShowForm(true)} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> Add worker</button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MiniStat icon={Users} label="Total workers" value={counts.all} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={0}
-          footer={
-            <div>
-              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="sc-bar h-full bg-emerald-500 rounded-full" style={{ width: `${activeRate}%` }} /></div>
-              <p className="text-xs text-slate-500 mt-1.5">{counts.Active} active · {counts.Inactive + counts['On Leave']} not active</p>
-            </div>
-          } />
-        <MiniStat icon={UserCheck} label="Available now" value={counts.available} tone="bg-sky-50 text-sky-600" loading={loading} delay={50}
-          footer={<p className="text-xs text-slate-500">Active, with no running job</p>} />
-        <MiniStat icon={Briefcase} label="On a job" value={counts.onJob} tone="bg-amber-50 text-amber-600" loading={loading} delay={100}
-          footer={<button onClick={() => navigate('/admin/job-orders')} className="text-xs font-medium text-amber-700 hover:text-amber-800">View job orders →</button>} />
-        <MiniStat icon={ShieldAlert} label="License issues" value={counts.licIssues} tone="bg-red-50 text-red-600" loading={loading} delay={150}
-          footer={counts.licIssues
-            ? <button onClick={() => navigate('/admin/licenses')} className="text-xs font-medium text-red-700 hover:text-red-800">{counts.licExpired} expired · review →</button>
-            : <p className="text-xs text-slate-500">All licenses are valid</p>} />
-      </div>
-
       {/* Table card */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
-        <div className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center gap-3 border-b border-slate-100">
-          <div className="overflow-x-auto -mx-1 px-1">
-            <Segmented
-              value={filterStatus}
-              onChange={setFilterStatus}
-              options={[
-                { value: '',         label: 'All',      count: loading ? null : counts.all },
-                { value: 'Active',   label: 'Active',   count: loading ? null : counts.Active,      dot: 'bg-emerald-500' },
-                { value: 'On Leave', label: 'On leave', count: loading ? null : counts['On Leave'], dot: 'bg-orange-500' },
-                { value: 'Inactive', label: 'Inactive', count: loading ? null : counts.Inactive,    dot: 'bg-gray-400' },
-              ]}
-            />
-          </div>
-          <div className="flex flex-1 items-center gap-2 lg:justify-end">
-            <div className="relative flex-1 lg:max-w-xs">
+        <div className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-slate-100">
+          <StatusDropdown
+            value={filterStatus}
+            onChange={setFilterStatus}
+            loading={loading}
+            options={[
+              { value: '',         label: 'All statuses', count: counts.all },
+              { value: 'Active',   label: 'Active',       count: counts.Active,      dot: 'bg-emerald-500' },
+              { value: 'On Leave', label: 'On leave',     count: counts['On Leave'], dot: 'bg-orange-500' },
+              { value: 'Inactive', label: 'Inactive',     count: counts.Inactive,    dot: 'bg-gray-400' },
+            ]}
+          />
+          <div className="flex flex-1 items-center gap-2 sm:justify-end">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                 placeholder="Search name, email, mobile or code" value={search} onChange={e => setSearch(e.target.value)} />

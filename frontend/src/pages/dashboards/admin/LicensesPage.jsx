@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Search, FileText, Eye, X, CheckCircle2, AlertCircle, AlertTriangle, ShieldCheck, ShieldAlert, ShieldX,
   Shield, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown, ArrowUpDown,
-  Sparkles, Loader2, ExternalLink, CalendarClock, FileImage, FileCheck2,
+  Sparkles, Loader2, ExternalLink, CalendarClock, FileImage, Check,
 } from 'lucide-react'
 import { apiGet } from '../../../utils/api'
 
@@ -134,33 +134,58 @@ function Toast({ toast }) {
   )
 }
 
-function MiniStat({ icon: Icon, label, value, tone, loading, delay, footer }) {
-  return (
-    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex flex-col" style={{ animationDelay: `${delay}ms` }}>
-      <div className="flex items-center gap-3.5">
-        <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
-        <div className="min-w-0">
-          {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
-          <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
-        </div>
-      </div>
-      <div className="mt-3 min-h-[20px]">{loading ? <Skel className="h-3 w-28" /> : footer}</div>
-    </div>
-  )
-}
+function StatusDropdown({ options, value, onChange, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = options.find(o => o.value === value) || options[0]
 
-function Segmented({ options, value, onChange }) {
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [])
+
   return (
-    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
-      {options.map(o => (
-        <button key={o.value} onClick={() => onChange(o.value)}
-          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-          {o.dot && <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />}
-          {o.label}
-          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
-        </button>
-      ))}
+    <div className="relative w-full sm:w-52 flex-shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full h-9 pl-3 pr-2.5 flex items-center gap-2 rounded-lg border bg-white shadow-sm text-sm text-left transition-colors focus-visible:outline-none
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${current.dot || 'bg-slate-300'}`} />
+        <span className="flex-1 min-w-0 font-medium text-slate-800 truncate">{current.label}</span>
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{loading ? '·' : current.count}</span>
+        <ChevronDown size={15} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <ul role="listbox" className="sc-pop absolute left-0 right-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-xl ring-1 ring-slate-900/5 p-1">
+          {options.map(o => {
+            const on = o.value === value
+            return (
+              <li key={o.value || 'all'}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full h-9 px-2.5 flex items-center gap-2.5 rounded-lg text-sm text-left transition-colors ${on ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${o.dot || 'bg-slate-300'}`} />
+                  <span className="flex-1 font-medium">{o.label}</span>
+                  <span className={`text-xs tabular-nums ${on ? 'text-emerald-700' : 'text-slate-400'}`}>{loading ? '·' : o.count}</span>
+                  <Check size={14} strokeWidth={2.25} className={on ? 'text-emerald-600' : 'invisible'} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -320,7 +345,6 @@ function ScanResultModal({ result, license, onClose }) {
 // ── Licenses Page ──────────────────────────────────────────────
 export default function LicensesPage() {
   const [licenses,     setLicenses]     = useState([])
-  const [contacts,     setContacts]     = useState([])
   const [search,       setSearch]       = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterDoc,    setFilterDoc]    = useState('')
@@ -338,12 +362,8 @@ export default function LicensesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [lData, cData] = await Promise.all([
-        apiGet('/api/licenses/list.php', { per_page: 500 }),
-        apiGet('/api/contacts/list.php', { per_page: 500 }),
-      ])
+      const lData = await apiGet('/api/licenses/list.php', { per_page: 500 })
       setLicenses(lData.licenses || [])
-      setContacts(cData.contacts || [])
     } catch { showToast('Failed to load licenses.', 'error') }
     setLoading(false)
   }, [])
@@ -416,9 +436,6 @@ export default function LicensesPage() {
   }, [rows])
 
   const docTypes = useMemo(() => [...new Set(rows.map(r => r.document_name).filter(Boolean))].sort(), [rows])
-  const workersCovered = useMemo(() => new Set(rows.filter(r => r._state === 'valid').map(r => r.contact_id)).size, [rows])
-  const totalWorkers = contacts.filter(c => c.type === 'worker').length
-  const nextToExpire = useMemo(() => rows.filter(r => r._state === 'expiring').sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date))[0], [rows])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -442,25 +459,26 @@ export default function LicensesPage() {
   const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
   const hasFilters = search || filterStatus || filterDoc
   const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterDoc('') }
-  const validRate = counts.all ? Math.round((counts.valid / counts.all) * 100) : 0
   const statusLabel = { valid: 'Valid', expiring: 'Expiring soon', expired: 'Expired', none: 'No expiry' }
 
   const closeViewer = useCallback(() => setViewFile(null), [])
   const closeScan = useCallback(() => setScanResult(null), [])
 
+  const rowBtn = 'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-40 disabled:pointer-events-none'
+
   const actions = l => (
-    <div className="flex items-center justify-end gap-0.5">
+    <div className="flex items-center justify-end gap-1.5">
       <button
         onClick={() => handleAiScan(l)}
         disabled={!l.file_path || scanningId != null}
-        title={l.file_path ? 'Read expiry date with AI' : 'No file to scan'}
-        aria-label="Scan with AI"
-        className={`${iconBtn} hover:text-violet-700 hover:bg-violet-50`}
+        title={l.file_path ? 'Read the expiry date with AI' : 'No file to scan'}
+        className={`${rowBtn} hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700`}
       >
-        {scanningId === l.id ? <Loader2 size={16} className="animate-spin text-violet-600" /> : <Sparkles size={16} {...ICON} />}
+        {scanningId === l.id ? <Loader2 size={15} className="animate-spin text-violet-600" /> : <Sparkles size={15} {...ICON} />}
+        <span className="hidden md:inline">{scanningId === l.id ? 'Scanning…' : 'Scan'}</span>
       </button>
-      <button onClick={() => openFile(l)} disabled={!l.file_path} title={l.file_path ? 'View file' : 'No file attached'} aria-label="View file" className={iconBtn}>
-        <Eye size={16} {...ICON} />
+      <button onClick={() => openFile(l)} disabled={!l.file_path} title={l.file_path ? 'View file' : 'No file attached'} className={rowBtn}>
+        <Eye size={15} {...ICON} /><span className="hidden md:inline">View</span>
       </button>
     </div>
   )
@@ -476,48 +494,22 @@ export default function LicensesPage() {
         <p className="text-sm text-slate-500 mt-1">Worker licenses and certifications. Keep them current before assigning jobs.</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MiniStat icon={FileCheck2} label="Total licenses" value={counts.all} tone="bg-slate-100 text-slate-600" loading={loading} delay={0}
-          footer={<p className="text-xs text-slate-500"><span className="font-medium text-slate-700">{workersCovered}</span>{totalWorkers ? ` of ${totalWorkers}` : ''} workers covered</p>} />
-        <MiniStat icon={ShieldCheck} label="Valid" value={counts.valid} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={50}
-          footer={
-            <div>
-              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
-                <div className="sc-bar h-full bg-emerald-500" style={{ width: `${validRate}%` }} />
-                <div className="sc-bar h-full bg-amber-400" style={{ width: `${counts.all ? (counts.expiring / counts.all) * 100 : 0}%` }} />
-                <div className="sc-bar h-full bg-red-500" style={{ width: `${counts.all ? (counts.expired / counts.all) * 100 : 0}%` }} />
-              </div>
-              <p className="text-xs text-slate-500 mt-1.5">{validRate}% of all licenses</p>
-            </div>
-          } />
-        <MiniStat icon={ShieldAlert} label="Expiring in 30 days" value={counts.expiring} tone="bg-amber-50 text-amber-600" loading={loading} delay={100}
-          footer={nextToExpire
-            ? <button onClick={() => setFilterStatus('expiring')} className="text-xs font-medium text-amber-700 hover:text-amber-800 truncate max-w-full">Next: {nextToExpire._name}, {relExpiry(nextToExpire.expiry_date).toLowerCase()} →</button>
-            : <p className="text-xs text-slate-500">Nothing expiring soon</p>} />
-        <MiniStat icon={ShieldX} label="Expired" value={counts.expired} tone="bg-red-50 text-red-600" loading={loading} delay={150}
-          footer={counts.expired
-            ? <button onClick={() => setFilterStatus('expired')} className="text-xs font-medium text-red-700 hover:text-red-800">Needs renewal →</button>
-            : <p className="text-xs text-slate-500">No expired licenses</p>} />
-      </div>
-
       {/* Table card */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
-        <div className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center gap-3 border-b border-slate-100">
-          <div className="overflow-x-auto -mx-1 px-1">
-            <Segmented
-              value={filterStatus}
-              onChange={setFilterStatus}
-              options={[
-                { value: '',         label: 'All',           count: loading ? null : counts.all },
-                { value: 'valid',    label: 'Valid',         count: loading ? null : counts.valid,    dot: 'bg-emerald-500' },
-                { value: 'expiring', label: 'Expiring soon', count: loading ? null : counts.expiring, dot: 'bg-amber-400' },
-                { value: 'expired',  label: 'Expired',       count: loading ? null : counts.expired,  dot: 'bg-red-500' },
-              ]}
-            />
-          </div>
-          <div className="flex flex-1 items-center gap-2 lg:justify-end">
-            <div className="relative flex-1 lg:max-w-xs">
+        <div className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-slate-100">
+          <StatusDropdown
+            value={filterStatus}
+            onChange={setFilterStatus}
+            loading={loading}
+            options={[
+              { value: '',         label: 'All statuses',  count: counts.all },
+              { value: 'valid',    label: 'Valid',         count: counts.valid,    dot: 'bg-emerald-500' },
+              { value: 'expiring', label: 'Expiring soon', count: counts.expiring, dot: 'bg-amber-400' },
+              { value: 'expired',  label: 'Expired',       count: counts.expired,  dot: 'bg-red-500' },
+            ]}
+          />
+          <div className="flex flex-1 items-center gap-2 sm:justify-end">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                 placeholder="Search worker or document" value={search} onChange={e => setSearch(e.target.value)} />

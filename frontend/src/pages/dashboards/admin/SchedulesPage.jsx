@@ -634,13 +634,7 @@ export default function SchedulesPage() {
         </Notice>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MiniStat icon={CalendarCheck2} label="Visits today"    value={stats.today}    tone="bg-emerald-50 text-emerald-600" loading={loading || !today} delay={0} />
-        <MiniStat icon={CalendarRange}  label="This week"       value={stats.week}     tone="bg-sky-50 text-sky-600"         loading={loading || !today} delay={50} />
-        <MiniStat icon={CalendarClock}  label="Upcoming"        value={stats.upcoming} tone="bg-amber-50 text-amber-600"     loading={loading || !today} delay={100} />
-        <MiniStat icon={CheckCircle2}   label="Completed"       value={stats.done}     tone="bg-violet-50 text-violet-600"   loading={loading || !today} delay={150} />
-      </div>
+
 
       {/* Calendar + agenda */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5 items-start">
