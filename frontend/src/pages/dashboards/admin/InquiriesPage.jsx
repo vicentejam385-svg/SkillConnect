@@ -1,12 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 import {
-  Plus, Search, Eye, X, CheckCircle2, AlertCircle, XCircle, Inbox, Sparkles, Trophy,
-  TrendingUp, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
-  Mail, Phone, Smartphone, MapPin, Copy, Check, Loader2, CalendarDays, MessageSquareText,
-  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, Home, User,
-  RefreshCw, CheckCircle,
+  Plus, Search, Eye, X, CheckCircle2, AlertCircle, XCircle, Inbox, Trophy,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
+  Mail, Smartphone, MapPin, Copy, Check, Loader2, MessageSquareText,
+  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 
@@ -158,33 +157,58 @@ function Toast({ toast }) {
   )
 }
 
-function MiniStat({ icon: Icon, label, value, tone, loading, delay, footer }) {
-  return (
-    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex flex-col" style={{ animationDelay: `${delay}ms` }}>
-      <div className="flex items-center gap-3.5">
-        <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
-        <div className="min-w-0">
-          {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
-          <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
-        </div>
-      </div>
-      {footer && !loading && <div className="mt-3">{footer}</div>}
-    </div>
-  )
-}
+function StatusDropdown({ options, value, onChange, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = options.find(o => o.value === value) || options[0]
 
-function Segmented({ options, value, onChange }) {
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [])
+
   return (
-    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
-      {options.map(o => (
-        <button key={o.value} onClick={() => onChange(o.value)}
-          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-          {o.dot && <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />}
-          {o.label}
-          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
-        </button>
-      ))}
+    <div className="relative w-full sm:w-52 flex-shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full h-9 pl-3 pr-2.5 flex items-center gap-2 rounded-lg border bg-white shadow-sm text-sm text-left transition-colors focus-visible:outline-none
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${current.dot || 'bg-slate-300'}`} />
+        <span className="flex-1 min-w-0 font-medium text-slate-800 truncate">{current.label}</span>
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{loading ? '·' : current.count}</span>
+        <ChevronDown size={15} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <ul role="listbox" className="sc-pop absolute left-0 right-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-xl ring-1 ring-slate-900/5 p-1">
+          {options.map(o => {
+            const on = o.value === value
+            return (
+              <li key={o.value || 'all'}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                  className={`w-full h-9 px-2.5 flex items-center gap-2.5 rounded-lg text-sm text-left transition-colors ${on ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${o.dot || 'bg-slate-300'}`} />
+                  <span className="flex-1 font-medium">{o.label}</span>
+                  <span className={`text-xs tabular-nums ${on ? 'text-emerald-700' : 'text-slate-400'}`}>{loading ? '·' : o.count}</span>
+                  <Check size={14} strokeWidth={2.25} className={on ? 'text-emerald-600' : 'invisible'} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -259,7 +283,7 @@ function Chip({ children, onRemove }) {
   )
 }
 
-// ── Inquiry drawer ─────────────────────────────────────────────
+// ── Inquiry details modal ────────────────────────────────────────
 function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
   const [confirm, setConfirm] = useState(null) // 'won' | 'lost'
   useEscapeAndLock(onClose)
@@ -274,15 +298,15 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
   ]
 
   const info = [
-    { icon: Mail,       label: 'Email',   value: inquiry.email,   href: inquiry.email ? `mailto:${inquiry.email}` : null },
-    { icon: Smartphone, label: 'Mobile',  value: inquiry.mobile,  href: inquiry.mobile ? `tel:${inquiry.mobile}` : null },
+    { icon: Mail,       label: 'Email',   value: inquiry.email },
+    { icon: Smartphone, label: 'Mobile',  value: inquiry.mobile },
     { icon: MapPin,     label: 'Address', value: inquiry.address },
   ]
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
-      <aside role="dialog" aria-modal="true" className="sc-drawer absolute right-0 top-0 h-full w-full max-w-[480px] bg-white shadow-2xl flex flex-col">
+      <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-lg max-h-[90vh] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
           <p className="text-sm font-medium text-slate-500">Inquiry <span className="text-slate-900 tabular-nums">{inquiry.inquiry_code}</span></p>
           <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
@@ -300,14 +324,6 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-5">
-              <a href={inquiry.email ? `mailto:${inquiry.email}` : undefined} className={`${btnSecondary} ${!inquiry.email ? 'pointer-events-none opacity-50' : ''}`}>
-                <Mail size={15} {...ICON} /> Email
-              </a>
-              <a href={inquiry.mobile ? `tel:${inquiry.mobile}` : undefined} className={`${btnSecondary} ${!inquiry.mobile ? 'pointer-events-none opacity-50' : ''}`}>
-                <Phone size={15} {...ICON} /> Call
-              </a>
-            </div>
           </div>
 
           <div className="px-6 py-5 space-y-6">
@@ -348,13 +364,13 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
             <section>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Contact information</h4>
               <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-                {info.map(({ icon: Icon, label, value, href }) => (
+                {info.map(({ icon: Icon, label, value }) => (
                   <div key={label} className="group flex items-start gap-3 px-4 py-3">
                     <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <dt className="text-xs text-slate-500">{label}</dt>
                       <dd className="text-sm text-slate-900 break-words mt-0.5">
-                        {value ? (href ? <a href={href} className="hover:text-emerald-700 hover:underline">{value}</a> : value) : <span className="text-slate-400">Not provided</span>}
+                        {value || <span className="text-slate-400">Not provided</span>}
                       </dd>
                     </div>
                     <CopyButton value={value} />
@@ -411,7 +427,7 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
             </div>
           )}
         </div>
-      </aside>
+      </div>
     </div>
   )
 }
@@ -674,43 +690,20 @@ export default function InquiriesPage() {
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <MiniStat icon={Inbox}      label="Total inquiries" value={counts.all}       tone="bg-slate-100 text-slate-600"    loading={loading} delay={0}
-          footer={<p className="text-xs text-slate-500"><span className="font-medium text-slate-700">{counts.thisMonth}</span> received this month</p>} />
-        <MiniStat icon={Sparkles}   label="Awaiting review" value={counts.New}       tone="bg-sky-50 text-sky-600"         loading={loading} delay={50}
-          footer={counts.New > 0
-            ? <button onClick={() => setFilterStatus('New')} className="text-xs font-medium text-sky-700 hover:text-sky-800">Review now →</button>
-            : <p className="text-xs text-slate-500">You’re all caught up</p>} />
-        <MiniStat icon={Trophy}     label="Won"             value={counts.Won}       tone="bg-emerald-50 text-emerald-600" loading={loading} delay={100}
-          footer={<p className="text-xs text-slate-500">Became clients</p>} />
-        <MiniStat icon={TrendingUp} label="Win rate"        value={`${winRate}%`}    tone="bg-violet-50 text-violet-600"   loading={loading} delay={150}
-          footer={
-            <div>
-              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
-                <div className="sc-bar h-full bg-emerald-500" style={{ width: `${winRate}%` }} />
-                <div className="sc-bar h-full bg-red-400" style={{ width: decided ? `${100 - winRate}%` : 0 }} />
-              </div>
-              <p className="text-xs text-slate-500 mt-1.5">{counts.Won} won · {counts.Lost} lost</p>
-            </div>
-          } />
-      </div>
-
       {/* Table card */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
         <div className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center gap-3 border-b border-slate-100">
-          <div className="overflow-x-auto -mx-1 px-1">
-            <Segmented
-              value={filterStatus}
-              onChange={setFilterStatus}
-              options={[
-                { value: '',     label: 'All',  count: loading ? null : counts.all },
-                { value: 'New',  label: 'New',  count: loading ? null : counts.New,  dot: 'bg-sky-500' },
-                { value: 'Won',  label: 'Won',  count: loading ? null : counts.Won,  dot: 'bg-emerald-500' },
-                { value: 'Lost', label: 'Lost', count: loading ? null : counts.Lost, dot: 'bg-red-500' },
-              ]}
-            />
-          </div>
+          <StatusDropdown
+            value={filterStatus}
+            onChange={setFilterStatus}
+            loading={loading}
+            options={[
+              { value: '',     label: 'All statuses', count: counts.all },
+              { value: 'New',  label: 'New',          count: counts.New,  dot: 'bg-sky-500' },
+              { value: 'Won',  label: 'Won',          count: counts.Won,  dot: 'bg-emerald-500' },
+              { value: 'Lost', label: 'Lost',         count: counts.Lost, dot: 'bg-red-500' },
+            ]}
+          />
           <div className="flex flex-1 items-center gap-2 lg:justify-end">
             <div className="relative flex-1 lg:max-w-xs">
               <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -822,9 +815,9 @@ export default function InquiriesPage() {
                         <td className="px-5 py-3"><StatusBadge status={inq.status} /></td>
                         <td className="px-5 py-3">
                           <div className="flex items-center justify-end gap-0.5">
-                            <a href={inq.email ? `mailto:${inq.email}` : undefined} title="Send email" aria-label="Send email" className={`${iconBtn} ${!inq.email ? 'pointer-events-none opacity-30' : ''}`}><Mail size={16} {...ICON} /></a>
-                            <a href={inq.mobile ? `tel:${inq.mobile}` : undefined} title="Call" aria-label="Call" className={`${iconBtn} ${!inq.mobile ? 'pointer-events-none opacity-30' : ''}`}><Phone size={16} {...ICON} /></a>
-                            <button onClick={() => setSelected(inq)} title="Review" aria-label="Review" className={iconBtn}><Eye size={16} {...ICON} /></button>
+                            <button onClick={() => setSelected(inq)} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                              <Eye size={15} {...ICON} /> View
+                            </button>
                           </div>
                         </td>
                       </tr>
