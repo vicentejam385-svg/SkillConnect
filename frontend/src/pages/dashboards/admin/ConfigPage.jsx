@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, X, CheckCircle2, AlertCircle, Search, FileSignature, Wrench, Tags, Loader2, Lock,
-  Users, HardHat, UserCog, Briefcase, CalendarClock, Inbox, Hash,
+  Users, HardHat, UserCog, Briefcase, CalendarClock, Inbox, Hash, ChevronDown, Check,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 
@@ -59,20 +59,6 @@ function EmptyState({ icon: Icon, title, text, action }) {
   )
 }
 
-function Segmented({ options, value, onChange }) {
-  return (
-    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
-      {options.map(o => (
-        <button key={o.value} onClick={() => onChange(o.value)}
-          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all ${
-            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-          {o.label}
-          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 // ── Status data (unchanged) ────────────────────────────────────
 const STATUSES = [
@@ -188,6 +174,75 @@ function AddModal({ section, existing, saving, onClose, onSave }) {
   )
 }
 
+// ── Section dropdown ───────────────────────────────────────────
+function SectionDropdown({ sections, value, onChange, counts, loading }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = sections.find(s => s.key === value)
+
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [])
+
+  const countOf = key => (loading && key !== 'statuses' ? '·' : counts[key])
+
+  return (
+    <div className="relative w-full sm:w-72" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`w-full h-11 pl-2 pr-3 flex items-center gap-3 rounded-lg border bg-white shadow-sm text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-slate-300'}`}
+      >
+        <span className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+          <current.icon size={15} {...ICON} />
+        </span>
+        <span className="flex-1 min-w-0 text-sm font-medium text-slate-900 truncate">{current.label}</span>
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{countOf(current.key)}</span>
+        <ChevronDown size={16} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <ul role="listbox" aria-label="Configuration sections"
+          className="sc-pop absolute right-0 left-0 sm:left-auto sm:w-80 top-full mt-2 z-30 bg-white rounded-xl border border-slate-200 shadow-xl ring-1 ring-slate-900/5 p-1.5">
+          {sections.map(s => {
+            const on = s.key === value
+            return (
+              <li key={s.key}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => { onChange(s.key); setOpen(false) }}
+                  className={`w-full flex items-start gap-3 px-2.5 py-2.5 rounded-lg text-left transition-colors ${on ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                >
+                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${on ? 'bg-white text-emerald-600 ring-1 ring-emerald-200' : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200'}`}>
+                    <s.icon size={15} {...ICON} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-2">
+                      <span className={`text-sm font-medium ${on ? 'text-emerald-800' : 'text-slate-900'}`}>{s.label}</span>
+                      <span className="text-xs tabular-nums text-slate-400">{countOf(s.key)}</span>
+                    </span>
+                    <span className="block text-xs text-slate-500 mt-0.5 line-clamp-2">{s.text}</span>
+                  </span>
+                  {on && <Check size={16} strokeWidth={2.25} className="text-emerald-600 mt-1.5 flex-shrink-0" />}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ── Config Page ────────────────────────────────────────────────
 export default function ConfigPage() {
   const [activeTab,       setActiveTab]       = useState('org_types')
@@ -261,37 +316,15 @@ export default function ConfigPage() {
       <Toast toast={toast} />
 
       {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Configuration</h1>
+          <p className="text-sm text-slate-500 mt-1">The lists your team picks from across SkillConnect.</p>
+        </div>
+        <SectionDropdown sections={SECTIONS} value={activeTab} onChange={setActiveTab} counts={counts} loading={loading} />
+      </div>
+
       <div>
-        <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Configuration</h1>
-        <p className="text-sm text-slate-500 mt-1">The lists your team picks from across SkillConnect.</p>
-      </div>
-
-      {/* Mobile section switch */}
-      <div className="lg:hidden overflow-x-auto -mx-1 px-1">
-        <Segmented value={activeTab} onChange={setActiveTab}
-          options={SECTIONS.map(s => ({ value: s.key, label: s.label, count: loading && s.key !== 'statuses' ? null : counts[s.key] }))} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-5 items-start">
-        {/* Section nav */}
-        <nav aria-label="Configuration sections" className="hidden lg:block bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-2 lg:sticky lg:top-4">
-          {SECTIONS.map(s => {
-            const on = s.key === activeTab
-            return (
-              <button key={s.key} onClick={() => setActiveTab(s.key)} aria-current={on ? 'page' : undefined}
-                className={`relative w-full flex items-center gap-3 px-3 h-10 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
-                  ${on ? 'bg-emerald-50 text-emerald-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
-                {on && <span className="absolute -left-2 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-emerald-600" />}
-                <s.icon size={17} {...ICON} className={on ? 'text-emerald-600' : 'text-slate-400'} />
-                <span className="flex-1 text-left">{s.label}</span>
-                <span className={`text-xs tabular-nums px-1.5 py-0.5 rounded ${on ? 'bg-white text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {loading && s.key !== 'statuses' ? '·' : counts[s.key]}
-                </span>
-              </button>
-            )
-          })}
-        </nav>
-
         {/* Content */}
         <section key={activeTab} className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
           <header className="px-5 sm:px-6 pt-5 pb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-slate-100">
