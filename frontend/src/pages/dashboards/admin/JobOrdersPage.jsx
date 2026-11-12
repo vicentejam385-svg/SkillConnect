@@ -1,10 +1,36 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
-  ClipboardList, Plus, Search, RefreshCw, Edit2, CheckCircle,
-  AlertCircle, X, ArrowRight, AlertTriangle
+  Briefcase, Plus, Search, Pencil, CheckCircle2, AlertCircle, X, AlertTriangle, Filter,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown,
+  ArrowUpDown, Loader2, Clock, CalendarDays, HardHat, User, Mail, Smartphone, MapPin,
+  Link2, Hourglass, PlayCircle, CircleCheckBig, FileSignature, Info, Check,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
+
+const ICON = { strokeWidth: 1.75 }
+
+// ── Local styles ───────────────────────────────────────────────
+const styles = `
+  @keyframes sc-shimmer { 100% { transform: translateX(100%); } }
+  .sc-skel { position: relative; overflow: hidden; background: #eef2f5; border-radius: 6px; }
+  .sc-skel::after {
+    content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
+    animation: sc-shimmer 1.4s infinite;
+  }
+  @keyframes sc-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes sc-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sc-pop  { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  .sc-rise { animation: sc-rise .4s cubic-bezier(.2,.7,.2,1) both; }
+  .sc-fade { animation: sc-fade .2s ease both; }
+  .sc-pop  { animation: sc-pop .25s cubic-bezier(.2,.7,.2,1) both; }
+  .sc-bar  { transition: width .9s cubic-bezier(.2,.7,.2,1); }
+  @media (prefers-reduced-motion: reduce) {
+    .sc-skel::after, .sc-rise, .sc-fade, .sc-pop { animation: none; }
+    .sc-bar { transition: none; }
+  }
+`
 
 // ── useNavigate (admin wrapper) ────────────────────────────────
 function useNavigate() {
@@ -16,129 +42,203 @@ function useNavigate() {
       : nav(to, opts)
 }
 
-// ── Toast ──────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────
+const parseDay = s => { if (!s) return null; const d = new Date(String(s).slice(0, 10) + 'T00:00'); return isNaN(d) ? null : d }
+const fmtDay = (s, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => { const d = parseDay(s); return d ? d.toLocaleDateString(undefined, opts) : '—' }
+const DAY = 86400000
+
+function periodInfo(jo, today) {
+  const s = parseDay(jo.start_date), e = parseDay(jo.end_date)
+  if (!s || !e || !today) return null
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const total = Math.max(1, (e - s) / DAY)
+  if (t < s) { const d = Math.round((s - t) / DAY); return { pct: 0, label: d === 0 ? 'Starts today' : `Starts in ${d}d`, tone: 'text-slate-500', bar: 'bg-slate-300' } }
+  if (t > e) return { pct: 100, label: 'Ended', tone: 'text-slate-400', bar: 'bg-slate-300' }
+  const left = Math.round((e - t) / DAY)
+  return { pct: Math.min(100, ((t - s) / DAY / total) * 100), label: left === 0 ? 'Ends today' : `${left}d left`, tone: left <= 3 ? 'text-amber-700' : 'text-emerald-700', bar: left <= 3 ? 'bg-amber-400' : 'bg-emerald-500' }
+}
+
+// ── Shared bits ────────────────────────────────────────────────
+const Skel = ({ className = '' }) => <div className={`sc-skel ${className}`} />
+
+const AVATAR_TONES = [
+  'bg-emerald-50 text-emerald-700 ring-emerald-100',
+  'bg-sky-50 text-sky-700 ring-sky-100',
+  'bg-violet-50 text-violet-700 ring-violet-100',
+  'bg-amber-50 text-amber-700 ring-amber-100',
+  'bg-rose-50 text-rose-700 ring-rose-100',
+]
+function Avatar({ name, size = 'w-7 h-7', text = 'text-[10px]' }) {
+  if (!name) return <div className={`${size} rounded-full border border-dashed border-slate-300 flex-shrink-0`} />
+  const ini = name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()
+  return <div className={`${size} ${text} rounded-full ring-1 flex items-center justify-center font-semibold flex-shrink-0 ${AVATAR_TONES[(name.charCodeAt(0) || 0) % AVATAR_TONES.length]}`}>{ini}</div>
+}
+
+const STATUS = {
+  'Pending':      ['bg-yellow-50 text-yellow-800 ring-yellow-200',    'bg-yellow-500',  '#eab308'],
+  'Under Review': ['bg-violet-50 text-violet-700 ring-violet-200',    'bg-violet-500',  '#8b5cf6'],
+  'On Hold':      ['bg-orange-50 text-orange-700 ring-orange-200',    'bg-orange-500',  '#f97316'],
+  'Active':       ['bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500', '#10b981'],
+  'Scheduled':    ['bg-cyan-50 text-cyan-700 ring-cyan-200',          'bg-cyan-500',    '#06b6d4'],
+  'In Progress':  ['bg-amber-50 text-amber-700 ring-amber-200',       'bg-amber-500',   '#f59e0b'],
+  'Complete':     ['bg-blue-50 text-blue-700 ring-blue-200',          'bg-blue-500',    '#3b82f6'],
+  'Completed':    ['bg-blue-50 text-blue-700 ring-blue-200',          'bg-blue-500',    '#3b82f6'],
+  'Cancelled':    ['bg-red-50 text-red-700 ring-red-200',             'bg-red-500',     '#ef4444'],
+}
+
+function StatusBadge({ status }) {
+  const [cls, dot] = STATUS[status] || ['bg-gray-50 text-gray-600 ring-gray-200', 'bg-gray-400']
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{status || '—'}
+    </span>
+  )
+}
+
+function EmptyState({ icon: Icon, title, text, action }) {
+  return (
+    <div className="py-16 flex flex-col items-center justify-center text-center px-6">
+      <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><Icon size={22} {...ICON} /></div>
+      <p className="mt-3 text-sm font-semibold text-slate-800">{title}</p>
+      {text && <p className="text-sm text-slate-500 mt-1 max-w-[300px]">{text}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  )
+}
+
+function Notice({ tone = 'info', icon: Icon = Info, children, action }) {
+  const tones = {
+    info:    'bg-sky-50 border-sky-200 text-sky-800 [&>svg]:text-sky-500',
+    success: 'bg-emerald-50 border-emerald-200 text-emerald-800 [&>svg]:text-emerald-500',
+    warning: 'bg-amber-50 border-amber-200 text-amber-800 [&>svg]:text-amber-500',
+    error:   'bg-red-50 border-red-200 text-red-700 [&>svg]:text-red-500',
+  }
+  return (
+    <div className={`flex items-start gap-2.5 px-3.5 py-3 rounded-lg border text-sm ${tones[tone]}`}>
+      <Icon size={16} {...ICON} className="flex-shrink-0 mt-0.5" />
+      <div className="min-w-0 flex-1">{children}</div>
+      {action}
+    </div>
+  )
+}
+
+const btnPrimary = 'inline-flex items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-60'
+const btnSecondary = 'inline-flex items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-60'
+const iconBtn = 'inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500'
+
 function Toast({ toast }) {
   if (!toast) return null
+  const ok = toast.type === 'success'
   return (
-    <div className={`fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg text-sm shadow-lg border
-      ${toast.type === 'success'
-        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-        : 'bg-red-50 border-red-200 text-red-700'}`}>
-      {toast.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+    <div className="sc-pop fixed top-6 right-6 z-[80] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700 max-w-sm">
+      <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${ok ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+        {ok ? <CheckCircle2 size={16} {...ICON} /> : <AlertCircle size={16} {...ICON} />}
+      </span>
       {toast.msg}
     </div>
   )
 }
 
-// ── Status Badge ───────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const colors = {
-    'Pending':      'bg-yellow-100 text-yellow-700',
-    'Active':       'bg-emerald-100 text-emerald-700',
-    'Complete':     'bg-blue-100 text-blue-700',
-    'Completed':    'bg-blue-100 text-blue-700',
-    'On Hold':      'bg-orange-100 text-orange-700',
-    'Under Review': 'bg-purple-100 text-purple-700',
-    'Scheduled':    'bg-cyan-100 text-cyan-700',
-    'In Progress':  'bg-amber-100 text-amber-700',
-    'Cancelled':    'bg-red-100 text-red-700',
-    'New':          'bg-sky-100 text-sky-700',
-    'Won':          'bg-emerald-100 text-emerald-700',
-    'Lost':         'bg-red-100 text-red-700',
-    'Inactive':     'bg-gray-100 text-gray-600',
-    'On Leave':     'bg-orange-100 text-orange-700',
-    'Blacklisted':  'bg-red-100 text-red-700',
-  }
+function MiniStat({ icon: Icon, label, value, tone, loading, delay }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${colors[status] || 'bg-gray-100 text-gray-600'}`}>
-      {status || '—'}
-    </span>
-  )
-}
-
-// ── Pagination ─────────────────────────────────────────────────
-function Pagination({ page, total, perPage, onChange }) {
-  const totalPages = Math.ceil(total / perPage)
-  if (totalPages <= 1) return null
-  const pages = []
-  const delta = 2
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || (i >= page - delta && i <= page + delta)) {
-      pages.push(i)
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...')
-    }
-  }
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
-      <p className="text-xs text-gray-400">
-        Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
-      </p>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onChange(page - 1)}
-          disabled={page === 1}
-          className="px-2.5 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          ←
-        </button>
-        {pages.map((p, i) =>
-          p === '...' ? (
-            <span key={`dots-${i}`} className="px-2 text-gray-400 text-xs">…</span>
-          ) : (
-            <button
-              key={p}
-              onClick={() => onChange(p)}
-              className={`w-8 h-8 text-xs font-semibold rounded-lg transition-colors
-                ${p === page
-                  ? 'bg-emerald-500 text-white border border-emerald-500'
-                  : 'text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button
-          onClick={() => onChange(page + 1)}
-          disabled={page === totalPages}
-          className="px-2.5 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          →
-        </button>
+    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex items-center gap-3.5" style={{ animationDelay: `${delay}ms` }}>
+      <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
+      <div className="min-w-0">
+        {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
+        <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
       </div>
     </div>
   )
 }
 
-// ── Job Orders Page
-export default function JobOrdersPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const highlightInquiryCode = location.state?.highlightInquiryCode || null
-const highlightClientName  = location.state?.highlightClientName  || null
-const highlightClientId    = location.state?.highlightClientId    || null
-  const [jobOrders,  setJobOrders]  = useState([])
-  const [contacts,   setContacts]   = useState([])
-  const [contracts,  setContracts]  = useState([])
-  const [inquiries,  setInquiries]  = useState([])
-  const [search,     setSearch]     = useState('')
-  const [filterStatus,   setFilterStatus]   = useState('')
-const [filterContract, setFilterContract] = useState('')
-  const [loading,    setLoading]    = useState(true)
-  const [showForm,   setShowForm]   = useState(false)
-  const [editTarget, setEditTarget] = useState(null)
-  const [toast,      setToast]      = useState(null)
-  const [page,       setPage]       = useState(1)
-  const [total,      setTotal]      = useState(0)
-const [today,      setToday]      = useState(null)
-  const PER_PAGE = 3
-  const emptyForm = { worker_contact_id: '', client_contact_id: '', inquiry_id: '', contract_type_id: '', description: '', start_date: '', end_date: '', status_id: '16', _usedStatuses: [16] }
-  const [form, setForm] = useState(emptyForm)
+function SelectBox({ value, onChange, children, className = '' }) {
+  return (
+    <div className={`relative ${className}`}>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="appearance-none w-full h-9 pl-3 pr-8 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 cursor-pointer">
+        {children}
+      </select>
+      <ChevronDown size={14} {...ICON} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+    </div>
+  )
+}
 
-  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
-  const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
+function SortHeader({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey
+  const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown
+  return (
+    <th className="px-5 py-2.5 font-medium whitespace-nowrap">
+      <button onClick={() => onSort(sortKey)} className={`inline-flex items-center gap-1 rounded hover:text-slate-900 ${active ? 'text-slate-900' : ''}`}>
+        {label}<Icon size={12} {...ICON} className={active ? 'text-emerald-600' : 'text-slate-300'} />
+      </button>
+    </th>
+  )
+}
 
-  const JO_STATUSES = [
+function Pagination({ page, total, perPage, onPage, onPerPage }) {
+  const totalPages = Math.max(1, Math.ceil(total / perPage))
+  const from = total ? (page - 1) * perPage + 1 : 0
+  const to = Math.min(page * perPage, total)
+  const pages = []
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 1) pages.push(i)
+    else if (pages[pages.length - 1] !== '…') pages.push('…')
+  }
+  const cell = 'h-8 min-w-[32px] px-2 inline-flex items-center justify-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 disabled:text-slate-300 disabled:cursor-not-allowed'
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+      <div className="flex items-center gap-4 text-sm text-slate-500">
+        <label className="flex items-center gap-2">
+          <span className="hidden sm:inline">Rows per page</span>
+          <SelectBox value={perPage} onChange={v => onPerPage(Number(v))} className="w-[72px]">
+            {[5, 10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+          </SelectBox>
+        </label>
+        <span className="tabular-nums"><span className="font-medium text-slate-800">{from}–{to}</span> of <span className="font-medium text-slate-800">{total}</span></span>
+      </div>
+      <nav aria-label="Pagination" className="inline-flex rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-200">
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(1)} disabled={page === 1} aria-label="First page"><ChevronsLeft size={16} {...ICON} /></button>
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(page - 1)} disabled={page === 1} aria-label="Previous page"><ChevronLeft size={16} {...ICON} /></button>
+        <span className={`${cell} sm:hidden text-slate-600 px-3`}>Page {page} of {totalPages}</span>
+        {pages.map((p, i) => p === '…'
+          ? <span key={`e${i}`} className={`${cell} hidden sm:inline-flex text-slate-400`}>…</span>
+          : <button key={p} onClick={() => onPage(p)} aria-current={p === page ? 'page' : undefined}
+              className={`${cell} hidden sm:inline-flex tabular-nums ${p === page ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{p}</button>
+        )}
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(page + 1)} disabled={page === totalPages} aria-label="Next page"><ChevronRight size={16} {...ICON} /></button>
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(totalPages)} disabled={page === totalPages} aria-label="Last page"><ChevronsRight size={16} {...ICON} /></button>
+      </nav>
+    </div>
+  )
+}
+
+function Chip({ children, onRemove }) {
+  return (
+    <span className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700">
+      {children}
+      <button onClick={onRemove} aria-label="Remove filter" className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X size={12} {...ICON} /></button>
+    </span>
+  )
+}
+
+function PeriodCell({ jo, today }) {
+  if (!jo.start_date || !jo.end_date) return <span className="text-slate-400">No dates</span>
+  const info = ['Complete', 'Completed', 'Cancelled'].includes(jo.status) ? null : periodInfo(jo, today)
+  return (
+    <div className="min-w-[150px]">
+      <p className="text-slate-700 tabular-nums whitespace-nowrap">{fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – {fmtDay(jo.end_date)}</p>
+      {info && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden"><div className={`sc-bar h-full rounded-full ${info.bar}`} style={{ width: `${info.pct}%` }} /></div>
+          <span className={`text-[11px] font-medium whitespace-nowrap ${info.tone}`}>{info.label}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Job statuses & flow (unchanged) ────────────────────────────
+const JO_STATUSES = [
   { id: 16, l: 'Pending',      next: [20] },
   { id: 20, l: 'Under Review', next: [17, 23, 19] },
   { id: 19, l: 'On Hold',      next: [17] },
@@ -149,108 +249,157 @@ const [today,      setToday]      = useState(null)
   { id: 23, l: 'Cancelled',    next: [] },
 ]
 
-  const isWorkerAvailable = (workerId, startDate, endDate, excludeJobOrderId = null) => {
-  if (!workerId || !startDate || !endDate) return true
-  const newStart = new Date(startDate)
-  const newEnd = new Date(endDate)
-  const activeStatuses = ['Pending', 'Under Review', 'Active', 'Scheduled', 'In Progress']
-  return !jobOrders.some(jo => {
-    if (excludeJobOrderId && jo.id === excludeJobOrderId) return false
-    if (!activeStatuses.includes(jo.status)) return false
-    if (String(jo.worker_contact_id) !== String(workerId)) return false
-    if (!jo.start_date || !jo.end_date) return false
-    return newStart <= new Date(jo.end_date) && newEnd >= new Date(jo.start_date)
-  })
-}
+// ── Job Orders Page ────────────────────────────────────────────
+export default function JobOrdersPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const highlightInquiryCode = location.state?.highlightInquiryCode || null
+  const highlightClientName  = location.state?.highlightClientName  || null
+  const highlightClientId    = location.state?.highlightClientId    || null
 
-  // Helper function to get conflicting job order details
-  const getConflictingJobOrder = (workerId, startDate, endDate, excludeJobOrderId = null) => {
-    if (!workerId || !startDate || !endDate) return null
-    
-    const newStart = new Date(startDate)
-    const newEnd = new Date(endDate)
-    
-    return jobOrders.find(jo => {
+  const [jobOrders,      setJobOrders]      = useState([])
+  const [contacts,       setContacts]       = useState([])
+  const [contracts,      setContracts]      = useState([])
+  const [inquiries,      setInquiries]      = useState([])
+  const [search,         setSearch]         = useState('')
+  const [filterStatus,   setFilterStatus]   = useState('')
+  const [filterContract, setFilterContract] = useState('')
+  const [sort,           setSort]           = useState({ key: 'job_order_code', dir: 'desc' })
+  const [loading,        setLoading]        = useState(true)
+  const [showForm,       setShowForm]       = useState(false)
+  const [editTarget,     setEditTarget]     = useState(null)
+  const [saving,         setSaving]         = useState(false)
+  const [toast,          setToast]          = useState(null)
+  const [page,           setPage]           = useState(1)
+  const [perPage,        setPerPage]        = useState(10)
+  const [today,          setToday]          = useState(null)
+  const emptyForm = { worker_contact_id: '', client_contact_id: '', inquiry_id: '', contract_type_id: '', description: '', start_date: '', end_date: '', status_id: '16', _usedStatuses: [16] }
+  const [form, setForm] = useState(emptyForm)
+
+  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
+  const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
+
+  // ── Availability helpers (unchanged)
+  const ACTIVE = ['Pending', 'Under Review', 'Active', 'Scheduled', 'In Progress']
+
+  const isWorkerAvailable = (workerId, startDate, endDate, excludeJobOrderId = null) => {
+    if (!workerId || !startDate || !endDate) return true
+    const newStart = new Date(startDate), newEnd = new Date(endDate)
+    return !jobOrders.some(jo => {
       if (excludeJobOrderId && jo.id === excludeJobOrderId) return false
-      
-      const activeStatuses = ['Pending', 'Under Review', 'Active', 'Scheduled', 'In Progress']
-      if (!activeStatuses.includes(jo.status)) return false
-      
+      if (!ACTIVE.includes(jo.status)) return false
       if (String(jo.worker_contact_id) !== String(workerId)) return false
-      
       if (!jo.start_date || !jo.end_date) return false
-      
-      const joStart = new Date(jo.start_date)
-      const joEnd = new Date(jo.end_date)
-      
-      return newStart <= joEnd && newEnd >= joStart
+      return newStart <= new Date(jo.end_date) && newEnd >= new Date(jo.start_date)
     })
   }
-  const getWorkerBusyRanges = (workerId, excludeJobOrderId = null) => {
-  const activeStatuses = ['Pending', 'Under Review', 'Active', 'Scheduled', 'In Progress']
-  return jobOrders
-    .filter(jo => {
+
+  const getConflictingJobOrder = (workerId, startDate, endDate, excludeJobOrderId = null) => {
+    if (!workerId || !startDate || !endDate) return null
+    const newStart = new Date(startDate), newEnd = new Date(endDate)
+    return jobOrders.find(jo => {
       if (excludeJobOrderId && jo.id === excludeJobOrderId) return false
-      if (!activeStatuses.includes(jo.status)) return false
+      if (!ACTIVE.includes(jo.status)) return false
       if (String(jo.worker_contact_id) !== String(workerId)) return false
-      return !!(jo.start_date && jo.end_date)
+      if (!jo.start_date || !jo.end_date) return false
+      return newStart <= new Date(jo.end_date) && newEnd >= new Date(jo.start_date)
     })
-    .map(jo => ({ start: jo.start_date, end: jo.end_date, code: jo.job_order_code }))
-}
+  }
 
-const getWorkerNextAvailable = (workerId, excludeJobOrderId = null) => {
-  const ranges = getWorkerBusyRanges(workerId, excludeJobOrderId)
-  if (ranges.length === 0) return null
-  const sorted = [...ranges].sort((a, b) => new Date(a.end) - new Date(b.end))
-  const latest = sorted[sorted.length - 1]
-  const next = new Date(latest.end)
-  next.setDate(next.getDate() + 1)
-  return next.toISOString().slice(0, 10)
-}
+  const getWorkerBusyRanges = (workerId, excludeJobOrderId = null) =>
+    jobOrders
+      .filter(jo => {
+        if (excludeJobOrderId && jo.id === excludeJobOrderId) return false
+        if (!ACTIVE.includes(jo.status)) return false
+        if (String(jo.worker_contact_id) !== String(workerId)) return false
+        return !!(jo.start_date && jo.end_date)
+      })
+      .map(jo => ({ start: jo.start_date, end: jo.end_date, code: jo.job_order_code }))
 
-  const load = async () => {
+  const getWorkerNextAvailable = (workerId, excludeJobOrderId = null) => {
+    const ranges = getWorkerBusyRanges(workerId, excludeJobOrderId)
+    if (ranges.length === 0) return null
+    const sorted = [...ranges].sort((a, b) => new Date(a.end) - new Date(b.end))
+    const next = new Date(sorted[sorted.length - 1].end)
+    next.setDate(next.getDate() + 1)
+    return next.toISOString().slice(0, 10)
+  }
+
+  // ── Load (all job orders, so conflict checks see every worker booking)
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const [joData, cData, ctData, inqData] = await Promise.all([
-        apiGet('/api/job-orders/list.php', { search, per_page: PER_PAGE, page, status: filterStatus, contract_type: filterContract }),
-        apiGet('/api/contacts/list.php',   { per_page: 100 }),
+        apiGet('/api/job-orders/list.php', { per_page: 500 }),
+        apiGet('/api/contacts/list.php',   { per_page: 500 }),
         apiGet('/api/config/contract-types.php'),
-        apiGet('/api/inquiries/list.php',  { per_page: 100 }),
+        apiGet('/api/inquiries/list.php',  { per_page: 500 }),
       ])
-      setJobOrders(joData.job_orders || [])
-      setTotal(joData.pagination?.total ?? (joData.job_orders || []).length)
+      setJobOrders(joData.job_orders     || [])
       setContacts(cData.contacts         || [])
       setContracts(ctData.contract_types || [])
       setInquiries(inqData.inquiries     || [])
-    } catch { showToast('Failed to load.', 'error') }
+    } catch { showToast('Failed to load job orders.', 'error') }
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
-  fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/time/now.php')
-    .then(r => r.json())
-    .then(data => {
-      if (data?.datetime) setToday(new Date(data.datetime))
-      else throw new Error('No datetime')
-    })
-    .catch(() => setToday(new Date()))
-}, [])
+    fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/time/now.php')
+      .then(r => r.json())
+      .then(data => { if (data?.datetime) setToday(new Date(data.datetime)); else throw new Error('No datetime') })
+      .catch(() => setToday(new Date()))
+  }, [])
 
-useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
-  useEffect(() => { load() }, [search, filterStatus, filterContract, page])
-
-  const displayedJobOrders = highlightInquiryCode
-  ? jobOrders.filter(jo => jo.inquiry_code === highlightInquiryCode)
-  : highlightClientName
-    ? jobOrders.filter(jo =>
-        jo.client_name === highlightClientName ||
-        String(jo.client_contact_id) === String(highlightClientId)
-      )
-    : jobOrders
+  useEffect(() => { load() }, [load])
+  useEffect(() => { setPage(1) }, [search, filterStatus, filterContract, perPage])
 
   const workers = contacts.filter(c => c.type === 'worker')
   const clients = contacts.filter(c => c.type === 'client' || c.type === 'organisation')
 
+  // ── Derived list
+  const scoped = useMemo(() => highlightInquiryCode
+    ? jobOrders.filter(jo => jo.inquiry_code === highlightInquiryCode)
+    : highlightClientName
+      ? jobOrders.filter(jo => jo.client_name === highlightClientName || String(jo.client_contact_id) === String(highlightClientId))
+      : jobOrders,
+  [jobOrders, highlightInquiryCode, highlightClientName, highlightClientId])
+
+  const statusCounts = useMemo(() => {
+    const m = {}
+    scoped.forEach(jo => { m[jo.status] = (m[jo.status] || 0) + 1 })
+    return m
+  }, [scoped])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const list = scoped.filter(jo =>
+      (!filterStatus || jo.status === filterStatus) &&
+      (!filterContract || jo.contract_type === filterContract) &&
+      (!q || [jo.job_order_code, jo.worker_name, jo.client_name, jo.description, jo.contract_type, jo.inquiry_code].some(v => String(v || '').toLowerCase().includes(q)))
+    )
+    const val = jo => sort.key === 'start_date' ? (parseDay(jo.start_date)?.getTime() || 0) : String(jo[sort.key] || '').toLowerCase()
+    return [...list].sort((a, b) => {
+      const A = val(a), B = val(b)
+      const r = typeof A === 'number' ? A - B : A.localeCompare(B, undefined, { numeric: true })
+      return sort.dir === 'asc' ? r : -r
+    })
+  }, [scoped, search, filterStatus, filterContract, sort])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
+  const safePage = Math.min(page, totalPages)
+  const pageItems = filtered.slice((safePage - 1) * perPage, safePage * perPage)
+  const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
+  const hasFilters = search || filterStatus || filterContract
+  const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterContract('') }
+
+  const stats = {
+    total:    scoped.length,
+    review:   (statusCounts['Pending'] || 0) + (statusCounts['Under Review'] || 0),
+    running:  (statusCounts['Active'] || 0) + (statusCounts['Scheduled'] || 0) + (statusCounts['In Progress'] || 0),
+    done:     (statusCounts['Complete'] || 0) + (statusCounts['Completed'] || 0),
+  }
+
+  // ── Form helpers (unchanged logic)
   const handleClientChange = (clientId) => {
     f('client_contact_id', clientId)
     if (!clientId) { f('description', ''); f('_client_mobile', ''); f('_client_email', ''); f('_client_address', ''); return }
@@ -270,20 +419,19 @@ useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
     const start = new Date(startDate)
     if (isNaN(start)) return ''
     const map = {
-      '1 Day':    () => { const d = new Date(start); d.setDate(d.getDate() + 1); return d },
-      '2 Days':   () => { const d = new Date(start); d.setDate(d.getDate() + 2); return d },
-      '3 Days':   () => { const d = new Date(start); d.setDate(d.getDate() + 3); return d },
-      '1 Week':   () => { const d = new Date(start); d.setDate(d.getDate() + 7); return d },
-      '2 Weeks':  () => { const d = new Date(start); d.setDate(d.getDate() + 14); return d },
-      '1 Month':  () => { const d = new Date(start); d.setMonth(d.getMonth() + 1); return d },
-      '3 Months': () => { const d = new Date(start); d.setMonth(d.getMonth() + 3); return d },
-      '6 Months': () => { const d = new Date(start); d.setMonth(d.getMonth() + 6); return d },
-      '1 Year':   () => { const d = new Date(start); d.setFullYear(d.getFullYear() + 1); return d },
+      '1 Day':      () => { const d = new Date(start); d.setDate(d.getDate() + 1); return d },
+      '2 Days':     () => { const d = new Date(start); d.setDate(d.getDate() + 2); return d },
+      '3 Days':     () => { const d = new Date(start); d.setDate(d.getDate() + 3); return d },
+      '1 Week':     () => { const d = new Date(start); d.setDate(d.getDate() + 7); return d },
+      '2 Weeks':    () => { const d = new Date(start); d.setDate(d.getDate() + 14); return d },
+      '1 Month':    () => { const d = new Date(start); d.setMonth(d.getMonth() + 1); return d },
+      '3 Months':   () => { const d = new Date(start); d.setMonth(d.getMonth() + 3); return d },
+      '6 Months':   () => { const d = new Date(start); d.setMonth(d.getMonth() + 6); return d },
+      '1 Year':     () => { const d = new Date(start); d.setFullYear(d.getFullYear() + 1); return d },
       '5 Years ++': () => { const d = new Date(start); d.setFullYear(d.getFullYear() + 5); return d },
     }
     const fn = map[contractName]
-    if (!fn) return ''
-    return fn().toISOString().slice(0, 10)
+    return fn ? fn().toISOString().slice(0, 10) : ''
   }
 
   const openCreate = () => { setEditTarget(null); setForm(emptyForm); setShowForm(true) }
@@ -303,19 +451,20 @@ useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
       description: jo.description || (linkedInquiry?.reason === 'Other' ? linkedInquiry?.description : linkedInquiry?.reason) || linkedInquiry?.description || '',
       start_date:        jo.start_date  || '',
       end_date:          jo.end_date    || '',
-           status_id:         status?.id     || '16',
+      status_id:         status?.id     || '16',
       _client_mobile:    client?.mobile  || '',
       _client_email:     client?.email   || '',
       _client_address:   client?.address || '',
       _inquiry_code:     linkedInquiry?.inquiry_code || '',
-      _inquiry_reason: linkedInquiry?.reason || '',
+      _inquiry_reason:   linkedInquiry?.reason || '',
       _inquiry_description: linkedInquiry?.reason === 'Other' ? (linkedInquiry?.description || '') : '',
     })
     setShowForm(true)
   }
 
+  const closeForm = useCallback(() => { if (!saving) { setShowForm(false); setEditTarget(null) } }, [saving])
+
   const handleSave = async () => {
-    // Validate worker availability before saving
     if (form.worker_contact_id && form.start_date && form.end_date) {
       if (!isWorkerAvailable(form.worker_contact_id, form.start_date, form.end_date, editTarget?.id)) {
         const conflict = getConflictingJobOrder(form.worker_contact_id, form.start_date, form.end_date, editTarget?.id)
@@ -327,13 +476,11 @@ useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
     const token = JSON.parse(localStorage.getItem('sc_user'))?.token
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
     const base = 'https://saddlebrown-swan-877763.hostingersite.com/backend/api'
+    setSaving(true)
     try {
-      let res
-      if (editTarget) {
-        res = await apiPut('/api/job-orders/update.php', { id: editTarget.id, ...form })
-      } else {
-        res = await apiPost('/api/job-orders/create.php', form)
-      }
+      const res = editTarget
+        ? await apiPut('/api/job-orders/update.php', { id: editTarget.id, ...form })
+        : await apiPost('/api/job-orders/create.php', form)
       if (!res.success) throw new Error(res.error)
       if (!editTarget && form.start_date && form.end_date) {
         try {
@@ -343,36 +490,30 @@ useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
           })
         } catch (e) { console.warn('Schedule auto-create failed:', e) }
       }
-      showToast(editTarget ? 'Job order updated!' : 'Job order created!')
-      setShowForm(false); setEditTarget(null); setForm(emptyForm); load()
-      // If status changed to Scheduled (33), navigate to scheduling with job order details
-            if (Number(form.status_id) === 21 && editTarget) {
+      showToast(editTarget ? 'Job order updated' : 'Job order created')
+      const wasEdit = editTarget
+      setSaving(false); setShowForm(false); setEditTarget(null); setForm(emptyForm); load()
+
+      if (Number(form.status_id) === 21 && wasEdit) {
         const selectedContract = contracts.find(c => String(c.id) === String(form.contract_type_id))
         const contractName = selectedContract?.name || ''
-        const longContracts = ['3 Months', '6 Months', '1 Year', '5 Years ++']
-        const isLongContract = longContracts.includes(contractName)
-
+        const isLongContract = ['3 Months', '6 Months', '1 Year', '5 Years ++'].includes(contractName)
         let schedStart = form.start_date
         let schedEnd   = form.end_date
-
         if (isLongContract && form.start_date) {
-          // Pick a random start within the job order range, schedule lasts 3-4 days
-          const joStart  = new Date(form.start_date)
-          const joEnd    = new Date(form.end_date)
+          const joStart = new Date(form.start_date)
+          const joEnd   = new Date(form.end_date)
           const rangeDays = Math.floor((joEnd - joStart) / (1000 * 60 * 60 * 24))
           const maxOffset = Math.max(0, rangeDays - 4)
-          const randomOffset = Math.floor(Math.random() * (maxOffset + 1))
           const randStart = new Date(joStart)
-          randStart.setDate(randStart.getDate() + randomOffset)
-          const duration = Math.random() < 0.5 ? 3 : 4 // randomly 3 or 4 days
+          randStart.setDate(randStart.getDate() + Math.floor(Math.random() * (maxOffset + 1)))
           const randEnd = new Date(randStart)
-          randEnd.setDate(randEnd.getDate() + duration - 1)
+          randEnd.setDate(randEnd.getDate() + (Math.random() < 0.5 ? 3 : 4) - 1)
           schedStart = randStart.toISOString().slice(0, 10)
           schedEnd   = randEnd.toISOString().slice(0, 10)
         }
-
         navigate('/admin/scheduling', { state: { fromJobOrder: {
-          id: editTarget.id,
+          id: wasEdit.id,
           worker_contact_id: form.worker_contact_id,
           client_contact_id: form.client_contact_id,
           description: form.description,
@@ -384,398 +525,468 @@ useEffect(() => { setPage(1) }, [search, filterStatus, filterContract])
           jo_end_date:   form.end_date,
         } } })
       }
-    } catch (err) { showToast(err.message || 'Failed.', 'error') }
+    } catch (err) { showToast(err.message || 'Failed to save job order.', 'error'); setSaving(false) }
   }
 
-  const handleStatusUpdate = async (id, status_id) => {
-    try { await apiPut('/api/job-orders/update.php', { id, status_id }); showToast('Status updated!'); load() }
-    catch { showToast('Update failed.', 'error') }
-  }
-
-const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white text-gray-800 placeholder-gray-400"
-  const labelCls = "block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider"
-
-  
+  const pipeline = JO_STATUSES.map(s => ({ ...s, count: s.l === 'Complete' ? (statusCounts['Complete'] || 0) + (statusCounts['Completed'] || 0) : (statusCounts[s.l] || 0) }))
+  const pipelineTotal = pipeline.reduce((a, s) => a + s.count, 0)
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="max-w-7xl space-y-5">
+      <style>{styles}</style>
       <Toast toast={toast} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Job Orders</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage all job orders</p>
+          <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Job orders</h1>
+          <p className="text-sm text-slate-500 mt-1">Assign workers to client projects and track each job from review to completion.</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg transition-colors">
-          <Plus size={16} />New Job Order
-        </button>
+        <button onClick={openCreate} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> New job order</button>
       </div>
 
       {(highlightInquiryCode || highlightClientName) && (
-  <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
-    <div className="flex items-center gap-2">
-      <ArrowRight size={14} className="text-amber-500" />
-      {highlightInquiryCode
-        ? <span className="text-sm text-amber-700">Showing job order for inquiry <span className="font-semibold">{highlightInquiryCode}</span></span>
-        : <span className="text-sm text-amber-700">Showing job orders for client <span className="font-semibold">{highlightClientName}</span></span>
-      }
-    </div>
-    <button onClick={() => navigate('/admin/job-orders', { replace: true, state: {} })} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"><X size={12} />Clear</button>
-  </div>
-)}
+        <Notice tone="info" icon={Filter}
+          action={<button onClick={() => navigate('/admin/job-orders', { replace: true, state: {} })} className="text-sm font-medium text-sky-800 underline underline-offset-2 whitespace-nowrap">Show all</button>}>
+          {highlightInquiryCode
+            ? <>Showing the job order for inquiry <span className="font-semibold">{highlightInquiryCode}</span>.</>
+            : <>Showing job orders for <span className="font-semibold">{highlightClientName}</span>.</>}
+        </Notice>
+      )}
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative w-full max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300 placeholder-gray-400"
-            placeholder="Search job orders..." value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <select
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-600"
-          value={filterStatus}
-          onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
-        >
-          <option value="">All Statuses</option>
-          {JO_STATUSES.map(s => <option key={s.id} value={s.l}>{s.l}</option>)}
-        </select>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <MiniStat icon={Briefcase}      label="Total job orders" value={stats.total}   tone="bg-slate-100 text-slate-600"    loading={loading} delay={0} />
+        <MiniStat icon={Hourglass}      label="Awaiting review"  value={stats.review}  tone="bg-violet-50 text-violet-600"   loading={loading} delay={50} />
+        <MiniStat icon={PlayCircle}     label="Running"          value={stats.running} tone="bg-amber-50 text-amber-600"     loading={loading} delay={100} />
+        <MiniStat icon={CircleCheckBig} label="Completed"        value={stats.done}    tone="bg-emerald-50 text-emerald-600" loading={loading} delay={150} />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 gap-3">
-            <RefreshCw size={18} className="animate-spin text-emerald-500" />
-            <span className="text-gray-400 text-sm">Loading...</span>
+      {/* Main card */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
+        {/* Pipeline */}
+        <div className="px-5 pt-5 pb-4 border-b border-slate-100">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[15px] font-semibold text-slate-900">Pipeline</h2>
+            <span className="text-xs text-slate-500">Click a stage to filter</span>
           </div>
+          {loading ? <Skel className="h-2.5 w-full rounded-full" /> : (
+            <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-slate-100 gap-0.5">
+              {pipeline.filter(s => s.count).map(s => (
+                <div key={s.id} className="sc-bar h-full" title={`${s.l}: ${s.count}`} style={{ width: `${(s.count / (pipelineTotal || 1)) * 100}%`, background: STATUS[s.l]?.[2] }} />
+              ))}
+            </div>
+          )}
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+            <button onClick={() => setFilterStatus('')}
+              className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium border transition-colors ${!filterStatus ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              All <span className={`tabular-nums text-xs ${!filterStatus ? 'text-slate-300' : 'text-slate-400'}`}>{loading ? '–' : scoped.length}</span>
+            </button>
+            {pipeline.map(s => {
+              const on = filterStatus === s.l
+              return (
+                <button key={s.id} onClick={() => setFilterStatus(on ? '' : s.l)}
+                  className={`flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium border transition-colors ${on ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS[s.l]?.[1]}`} />
+                  {s.l}
+                  <span className={`tabular-nums text-xs ${on ? 'text-slate-300' : 'text-slate-400'}`}>{loading ? '–' : s.count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="px-4 sm:px-5 py-3 flex flex-col sm:flex-row gap-2 border-b border-slate-100">
+          <div className="relative flex-1 sm:max-w-sm">
+            <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+              placeholder="Search code, worker, client or project" value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700"><X size={14} {...ICON} /></button>}
+          </div>
+          <SelectBox value={filterContract} onChange={setFilterContract} className="sm:w-44">
+            <option value="">All contracts</option>
+            {contracts.map(ct => <option key={ct.id} value={ct.name}>{ct.name}</option>)}
+          </SelectBox>
+        </div>
+
+        {hasFilters && !loading && (
+          <div className="px-5 py-2.5 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/50 text-sm">
+            <span className="text-slate-500">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+            {search && <Chip onRemove={() => setSearch('')}>“{search}”</Chip>}
+            {filterStatus && <Chip onRemove={() => setFilterStatus('')}>{filterStatus}</Chip>}
+            {filterContract && <Chip onRemove={() => setFilterContract('')}>{filterContract}</Chip>}
+            <button onClick={clearFilters} className="ml-auto text-sm font-medium text-emerald-700 hover:text-emerald-800">Clear all</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="divide-y divide-slate-100">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="px-5 py-4 flex items-center gap-4">
+                <div className="w-40 space-y-2"><Skel className="h-3 w-20" /><Skel className="h-2.5 w-32" /></div>
+                <Skel className="w-7 h-7 rounded-full" /><Skel className="h-3 w-28" />
+                <Skel className="hidden md:block h-3 w-24 ml-auto" /><Skel className="h-5 w-20 rounded-md" />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          hasFilters
+            ? <EmptyState icon={Search} title="No matching job orders" text="Try a different search or clear the filters." action={<button onClick={clearFilters} className={btnSecondary}>Clear filters</button>} />
+            : <EmptyState icon={Briefcase}
+                title={highlightInquiryCode ? 'No job order for this inquiry yet' : highlightClientName ? `No job orders for ${highlightClientName}` : 'No job orders yet'}
+                text="Job orders are created when an inquiry is won, or you can add one yourself."
+                action={<button onClick={openCreate} className={btnPrimary}><Plus size={16} {...ICON} /> New job order</button>} />
         ) : (
           <>
-          {/* Mobile card view */}
-          <div className="block sm:hidden divide-y divide-gray-50">
-            {displayedJobOrders.length === 0 ? (
-              <p className="text-center py-12 text-gray-400 text-sm">
-                {highlightInquiryCode ? 'No job order found for this inquiry.' : highlightClientName ? `No job orders found for ${highlightClientName}.` : 'No job orders found'}
-              </p>
-            ) : displayedJobOrders.map(jo => (
-              <div key={jo.id} className="px-4 py-3 flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs text-emerald-600 font-semibold">{jo.job_order_code}</span>
-                    <StatusBadge status={jo.status} />
-                  </div>
-                  <p className="text-sm font-medium text-gray-700 truncate">{jo.worker_name || '—'}</p>
-                  <p className="text-xs text-gray-500 truncate">{jo.client_name || '—'} · {jo.contract_type || '—'}</p>
-                  <p className="text-xs text-gray-400">{jo.start_date && jo.end_date ? `${jo.start_date} → ${jo.end_date}` : 'No dates'}</p>
-                </div>
-                <button onClick={() => openEdit(jo)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-md hover:text-amber-600 hover:border-amber-300 hover:bg-amber-50 transition-colors flex-shrink-0">
-                  <Edit2 size={11} />Edit
-                </button>
-              </div>
-            ))}
-          </div>
+            {/* Mobile list */}
+            <ul className="sm:hidden divide-y divide-slate-100">
+              {pageItems.map((jo, i) => (
+                <li key={jo.id}>
+                  <button onClick={() => openEdit(jo)} className="sc-rise w-full text-left px-4 py-3.5 active:bg-slate-50" style={{ animationDelay: `${i * 30}ms` }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-emerald-700 tabular-nums">{jo.job_order_code}</span>
+                      <StatusBadge status={jo.status} />
+                    </div>
+                    {jo.description && <p className="text-sm text-slate-900 mt-1 line-clamp-1">{jo.description}</p>}
+                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5 min-w-0">
+                      <HardHat size={12} {...ICON} className="flex-shrink-0" /><span className="truncate">{jo.worker_name || 'No worker yet'}</span>
+                      <span className="text-slate-300">·</span><span className="truncate">{jo.client_name || '—'}</span>
+                    </p>
+                    <div className="mt-2 text-xs"><PeriodCell jo={jo} today={today} /></div>
+                  </button>
+                </li>
+              ))}
+            </ul>
 
-          {/* Desktop table view */}
-          <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  {['ID', 'Worker', 'Client', 'Contract', 'Period', 'Status', 'Actions'].map(h => (
-                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {displayedJobOrders.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">{highlightInquiryCode ? 'No job order found for this inquiry.' : highlightClientName ? `No job orders found for ${highlightClientName}.` : 'No job orders found'}</td></tr>
-                ) : displayedJobOrders.map(jo => (
-                  <tr key={jo.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-emerald-600 font-semibold">{jo.job_order_code}</td>
-                    <td className="px-5 py-3 text-gray-700">{jo.worker_name || '—'}</td>
-                    <td className="px-5 py-3 text-gray-500">{jo.client_name || '—'}</td>
-                    <td className="px-5 py-3 text-gray-500 text-xs">{jo.contract_type || '—'}</td>
-                    <td className="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{jo.start_date && jo.end_date ? `${jo.start_date} → ${jo.end_date}` : '—'}</td>
-                    <td className="px-5 py-3"><StatusBadge status={jo.status} /></td>
-                    <td className="px-5 py-3">
-                      <button onClick={() => openEdit(jo)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-md hover:text-amber-600 hover:border-amber-300 hover:bg-amber-50 transition-colors">
-                        <Edit2 size={11} />Edit
-                      </button>
-                    </td>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
+                    <SortHeader label="Job order" sortKey="job_order_code" sort={sort} onSort={onSort} />
+                    <SortHeader label="Worker"    sortKey="worker_name"    sort={sort} onSort={onSort} />
+                    <SortHeader label="Client"    sortKey="client_name"    sort={sort} onSort={onSort} />
+                    <SortHeader label="Contract"  sortKey="contract_type"  sort={sort} onSort={onSort} />
+                    <SortHeader label="Period"    sortKey="start_date"     sort={sort} onSort={onSort} />
+                    <SortHeader label="Status"    sortKey="status"         sort={sort} onSort={onSort} />
+                    <th className="px-5 py-2.5" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pageItems.map((jo, i) => (
+                    <tr key={jo.id} className="sc-rise group hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
+                      <td className="px-5 py-3 max-w-[240px]">
+                        <button onClick={() => openEdit(jo)} className="text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                          <span className="block font-semibold text-emerald-700 tabular-nums group-hover:underline underline-offset-2">{jo.job_order_code}</span>
+                          <span className="block text-xs text-slate-500 truncate max-w-[220px]">{jo.description || 'No description'}</span>
+                        </button>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={jo.worker_name} />
+                          <span className={`whitespace-nowrap ${jo.worker_name ? 'text-slate-900' : 'text-slate-400 italic'}`}>{jo.worker_name || 'Unassigned'}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-slate-600 whitespace-nowrap">{jo.client_name || '—'}</td>
+                      <td className="px-5 py-3">
+                        {jo.contract_type
+                          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium whitespace-nowrap"><FileSignature size={12} {...ICON} />{jo.contract_type}</span>
+                          : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-5 py-3"><PeriodCell jo={jo} today={today} /></td>
+                      <td className="px-5 py-3"><StatusBadge status={jo.status} /></td>
+                      <td className="px-5 py-3 text-right">
+                        <button onClick={() => openEdit(jo)} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                          <Pencil size={14} {...ICON} /> Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination page={safePage} total={filtered.length} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
           </>
         )}
-      </div>
-      <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />
+      </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowForm(false); setEditTarget(null) }} />
-          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-10 max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <ClipboardList size={16} className="text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-800">{editTarget ? `Edit ${editTarget.job_order_code}` : 'New Job Order'}</h3>
-                  {editTarget?.inquiry_code
-                    ? <p className="text-xs text-gray-400">Linked to <span className="text-amber-500 font-medium">{editTarget.inquiry_code}</span></p>
-                    : <p className="text-xs text-gray-400">Fill in the job order details below</p>}
-                </div>
-              </div>
-              <button onClick={() => { setShowForm(false); setEditTarget(null) }} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition-colors"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4 overflow-y-auto flex-1 custom-scroll">
-              <div>
-  <label className={labelCls}>Worker</label>
-  <select
-    className={inputCls}
-    value={form.worker_contact_id}
-    onChange={e => f('worker_contact_id', e.target.value)}
-  >
-    {(() => {
-      const linked = inquiries.find(inq =>
-        String(inq.id) === String(form.inquiry_id) ||
-        (form.client_contact_id && String(inq.contact_id) === String(form.client_contact_id) && inq.status === 'Won')
-      )
-      const inquiryReason = linked?.reason === 'Other'
-        ? (linked?.description || 'Other')
-        : (linked?.reason || '')
-
-      const allWorkers = contacts.filter(c => c.type === 'worker')
-
-      // Exact match: worker specialization === inquiry reason
-      const matched   = inquiryReason
-        ? allWorkers.filter(w => w.specialization === inquiryReason)
-        : []
-      const unmatched = allWorkers.filter(w => !matched.includes(w))
-
-      const renderOption = (w) => {
-        const hasDates = !!(form.start_date && form.end_date)
-        const available = !hasDates || isWorkerAvailable(w.id, form.start_date, form.end_date, editTarget?.id)
-        const nextAvail = getWorkerNextAvailable(w.id, editTarget?.id)
-        const specLabel = w.specialization ? ` — ${w.specialization}` : ''
-        return (
-          <option key={w.id} value={w.id} disabled={hasDates && !available}>
-            {w.full_name}{specLabel}{hasDates && !available ? ` (Busy until ${nextAvail || '?'})` : ''}
-          </option>
-        )
-      }
-
-      if (!inquiryReason) {
-        return (
-          <>
-            <option value="">-- Select worker --</option>
-            {allWorkers.map(renderOption)}
-          </>
-        )
-      }
-
-      return (
-        <>
-          <option value="">-- Select worker --</option>
-          {matched.map(renderOption)}
-        </>
-      )
-    })()}
-  </select>
-
-  {/* Show selected worker's busy schedule */}
-  {form.worker_contact_id && (() => {
-    const busyRanges = getWorkerBusyRanges(form.worker_contact_id, editTarget?.id)
-    const nextAvail = getWorkerNextAvailable(form.worker_contact_id, editTarget?.id)
-    const hasConflict = form.start_date && form.end_date &&
-      !isWorkerAvailable(form.worker_contact_id, form.start_date, form.end_date, editTarget?.id)
-
-    if (busyRanges.length === 0) return (
-      <div className="mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
-        <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
-        <span className="text-xs text-emerald-600 font-medium">Worker is fully available — no active job orders</span>
-      </div>
-    )
-
-    return (
-      <div className={`mt-2 px-3 py-2 rounded-lg border flex flex-col gap-1.5 ${hasConflict ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-        <div className="flex items-center gap-2">
-          <AlertTriangle size={13} className={`flex-shrink-0 ${hasConflict ? 'text-red-500' : 'text-amber-500'}`} />
-          <span className={`text-xs font-semibold ${hasConflict ? 'text-red-600' : 'text-amber-600'}`}>
-            {hasConflict ? 'Conflict detected — worker is busy on selected dates' : 'Worker has existing job orders'}
-          </span>
-        </div>
-        <div className="pl-5 space-y-1">
-          {busyRanges.map((r, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasConflict ? 'bg-red-400' : 'bg-amber-400'}`} />
-              <span className={`text-xs ${hasConflict ? 'text-red-500' : 'text-amber-600'}`}>
-                <span className="font-semibold">{r.code}</span>: {r.start} → {r.end}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="pl-5">
-          <span className={`text-xs font-medium ${hasConflict ? 'text-red-600' : 'text-amber-600'}`}>
-            Next available: <span className="font-bold">{nextAvail || 'Unknown'}</span>
-          </span>
-        </div>
-      </div>
-    )
-  })()}
-</div>
-              <div><label className={labelCls}>Client / Subcon</label>
-                <select className={inputCls} value={form.client_contact_id} onChange={e => handleClientChange(e.target.value)}>
-                  <option value="">-- Select client --</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                </select></div>
-              {form.client_contact_id && (
-                <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Client Info</p>
-                  {[{ label: 'Mobile', value: form._client_mobile }, { label: 'Email', value: form._client_email }, { label: 'Address', value: form._client_address }].map(({ label, value }) => (
-                    <div key={label} className="flex gap-3"><span className="text-xs text-gray-400 w-16 flex-shrink-0">{label}</span><span className="text-xs text-gray-700">{value || '—'}</span></div>
-                  ))}
-                </div>
-              )}
-              <div><label className={labelCls}>Contract Type</label>
-                <select className={inputCls} value={form.contract_type_id} onChange={e => {
-                  const id = e.target.value
-                  f('contract_type_id', id)
-                  const ct = contracts.find(c => String(c.id) === String(id))
-                  if (ct && form.start_date) {
-                    const end = calcEndDate(form.start_date, ct.name)
-                    if (end) f('end_date', end)
-                  }
-                }}>
-                  <option value="">-- Select contract --</option>
-                  {contracts.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
-                </select></div>
-              <div><label className={labelCls}>Status</label>
-  <select className={inputCls} value={form.status_id} onChange={e => f('status_id', Number(e.target.value))}>
-    {(() => {
-      // Always base allowed options on the SAVED status (editTarget), not the currently selected value
-      const savedStatus = editTarget
-        ? JO_STATUSES.find(s => s.l === editTarget.status)
-                : JO_STATUSES.find(s => s.id === 16) // Pending for new
-      const savedId = savedStatus?.id ?? 16
-      return JO_STATUSES.filter(s =>
-        s.id === savedId || (savedStatus?.next || []).includes(s.id)
-      ).map(s => (
-        <option key={s.id} value={s.id}>{s.l}</option>
-      ))
-    })()}
-  </select></div>
-              {form._inquiry_code && (
-                <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
-                  <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Linked Inquiry</p>
-                  {[
-                    { label: 'Code',   value: form._inquiry_code },
-                    { label: 'Reason', value: form._inquiry_reason },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex gap-3"><span className="text-xs text-gray-400 w-20 flex-shrink-0">{label}</span><span className="text-xs text-amber-600">{value || '—'}</span></div>
-                  ))}
-                </div>
-              )}
-              <div><label className={labelCls}>Description</label>
-                {editTarget ? (
-                  <textarea className={`${inputCls} resize-none bg-gray-50 text-gray-500 cursor-not-allowed`} rows={3} value={form.description} readOnly />
-                ) : (
-                  <textarea className={`${inputCls} resize-none`} rows={3} value={form.description} onChange={e => f('description', e.target.value)} />
-                )}
-              </div>
-              {(() => {
-  const busyRanges = form.worker_contact_id
-    ? getWorkerBusyRanges(form.worker_contact_id, editTarget?.id)
-    : []
-
-  // Build a Set of all busy date strings for fast lookup
-  const busyDates = new Set()
-  busyRanges.forEach(r => {
-    const cur = new Date(r.start)
-    const end = new Date(r.end)
-    while (cur <= end) {
-      busyDates.add(cur.toISOString().slice(0, 10))
-      cur.setDate(cur.getDate() + 1)
-    }
-  })
-
-  const isDateBusy = (dateStr) => busyDates.has(dateStr)
-
-  const startBusy = form.start_date && isDateBusy(form.start_date)
-  const endBusy   = form.end_date   && isDateBusy(form.end_date)
-
-  const nextAvail = form.worker_contact_id
-    ? getWorkerNextAvailable(form.worker_contact_id, editTarget?.id)
-    : null
-
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className={labelCls}>
-            Start Contract
-            {startBusy && <span className="ml-1 normal-case font-normal text-red-400 text-[10px]">worker busy on this date</span>}
-          </label>
-          <input
-            type="date"
-            className={`${inputCls} ${startBusy ? 'border-red-300 bg-red-50' : ''}`}
-            value={form.start_date}
-            min={nextAvail || (today ? today.toISOString().slice(0, 10) : undefined)}
-            onChange={e => {
-              f('start_date', e.target.value)
-              const ct = contracts.find(c => String(c.id) === String(form.contract_type_id))
-              if (ct && e.target.value) {
-                const end = calcEndDate(e.target.value, ct.name)
-                if (end) f('end_date', end)
-              }
-            }}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>
-            End Contract
-            {endBusy && <span className="ml-1 normal-case font-normal text-red-400 text-[10px]">worker busy on this date</span>}
-          </label>
-          <input
-            type="date"
-            className={`${inputCls} ${endBusy ? 'border-red-300 bg-red-50' : ''}`}
-            value={form.end_date}
-            min={form.start_date || (today ? today.toISOString().slice(0, 10) : undefined)}
-            onChange={e => f('end_date', e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Busy range visual guide */}
-      {form.worker_contact_id && busyRanges.length > 0 && (
-        <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Unavailable date ranges for this worker</p>
-          <div className="flex flex-wrap gap-2">
-            {busyRanges.map((r, i) => (
-              <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full font-medium">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
-                {r.code}: {r.start} → {r.end}
-              </span>
-            ))}
-          </div>
-          {nextAvail && (
-            <p className="text-xs text-gray-500 mt-1.5">
-              Earliest available start date: <span className="font-semibold text-emerald-600">{nextAvail}</span>
-            </p>
-          )}
-        </div>
+        <JobOrderModal
+          {...{ form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange, calcEndDate,
+                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable }}
+        />
       )}
     </div>
   )
-})()}
-            </div>
-            <div className="flex gap-3 p-6 border-t border-gray-100 sticky bottom-0 bg-white">
-              <button onClick={() => { setShowForm(false); setEditTarget(null) }} className="flex-1 px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleSave} className="flex-1 px-4 py-2 text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors">
-                {editTarget ? 'Save Changes' : 'Create Job Order'}
-              </button>
+}
+
+// ── Create / edit modal ────────────────────────────────────────
+function JobOrderModal({
+  form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange,
+  calcEndDate, isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable,
+}) {
+  useEffect(() => {
+    const onKey = e => e.key === 'Escape' && closeForm()
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [closeForm])
+
+  const inputCls = 'w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors'
+  const selectCls = `${inputCls} appearance-none pr-9 cursor-pointer`
+  const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
+  const Chev = () => <ChevronDown size={16} {...ICON} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+  // Worker list (unchanged matching logic)
+  const linked = inquiries.find(inq =>
+    String(inq.id) === String(form.inquiry_id) ||
+    (form.client_contact_id && String(inq.contact_id) === String(form.client_contact_id) && inq.status === 'Won')
+  )
+  const inquiryReason = linked?.reason === 'Other' ? (linked?.description || 'Other') : (linked?.reason || '')
+  const allWorkers = contacts.filter(c => c.type === 'worker')
+  const matched = inquiryReason ? allWorkers.filter(w => w.specialization === inquiryReason) : []
+  const hasDates = !!(form.start_date && form.end_date)
+  const renderOption = (w) => {
+    const available = !hasDates || isWorkerAvailable(w.id, form.start_date, form.end_date, editTarget?.id)
+    const nextAvail = getWorkerNextAvailable(w.id, editTarget?.id)
+    return (
+      <option key={w.id} value={w.id} disabled={hasDates && !available}>
+        {w.full_name}{w.specialization ? ` — ${w.specialization}` : ''}{hasDates && !available ? ` (Busy until ${nextAvail || '?'})` : ''}
+      </option>
+    )
+  }
+
+  // Worker availability
+  const busyRanges = form.worker_contact_id ? getWorkerBusyRanges(form.worker_contact_id, editTarget?.id) : []
+  const nextAvail = form.worker_contact_id ? getWorkerNextAvailable(form.worker_contact_id, editTarget?.id) : null
+  const hasConflict = hasDates && form.worker_contact_id && !isWorkerAvailable(form.worker_contact_id, form.start_date, form.end_date, editTarget?.id)
+  const busyDates = new Set()
+  busyRanges.forEach(r => {
+    const cur = new Date(r.start), end = new Date(r.end)
+    while (cur <= end) { busyDates.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1) }
+  })
+  const startBusy = form.start_date && busyDates.has(form.start_date)
+  const endBusy   = form.end_date && busyDates.has(form.end_date)
+
+  // Status options (unchanged rules)
+  const savedStatus = editTarget ? JO_STATUSES.find(s => s.l === editTarget.status) : JO_STATUSES.find(s => s.id === 16)
+  const savedId = savedStatus?.id ?? 16
+  const statusOptions = JO_STATUSES.filter(s => s.id === savedId || (savedStatus?.next || []).includes(s.id))
+  const selectedContract = contracts.find(c => String(c.id) === String(form.contract_type_id))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={closeForm} />
+      <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5 border-b border-slate-100 flex-shrink-0">
+          <div className="flex items-start gap-4 min-w-0">
+            <span className="w-11 h-11 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+              {editTarget ? <Pencil size={20} {...ICON} /> : <Briefcase size={20} {...ICON} />}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-semibold text-slate-900">{editTarget ? `Edit ${editTarget.job_order_code}` : 'New job order'}</h3>
+                {editTarget && <StatusBadge status={editTarget.status} />}
+              </div>
+              {editTarget?.inquiry_code
+                ? <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1"><Link2 size={14} {...ICON} />Linked to inquiry <span className="font-medium text-slate-700">{editTarget.inquiry_code}</span></p>
+                : <p className="text-sm text-slate-500 mt-0.5">Assign a worker to a client project.</p>}
             </div>
           </div>
+          <button onClick={closeForm} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
         </div>
-      )}
+
+        <div className="px-6 py-6 overflow-y-auto flex-1 custom-scroll space-y-6">
+          {/* Client */}
+          <fieldset>
+            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><User size={16} {...ICON} className="text-slate-400" />Client</legend>
+            <label className={labelCls}>Client or subcontractor</label>
+            <div className="relative">
+              <select className={selectCls} value={form.client_contact_id} onChange={e => handleClientChange(e.target.value)}>
+                <option value="">Select a client</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+              </select>
+              <Chev />
+            </div>
+
+            {form.client_contact_id && (
+              <div className="sc-pop mt-3 grid grid-cols-1 sm:grid-cols-3 gap-px rounded-lg border border-slate-200 bg-slate-200 overflow-hidden text-sm">
+                {[{ icon: Smartphone, label: 'Mobile', value: form._client_mobile }, { icon: Mail, label: 'Email', value: form._client_email }, { icon: MapPin, label: 'Address', value: form._client_address }].map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="bg-slate-50/80 px-3 py-2.5 min-w-0">
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5"><Icon size={12} {...ICON} />{label}</p>
+                    <p className="text-slate-900 mt-0.5 truncate" title={value}>{value || '—'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {form._inquiry_code && (
+              <div className="mt-3 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-2.5">
+                <span className="w-8 h-8 rounded-lg bg-white border border-amber-200 text-amber-600 flex items-center justify-center flex-shrink-0"><Link2 size={15} {...ICON} /></span>
+                <div className="min-w-0">
+                  <p className="text-xs text-amber-700">Linked inquiry · {form._inquiry_code}</p>
+                  <p className="text-sm font-medium text-amber-900 truncate">{form._inquiry_reason || '—'}</p>
+                </div>
+              </div>
+            )}
+          </fieldset>
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Worker */}
+          <fieldset>
+            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><HardHat size={16} {...ICON} className="text-slate-400" />Worker</legend>
+            <label className={labelCls}>Assigned worker</label>
+            <div className="relative">
+              <select className={selectCls} value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}>
+                <option value="">Select a worker</option>
+                {inquiryReason ? matched.map(renderOption) : allWorkers.map(renderOption)}
+              </select>
+              <Chev />
+            </div>
+            {inquiryReason && (
+              <p className="text-xs text-slate-500 mt-1.5">
+                {matched.length
+                  ? <>Showing workers who specialise in <span className="font-medium text-slate-700">{inquiryReason}</span>.</>
+                  : <span className="text-amber-700">No workers specialise in “{inquiryReason}” yet. Add one in Workers first.</span>}
+                {hasDates && ' Busy workers are greyed out.'}
+              </p>
+            )}
+
+            {form.worker_contact_id && (
+              <div className="mt-3">
+                {busyRanges.length === 0 ? (
+                  <Notice tone="success" icon={CheckCircle2}>This worker is free, with no other active job orders.</Notice>
+                ) : (
+                  <Notice tone={hasConflict ? 'error' : 'warning'} icon={AlertTriangle}>
+                    <p className="font-medium">{hasConflict ? 'This worker is busy on the dates you picked' : 'This worker has other active job orders'}</p>
+                    <ul className="mt-2 space-y-1">
+                      {busyRanges.map((r, i) => (
+                        <li key={i} className="flex items-center gap-2 text-[13px]">
+                          <span className={`w-1.5 h-1.5 rounded-full ${hasConflict ? 'bg-red-400' : 'bg-amber-400'}`} />
+                          <span className="font-semibold tabular-nums">{r.code}</span>
+                          <span className="tabular-nums">{fmtDay(r.start, { month: 'short', day: 'numeric' })} – {fmtDay(r.end)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-[13px]">Next free from <span className="font-semibold">{nextAvail ? fmtDay(nextAvail) : 'unknown'}</span></p>
+                  </Notice>
+                )}
+              </div>
+            )}
+          </fieldset>
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Contract & dates */}
+          <fieldset>
+            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><CalendarDays size={16} {...ICON} className="text-slate-400" />Contract period</legend>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className={labelCls}>Contract type</label>
+                <div className="relative">
+                  <select className={selectCls} value={form.contract_type_id} onChange={e => {
+                    const id = e.target.value
+                    f('contract_type_id', id)
+                    const ct = contracts.find(c => String(c.id) === String(id))
+                    if (ct && form.start_date) { const end = calcEndDate(form.start_date, ct.name); if (end) f('end_date', end) }
+                  }}>
+                    <option value="">Select</option>
+                    {contracts.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
+                  </select>
+                  <Chev />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Start date</label>
+                <input type="date"
+                  className={`${inputCls} ${startBusy ? '!border-red-300 bg-red-50' : ''}`}
+                  value={form.start_date}
+                  min={nextAvail || (today ? today.toISOString().slice(0, 10) : undefined)}
+                  onChange={e => {
+                    f('start_date', e.target.value)
+                    const ct = contracts.find(c => String(c.id) === String(form.contract_type_id))
+                    if (ct && e.target.value) { const end = calcEndDate(e.target.value, ct.name); if (end) f('end_date', end) }
+                  }} />
+                {startBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
+              </div>
+              <div>
+                <label className={labelCls}>End date</label>
+                <input type="date"
+                  className={`${inputCls} ${endBusy ? '!border-red-300 bg-red-50' : ''}`}
+                  value={form.end_date}
+                  min={form.start_date || (today ? today.toISOString().slice(0, 10) : undefined)}
+                  onChange={e => f('end_date', e.target.value)} />
+                {endBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
+              </div>
+            </div>
+            {selectedContract && form.start_date && (
+              <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
+                <Clock size={12} {...ICON} />End date is set from the {selectedContract.name} contract. You can still change it.
+              </p>
+            )}
+            {nextAvail && form.worker_contact_id && (
+              <p className="text-xs text-slate-500 mt-1.5">Earliest start for this worker: <span className="font-medium text-emerald-700">{fmtDay(nextAvail)}</span></p>
+            )}
+          </fieldset>
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Status */}
+          <fieldset>
+            <legend className="text-sm font-semibold text-slate-900 mb-1">Status</legend>
+            <p className="text-xs text-slate-500 mb-3">
+              {statusOptions.length > 1 ? 'Move this job to its next stage.' : 'This job is at its final stage.'}
+              {editTarget && Number(form.status_id) === 21 && ' Saving as Scheduled opens Scheduling so you can plan the site visit.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {statusOptions.map(s => {
+                const on = Number(form.status_id) === s.id
+                const current = s.id === savedId
+                return (
+                  <button key={s.id} type="button" onClick={() => f('status_id', s.id)} aria-pressed={on}
+                    className={`inline-flex items-center gap-2 h-9 px-3.5 rounded-lg text-sm font-medium border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
+                      ${on ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
+                    <span className={`w-2 h-2 rounded-full ${STATUS[s.l]?.[1]}`} />
+                    {s.l}
+                    {current && <span className="text-[11px] font-normal text-slate-500">(current)</span>}
+                    {on && <Check size={14} strokeWidth={2.5} className="text-emerald-600" />}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
+
+          {/* Description */}
+          <div>
+            <label className={labelCls}>Project description</label>
+            {editTarget ? (
+              <textarea className={`${inputCls} h-auto py-2.5 resize-none bg-slate-50 text-slate-600 cursor-not-allowed`} rows={3} value={form.description} readOnly />
+            ) : (
+              <textarea className={`${inputCls} h-auto py-2.5 resize-none`} rows={3} value={form.description} onChange={e => f('description', e.target.value)} placeholder="What work will be done?" />
+            )}
+            {editTarget && <p className="text-xs text-slate-500 mt-1.5">The description can’t be changed after the job order is created.</p>}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
+          {hasConflict
+            ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertTriangle size={14} {...ICON} />Fix the date conflict to save.</p>
+            : <span className="hidden sm:block" />}
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button onClick={closeForm} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
+            <button onClick={handleSave} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}
+              {saving ? 'Saving…' : editTarget ? 'Save changes' : 'Create job order'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
