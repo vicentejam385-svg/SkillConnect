@@ -1,27 +1,57 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
-  Plus, Search, RefreshCw, Eye, X, ArrowRight, FileText, Calendar,
-  HardHat, CheckCircle, AlertCircle
+  Plus, Search, Eye, X, ArrowRight, FileText, CalendarDays, HardHat, CheckCircle2, AlertCircle,
+  RefreshCw, Users, UserCheck, Briefcase, ShieldAlert, ShieldCheck, ShieldX, Shield,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown, ArrowUpDown,
+  Mail, Phone, Smartphone, MapPin, Copy, Check, Clock, ExternalLink, Wrench,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+
+const ICON = { strokeWidth: 1.75 }
 
 // ── Auth headers ───────────────────────────────────────────────
 const authHeaders = () => ({
   'Content-Type': 'application/json',
   Authorization: `Bearer ${JSON.parse(localStorage.getItem('sc_user') || 'null')?.token}`,
 })
+
 // Loads a license file through fetch-image.php and returns a temporary link to it
 async function loadLicenseFile(path) {
   const res  = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/licenses/fetch-image.php?path=${encodeURIComponent(path)}`, { headers: authHeaders() })
   const data = await res.json()
   if (!data.success) throw new Error(data.error || 'Could not load file')
   const bytes = Uint8Array.from(atob(data.base64), c => c.charCodeAt(0))
-  return {
-    url:  URL.createObjectURL(new Blob([bytes], { type: data.media_type })),
-    type: data.media_type,
-  }
+  return { url: URL.createObjectURL(new Blob([bytes], { type: data.media_type })), type: data.media_type }
 }
+
+// ── Local styles ───────────────────────────────────────────────
+const styles = `
+  .sc-page, .sc-page h1, .sc-page h2, .sc-page h3, .sc-page h4 {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  @keyframes sc-shimmer { 100% { transform: translateX(100%); } }
+  .sc-skel { position: relative; overflow: hidden; background: #eef2f5; border-radius: 6px; }
+  .sc-skel::after {
+    content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
+    animation: sc-shimmer 1.4s infinite;
+  }
+  @keyframes sc-rise   { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes sc-fade   { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sc-pop    { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes sc-drawer { from { transform: translateX(100%); } to { transform: none; } }
+  .sc-rise   { animation: sc-rise .4s cubic-bezier(.2,.7,.2,1) both; }
+  .sc-fade   { animation: sc-fade .2s ease both; }
+  .sc-pop    { animation: sc-pop .25s cubic-bezier(.2,.7,.2,1) both; }
+  .sc-drawer { animation: sc-drawer .3s cubic-bezier(.2,.8,.2,1) both; }
+  .sc-bar    { transition: width .9s cubic-bezier(.2,.7,.2,1); }
+  @media (prefers-reduced-motion: reduce) {
+    .sc-skel::after, .sc-rise, .sc-fade, .sc-pop, .sc-drawer { animation: none; }
+    .sc-bar { transition: none; }
+  }
+`
+
 // ── useNavigate (admin wrapper) ────────────────────────────────
 function useNavigate() {
   const nav = useRouterNavigate()
@@ -32,254 +62,596 @@ function useNavigate() {
       : nav(to, opts)
 }
 
-// ── Toast ──────────────────────────────────────────────────────
+function useEscapeAndLock(onClose) {
+  useEffect(() => {
+    const onKey = e => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [onClose])
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+const parseDT = s => { if (!s) return null; const d = new Date(String(s).replace(' ', 'T')); return isNaN(d) ? null : d }
+const fmtDate = (s, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => { const d = parseDT(s); return d ? d.toLocaleDateString(undefined, opts) : '—' }
+const fmtTime = s => { const d = parseDT(s); return d ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '' }
+const RUNNING = ['Active', 'Scheduled', 'In Progress']
+
+function licenseState(l) {
+  if (!l) return { key: 'none', label: 'No license', cls: 'bg-slate-50 text-slate-500 ring-slate-200', icon: Shield }
+  if (!l.expiry_date) return { key: 'valid', label: 'On file', cls: 'bg-slate-50 text-slate-600 ring-slate-200', icon: ShieldCheck }
+  const exp = new Date(l.expiry_date), now = new Date()
+  if (exp < now) return { key: 'expired', label: 'Expired', cls: 'bg-red-50 text-red-700 ring-red-200', icon: ShieldX }
+  if (exp - now < 30 * 86400000) return { key: 'expiring', label: 'Expiring soon', cls: 'bg-amber-50 text-amber-700 ring-amber-200', icon: ShieldAlert }
+  return { key: 'valid', label: 'Valid', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200', icon: ShieldCheck }
+}
+
+// ── Password generator (unchanged) ─────────────────────────────
+function generateWorkerPassword() {
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', lower = 'abcdefghijklmnopqrstuvwxyz', digits = '0123456789', special = '@#$!%*?&'
+  const all = upper + lower + digits + special
+  const rand = str => str[Math.floor(Math.random() * str.length)]
+  const required = [rand(upper), rand(lower), rand(digits), rand(special)]
+  const rest = Array.from({ length: 6 }, () => rand(all))
+  return [...required, ...rest].sort(() => Math.random() - 0.5).join('')
+}
+
+// ── Shared bits (same as Contacts / Inquiries) ─────────────────
+const Skel = ({ className = '' }) => <div className={`sc-skel ${className}`} />
+
+const AVATAR_TONES = [
+  'bg-emerald-50 text-emerald-700 ring-emerald-100',
+  'bg-sky-50 text-sky-700 ring-sky-100',
+  'bg-violet-50 text-violet-700 ring-violet-100',
+  'bg-amber-50 text-amber-700 ring-amber-100',
+  'bg-rose-50 text-rose-700 ring-rose-100',
+]
+function Avatar({ first, last, seed, size = 'w-8 h-8', text = 'text-[11px]' }) {
+  return (
+    <div className={`${size} ${text} rounded-full ring-1 flex items-center justify-center font-semibold flex-shrink-0 ${AVATAR_TONES[(Number(seed) || 0) % AVATAR_TONES.length]}`}>
+      {(first?.[0] || '?').toUpperCase()}{(last?.[0] || '').toUpperCase()}
+    </div>
+  )
+}
+
+const STATUS = {
+  'Active':      ['bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500'],
+  'Inactive':    ['bg-gray-50 text-gray-600 ring-gray-200',          'bg-gray-400'],
+  'On Leave':    ['bg-orange-50 text-orange-700 ring-orange-200',    'bg-orange-500'],
+  'Blacklisted': ['bg-red-50 text-red-700 ring-red-200',             'bg-red-500'],
+  'Pending':     ['bg-yellow-50 text-yellow-800 ring-yellow-200',    'bg-yellow-500'],
+  'Scheduled':   ['bg-cyan-50 text-cyan-700 ring-cyan-200',          'bg-cyan-500'],
+  'In Progress': ['bg-amber-50 text-amber-700 ring-amber-200',       'bg-amber-500'],
+  'Complete':    ['bg-blue-50 text-blue-700 ring-blue-200',          'bg-blue-500'],
+  'Cancelled':   ['bg-red-50 text-red-700 ring-red-200',             'bg-red-500'],
+}
+function StatusBadge({ status }) {
+  const [cls, dot] = STATUS[status] || ['bg-gray-50 text-gray-600 ring-gray-200', 'bg-gray-400']
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{status || '—'}
+    </span>
+  )
+}
+
+function LicenseBadge({ license }) {
+  const s = licenseState(license)
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${s.cls}`}>
+      <s.icon size={12} {...ICON} />{s.label}
+    </span>
+  )
+}
+
+function SpecBadge({ name }) {
+  if (!name) return <span className="text-slate-400">—</span>
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-medium whitespace-nowrap">
+      <Wrench size={12} {...ICON} className="text-slate-400" />{name}
+    </span>
+  )
+}
+
+function EmptyState({ icon: Icon, title, text, action }) {
+  return (
+    <div className="py-16 flex flex-col items-center justify-center text-center px-6">
+      <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><Icon size={22} {...ICON} /></div>
+      <p className="mt-3 text-sm font-semibold text-slate-800">{title}</p>
+      {text && <p className="text-sm text-slate-500 mt-1 max-w-[300px]">{text}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  )
+}
+
+function CopyButton({ value }) {
+  const [done, setDone] = useState(false)
+  if (!value) return null
+  return (
+    <button onClick={() => { navigator.clipboard?.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500) }}
+      title={done ? 'Copied' : 'Copy'}
+      className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+      {done ? <Check size={14} {...ICON} className="text-emerald-600" /> : <Copy size={14} {...ICON} />}
+    </button>
+  )
+}
+
+const btnPrimary = 'inline-flex items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-60'
+const btnSecondary = 'inline-flex items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2'
+const iconBtn = 'inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500'
+
 function Toast({ toast }) {
   if (!toast) return null
+  const ok = toast.type === 'success'
   return (
-    <div className={`fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-lg text-sm shadow-lg border
-      ${toast.type === 'success'
-        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-        : 'bg-red-50 border-red-200 text-red-700'}`}>
-      {toast.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+    <div className="sc-pop fixed top-6 right-6 z-[80] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700 max-w-sm">
+      <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${ok ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+        {ok ? <CheckCircle2 size={16} {...ICON} /> : <AlertCircle size={16} {...ICON} />}
+      </span>
       {toast.msg}
     </div>
   )
 }
 
-// ── Status Badge ───────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const colors = {
-    'Pending':      'bg-yellow-100 text-yellow-700',
-    'Active':       'bg-emerald-100 text-emerald-700',
-    'Complete':     'bg-blue-100 text-blue-700',
-    'Completed':    'bg-blue-100 text-blue-700',
-    'On Hold':      'bg-orange-100 text-orange-700',
-    'Under Review': 'bg-purple-100 text-purple-700',
-    'Scheduled':    'bg-cyan-100 text-cyan-700',
-    'In Progress':  'bg-amber-100 text-amber-700',
-    'Cancelled':    'bg-red-100 text-red-700',
-    'New':          'bg-sky-100 text-sky-700',
-    'Won':          'bg-emerald-100 text-emerald-700',
-    'Lost':         'bg-red-100 text-red-700',
-    'Inactive':     'bg-gray-100 text-gray-600',
-    'On Leave':     'bg-orange-100 text-orange-700',
-    'Blacklisted':  'bg-red-100 text-red-700',
-  }
+function MiniStat({ icon: Icon, label, value, tone, loading, delay, footer }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${colors[status] || 'bg-gray-100 text-gray-600'}`}>
-      {status || '—'}
+    <div className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 flex flex-col" style={{ animationDelay: `${delay}ms` }}>
+      <div className="flex items-center gap-3.5">
+        <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
+        <div className="min-w-0">
+          {loading ? <Skel className="h-6 w-10" /> : <p className="text-2xl font-semibold text-slate-900 leading-none tabular-nums">{value}</p>}
+          <p className="text-sm text-slate-500 mt-1 truncate">{label}</p>
+        </div>
+      </div>
+      <div className="mt-3 min-h-[20px]">{loading ? <Skel className="h-3 w-28" /> : footer}</div>
+    </div>
+  )
+}
+
+function Segmented({ options, value, onChange }) {
+  return (
+    <div className="inline-flex p-1 rounded-lg bg-slate-100 gap-0.5">
+      {options.map(o => (
+        <button key={o.value} onClick={() => onChange(o.value)}
+          className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+            value === o.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+          {o.dot && <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />}
+          {o.label}
+          {o.count != null && <span className={`text-xs tabular-nums ${value === o.value ? 'text-emerald-700' : 'text-slate-400'}`}>{o.count}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SelectBox({ value, onChange, children, className = '' }) {
+  return (
+    <div className={`relative ${className}`}>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="appearance-none w-full h-9 pl-3 pr-8 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 cursor-pointer">
+        {children}
+      </select>
+      <ChevronDown size={14} {...ICON} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+    </div>
+  )
+}
+
+function SortHeader({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey
+  const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown
+  return (
+    <th className="px-5 py-2.5 font-medium whitespace-nowrap">
+      <button onClick={() => onSort(sortKey)} className={`inline-flex items-center gap-1 rounded hover:text-slate-900 ${active ? 'text-slate-900' : ''}`}>
+        {label}<Icon size={12} {...ICON} className={active ? 'text-emerald-600' : 'text-slate-300'} />
+      </button>
+    </th>
+  )
+}
+
+function Pagination({ page, total, perPage, onPage, onPerPage }) {
+  const totalPages = Math.max(1, Math.ceil(total / perPage))
+  const from = total ? (page - 1) * perPage + 1 : 0
+  const to = Math.min(page * perPage, total)
+  const pages = []
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 1) pages.push(i)
+    else if (pages[pages.length - 1] !== '…') pages.push('…')
+  }
+  const cell = 'h-8 min-w-[32px] px-2 inline-flex items-center justify-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 disabled:text-slate-300 disabled:cursor-not-allowed'
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+      <div className="flex items-center gap-4 text-sm text-slate-500">
+        <label className="flex items-center gap-2">
+          <span className="hidden sm:inline">Rows per page</span>
+          <SelectBox value={perPage} onChange={v => onPerPage(Number(v))} className="w-[72px]">
+            {[5, 10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+          </SelectBox>
+        </label>
+        <span className="tabular-nums"><span className="font-medium text-slate-800">{from}–{to}</span> of <span className="font-medium text-slate-800">{total}</span></span>
+      </div>
+      <nav aria-label="Pagination" className="inline-flex rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-200">
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(1)} disabled={page === 1} aria-label="First page"><ChevronsLeft size={16} {...ICON} /></button>
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(page - 1)} disabled={page === 1} aria-label="Previous page"><ChevronLeft size={16} {...ICON} /></button>
+        <span className={`${cell} sm:hidden text-slate-600 px-3`}>Page {page} of {totalPages}</span>
+        {pages.map((p, i) => p === '…'
+          ? <span key={`e${i}`} className={`${cell} hidden sm:inline-flex text-slate-400`}>…</span>
+          : <button key={p} onClick={() => onPage(p)} aria-current={p === page ? 'page' : undefined}
+              className={`${cell} hidden sm:inline-flex tabular-nums ${p === page ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{p}</button>
+        )}
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(page + 1)} disabled={page === totalPages} aria-label="Next page"><ChevronRight size={16} {...ICON} /></button>
+        <button className={`${cell} text-slate-500 hover:bg-slate-50`} onClick={() => onPage(totalPages)} disabled={page === totalPages} aria-label="Last page"><ChevronsRight size={16} {...ICON} /></button>
+      </nav>
+    </div>
+  )
+}
+
+function Chip({ children, onRemove }) {
+  return (
+    <span className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md bg-white border border-slate-200 text-xs font-medium text-slate-700">
+      {children}
+      <button onClick={onRemove} aria-label="Remove filter" className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X size={12} {...ICON} /></button>
     </span>
   )
 }
 
-// ── Pagination ─────────────────────────────────────────────────
-function Pagination({ page, total, perPage, onChange }) {
-  const totalPages = Math.ceil(total / perPage)
-  if (totalPages <= 1) return null
-  const pages = []
-  const delta = 2
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || (i >= page - delta && i <= page + delta)) {
-      pages.push(i)
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...')
-    }
-  }
+// ── Worker drawer ──────────────────────────────────────────────
+function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showToast }) {
+  const [tab, setTab] = useState('overview')
+  const [schedules, setSchedules] = useState([])
+  const [schedLoading, setSchedLoading] = useState(false)
+  const [schedLoaded, setSchedLoaded] = useState(false)
+  const [file, setFile] = useState(null)
+  const [fileLoading, setFileLoading] = useState(false)
+  useEscapeAndLock(onClose)
+
+  // Schedules (same source and matching as before)
+  useEffect(() => {
+    if (tab !== 'schedules' || schedLoaded) return
+    ;(async () => {
+      setSchedLoading(true)
+      try {
+        const data = await apiGet('/api/schedules/list.php', { per_page: 100 })
+        const all = data.schedules || []
+        setSchedules(all.filter(sc => sc.worker_name === worker.full_name || String(sc.worker_contact_id) === String(worker.id))
+          .sort((a, b) => (parseDT(b.start_time) || 0) - (parseDT(a.start_time) || 0)))
+      } catch { showToast('Failed to load schedules.', 'error') }
+      setSchedLoading(false); setSchedLoaded(true)
+    })()
+  }, [tab, schedLoaded, worker, showToast])
+
+  // License file preview
+  useEffect(() => {
+    if (tab !== 'license' || !license?.file_path || file) return
+    ;(async () => {
+      setFileLoading(true)
+      try { setFile(await loadLicenseFile(license.file_path)) }
+      catch (e) { console.warn('License file load failed:', e) }
+      setFileLoading(false)
+    })()
+  }, [tab, license, file])
+
+  useEffect(() => () => { if (file?.url) URL.revokeObjectURL(file.url) }, [file])
+
+  const running = jobs.filter(j => RUNNING.includes(j.status))
+  const lic = licenseState(license)
+  const info = [
+    { icon: Mail,       label: 'Email',   value: worker.email,   href: worker.email ? `mailto:${worker.email}` : null },
+    { icon: Smartphone, label: 'Mobile',  value: worker.mobile,  href: worker.mobile ? `tel:${worker.mobile}` : null },
+    { icon: Phone,      label: 'Phone',   value: worker.phone,   href: worker.phone ? `tel:${worker.phone}` : null, hideEmpty: true },
+    { icon: MapPin,     label: 'Address', value: worker.address },
+  ].filter(r => !(r.hideEmpty && !r.value))
+
+  const tabs = [
+    { id: 'overview',  label: 'Overview' },
+    { id: 'schedules', label: 'Schedules', count: schedLoaded ? schedules.length : null },
+    { id: 'license',   label: 'License' },
+  ]
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mt-4">
-      <p className="text-xs text-gray-400">
-        Showing {Math.min((page - 1) * perPage + 1, total)}–{Math.min(page * perPage, total)} of {total}
-      </p>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onChange(page - 1)}
-          disabled={page === 1}
-          className="px-2.5 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          ←
-        </button>
-        {pages.map((p, i) =>
-          p === '...' ? (
-            <span key={`dots-${i}`} className="px-2 text-gray-400 text-xs">…</span>
-          ) : (
-            <button
-              key={p}
-              onClick={() => onChange(p)}
-              className={`w-8 h-8 text-xs font-semibold rounded-lg transition-colors
-                ${p === page
-                  ? 'bg-emerald-500 text-white border border-emerald-500'
-                  : 'text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
-            >
-              {p}
+    <div className="fixed inset-0 z-50">
+      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <aside role="dialog" aria-modal="true" className="sc-drawer absolute right-0 top-0 h-full w-full max-w-[480px] bg-white shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
+          <p className="text-sm font-medium text-slate-500">Worker details</p>
+          <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
+        </div>
+
+        {/* Profile */}
+        <div className="px-6 pt-6 pb-5 flex-shrink-0">
+          <div className="flex items-start gap-4">
+            <Avatar first={worker.first_name} last={worker.last_name} seed={worker.id} size="w-14 h-14" text="text-lg" />
+            <div className="min-w-0 pt-0.5">
+              <h3 className="text-lg font-semibold text-slate-900 leading-tight">{worker.full_name}</h3>
+              <p className="text-sm text-slate-500 mt-0.5 tabular-nums">{worker.contact_code || worker.worker_code}</p>
+              <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                <StatusBadge status={worker.status} />
+                <SpecBadge name={worker.specialization} />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-5">
+            <a href={worker.email ? `mailto:${worker.email}` : undefined} className={`${btnSecondary} px-2 ${!worker.email ? 'pointer-events-none opacity-50' : ''}`}><Mail size={15} {...ICON} /> Email</a>
+            <a href={worker.mobile ? `tel:${worker.mobile}` : undefined} className={`${btnSecondary} px-2 ${!worker.mobile ? 'pointer-events-none opacity-50' : ''}`}><Phone size={15} {...ICON} /> Call</a>
+            <button onClick={() => setTab('license')} className={`${btnSecondary} px-2`}><FileText size={15} {...ICON} /> License</button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="px-6 border-b border-slate-200 flex gap-6 flex-shrink-0">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`relative -mb-px py-2.5 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none ${tab === t.id ? 'border-emerald-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              {t.label}
+              {t.count != null && <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs tabular-nums ${tab === t.id ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{t.count}</span>}
             </button>
-          )
-        )}
-        <button
-          onClick={() => onChange(page + 1)}
-          disabled={page === totalPages}
-          className="px-2.5 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          →
-        </button>
-      </div>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto custom-scroll px-6 py-5">
+          {tab === 'overview' && (
+            <div className="space-y-6">
+              <section>
+                <h4 className="text-sm font-semibold text-slate-900 mb-2">Contact information</h4>
+                <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+                  {info.map(({ icon: Icon, label, value, href }) => (
+                    <div key={label} className="group flex items-start gap-3 px-4 py-3">
+                      <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <dt className="text-xs text-slate-500">{label}</dt>
+                        <dd className="text-sm text-slate-900 break-words mt-0.5">
+                          {value ? (href ? <a href={href} className="hover:text-emerald-700 hover:underline">{value}</a> : value) : <span className="text-slate-400">Not provided</span>}
+                        </dd>
+                      </div>
+                      <CopyButton value={value} />
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              <section>
+                <h4 className="text-sm font-semibold text-slate-900 mb-2">Work</h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl border border-slate-200 px-3 py-3">
+                    <p className="text-xl font-semibold text-slate-900 tabular-nums">{jobs.length}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Job orders</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 px-3 py-3">
+                    <p className="text-xl font-semibold text-amber-600 tabular-nums">{running.length}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Running now</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 px-3 py-3">
+                    <p className={`text-sm font-semibold mt-1 ${lic.key === 'expired' ? 'text-red-600' : lic.key === 'expiring' ? 'text-amber-600' : lic.key === 'none' ? 'text-slate-400' : 'text-emerald-700'}`}>{lic.label}</p>
+                    <p className="text-xs text-slate-500 mt-1">License</p>
+                  </div>
+                </div>
+                {running.length > 0 && (
+                  <ul className="mt-3 rounded-xl border border-slate-200 divide-y divide-slate-100">
+                    {running.map(j => (
+                      <li key={j.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900">{j.job_order_code} <span className="font-normal text-slate-500">· {j.client_name || '—'}</span></p>
+                          <p className="text-xs text-slate-500 mt-0.5">{j.start_date ? `${fmtDate(j.start_date, { month: 'short', day: 'numeric' })} – ${fmtDate(j.end_date)}` : 'No dates'}</p>
+                        </div>
+                        <StatusBadge status={j.status} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          )}
+
+          {tab === 'schedules' && (
+            schedLoading ? (
+              <div className="space-y-2.5">{[0, 1, 2].map(i => <Skel key={i} className="h-16 w-full rounded-xl" />)}</div>
+            ) : schedules.length === 0 ? (
+              <EmptyState icon={CalendarDays} title="No site visits yet" text="Schedules for this worker will show up here." />
+            ) : (
+              <ul className="space-y-2.5">
+                {schedules.map((sc, i) => {
+                  const d = parseDT(sc.start_time)
+                  return (
+                    <li key={sc.id} className="sc-rise flex gap-3.5 rounded-xl border border-slate-200 p-3.5" style={{ animationDelay: `${i * 30}ms` }}>
+                      <div className="w-12 h-12 rounded-lg border border-slate-200 flex flex-col items-center justify-center flex-shrink-0">
+                        <span className="text-[10px] font-semibold text-emerald-600 leading-none">{d ? d.toLocaleDateString(undefined, { month: 'short' }) : '—'}</span>
+                        <span className="text-base font-semibold text-slate-900 leading-tight tabular-nums">{d?.getDate() ?? ''}</span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium text-slate-900 truncate">{sc.client_name || 'Site visit'}</p>
+                          {sc.status && <StatusBadge status={sc.status} />}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5"><Clock size={12} {...ICON} />{fmtTime(sc.start_time)} – {fmtTime(sc.end_time)} · {sc.schedule_code}</p>
+                        {sc.description && <p className="text-xs text-slate-500 mt-1 line-clamp-1">{sc.description}</p>}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )
+          )}
+
+          {tab === 'license' && (
+            !license ? (
+              <EmptyState icon={FileText} title="No license on file" text="Upload this worker’s license from the Licenses page." />
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 p-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">{license.document_name}</p>
+                    <p className="text-xs text-slate-500 mt-1">Expires {license.expiry_date ? fmtDate(license.expiry_date) : '—'}</p>
+                  </div>
+                  <LicenseBadge license={license} />
+                </div>
+                {fileLoading ? (
+                  <Skel className="h-72 w-full rounded-xl" />
+                ) : file?.url ? (
+                  file.type?.startsWith('image/') ? (
+                    <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center min-h-[280px]">
+                      <img src={file.url} alt={license.document_name} className="max-w-full max-h-[420px] object-contain" />
+                    </div>
+                  ) : file.type === 'application/pdf' ? (
+                    <iframe src={file.url} title={license.document_name} className="w-full h-[440px] rounded-xl border border-slate-200" />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10 gap-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <FileText size={24} {...ICON} className="text-slate-400" />
+                      <p className="text-sm text-slate-500">Preview isn’t available for this file type.</p>
+                      <a href={file.url} target="_blank" rel="noreferrer" className={btnSecondary}><ExternalLink size={15} {...ICON} /> Open file</a>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-10 gap-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <FileText size={24} {...ICON} className="text-slate-400" />
+                    <p className="text-sm text-slate-500">No file attached</p>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
+          <button onClick={onOpenScheduling} className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800 focus-visible:outline-none focus-visible:underline">
+            Open in Scheduling <ArrowRight size={14} {...ICON} />
+          </button>
+          <button onClick={onClose} className={btnSecondary}>Close</button>
+        </div>
+      </aside>
     </div>
   )
 }
-  
-// ── Password Generator ──────────────────────────────────────────────────────
-function generateWorkerPassword() {
-  const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-  const lower   = 'abcdefghijklmnopqrstuvwxyz'
-  const digits  = '0123456789'
-  const special = '@#$!%*?&'
-  const all     = upper + lower + digits + special
-  const rand    = (str) => str[Math.floor(Math.random() * str.length)]
-  const required = [rand(upper), rand(lower), rand(digits), rand(special)]
-  const rest = Array.from({ length: 6 }, () => rand(all))
-  return [...required, ...rest]
-    .sort(() => Math.random() - 0.5)
-    .join('')
-}
 
-// ── Workers Page
+// ── Workers Page ───────────────────────────────────────────────
+const EMPTY_FORM = { first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', username: '', specialization_id: '', status_id: '4' }
+
 export default function WorkersPage() {
   const navigate = useNavigate()
   const [workers,         setWorkers]         = useState([])
   const [specializations, setSpecializations] = useState([])
+  const [contacts,        setContacts]        = useState([])
+  const [licenses,        setLicenses]        = useState([])
+  const [jobOrders,       setJobOrders]       = useState([])
   const [search,          setSearch]          = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-const [filterSpec,   setFilterSpec]   = useState('')
+  const [filterStatus,    setFilterStatus]    = useState('')
+  const [filterSpec,      setFilterSpec]      = useState('')
+  const [sort,            setSort]            = useState({ key: 'full_name', dir: 'asc' })
   const [loading,         setLoading]         = useState(true)
   const [toast,           setToast]           = useState(null)
   const [showForm,        setShowForm]        = useState(false)
-const [selected,        setSelected]        = useState(null)
-const [licenseWorker,   setLicenseWorker]   = useState(null)
-const [scheduleWorker,  setScheduleWorker]  = useState(null)
-const [workerSchedules, setWorkerSchedules] = useState([])
-const [schedLoading,    setSchedLoading]    = useState(false)
-const [workerLicenses,  setWorkerLicenses]  = useState([])
-const [licenseLoading,  setLicenseLoading]  = useState(false)
-const [licenseFile,     setLicenseFile]     = useState(null)
-const [viewFile,        setViewFile]        = useState(null)
-const [page,            setPage]            = useState(1)
-const [total,           setTotal]           = useState(0)
-const PER_PAGE = 3
- const [form, setForm] = useState({
-    first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63',
-    phone: '', username: '', specialization_id: '', status_id: '4'
-  })
+  const [selected,        setSelected]        = useState(null)
+  const [page,            setPage]            = useState(1)
+  const [perPage,         setPerPage]         = useState(10)
+  const [form,            setForm]            = useState(EMPTY_FORM)
   const [usernameSuggestions, setUsernameSuggestions] = useState([])
-  const [saving, setSaving] = useState(false)
+  const [saving,          setSaving]          = useState(false)
 
   useEffect(() => {
     const first = form.first_name.trim().toLowerCase().replace(/\s+/g, '')
     const last  = form.last_name.trim().toLowerCase().replace(/\s+/g, '')
     if (!first || !last || form.username) { setUsernameSuggestions([]); return }
-    const rand2 = () => Math.floor(10  + Math.random() * 90)
+    const rand2 = () => Math.floor(10 + Math.random() * 90)
     const rand3 = () => Math.floor(100 + Math.random() * 900)
-        setUsernameSuggestions([
-      `${first}_${last}`,
-      `${first}${last}`,
-      `${first}_${last}${rand2()}`,
-      `${first[0]}_${last}`,
-      `${first[0]}${last}${rand2()}`,
-      `${first}_${last[0]}${rand3()}`,
-      `${first}${rand3()}`,
+    setUsernameSuggestions([
+      `${first}_${last}`, `${first}${last}`, `${first}_${last}${rand2()}`, `${first[0]}_${last}`,
+      `${first[0]}${last}${rand2()}`, `${first}_${last[0]}${rand3()}`, `${first}${rand3()}`,
     ].map(s => s.replace(/[^a-z0-9_]/g, '')))
   }, [form.first_name, form.last_name, form.username])
 
-  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
+  const showToast = useCallback((msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }, [])
   const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
 
-  const loadWorkerSchedules = async (worker) => {
-    setSchedLoading(true)
-    setWorkerSchedules([])
-    setScheduleWorker(worker)
-    setSelected(null)
-    try {
-      const data = await apiGet('/api/schedules/list.php', { per_page: 100 })
-      const all = data.schedules || []
-      const filtered = all.filter(sc =>
-        sc.worker_name === worker.full_name ||
-        String(sc.worker_contact_id) === String(worker.id)
-      )
-      setWorkerSchedules(filtered)
-    } catch { showToast('Failed to load schedules.', 'error') }
-    setSchedLoading(false)
-  }
-
- const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [wData, sData] = await Promise.all([
-        apiGet('/api/workers/list.php', { search, per_page: PER_PAGE, page, status: filterStatus, specialization: filterSpec }),
+      const [wData, sData, cData, lData, joData] = await Promise.all([
+        apiGet('/api/workers/list.php', { per_page: 500 }),
         apiGet('/api/config/specializations.php'),
+        apiGet('/api/contacts/list.php', { per_page: 500 }),
+        apiGet('/api/licenses/list.php', { per_page: 500 }).catch(() => ({})),
+        apiGet('/api/job-orders/list.php', { per_page: 500 }).catch(() => ({})),
       ])
       setWorkers(wData.workers || [])
-      setTotal(wData.pagination?.total ?? (wData.workers || []).length)
       setSpecializations(sData.data || sData.specializations || [])
+      setContacts(cData.contacts || [])
+      setLicenses(lData.licenses || [])
+      setJobOrders(joData.job_orders || [])
     } catch { showToast('Failed to load workers.', 'error') }
     setLoading(false)
-  }
+  }, [showToast])
 
-  useEffect(() => { setPage(1) }, [search, filterStatus, filterSpec])
-  useEffect(() => { load() }, [search, filterStatus, filterSpec, page])
+  useEffect(() => { load() }, [load])
+  useEffect(() => { setPage(1) }, [search, filterStatus, filterSpec, perPage])
 
-useEffect(() => {
-  if (!licenseWorker) return
-  const fetchLicenses = async () => {
-    setLicenseLoading(true)
-    try {
-      const contactData = await apiGet('/api/contacts/list.php', { per_page: 100 })
-      const allContacts = contactData.contacts || []
-      const matched = allContacts.find(c => c.contact_code === licenseWorker.contact_code)
-      const realContactId = matched?.id || licenseWorker.id
+  // ── Per-worker lookups
+  const contactIdFor = useCallback(w => contacts.find(c => c.contact_code === w.contact_code)?.id || w.id, [contacts])
 
-      const data = await apiGet('/api/licenses/list.php', { per_page: 100 })
-      const all = data.licenses || []
-      const workerOnes = all.filter(l => String(l.contact_id) === String(realContactId))
-      const latest = workerOnes.sort((a, b) => b.id - a.id)[0] || null
-      setWorkerLicenses(latest ? [latest] : [])
-      if (latest?.file_path) {
-        try { setLicenseFile(await loadLicenseFile(latest.file_path)) }
-        catch (e) { console.warn('License file load failed:', e); setLicenseFile(null) }
-      } else {
-        setLicenseFile(null)
-      }
-    } catch (e) { console.error('license fetch error:', e) }
-    setLicenseLoading(false)
-  }
-  fetchLicenses()
-}, [licenseWorker])
+  const licenseFor = useCallback(w => {
+    const cid = contactIdFor(w)
+    return licenses.filter(l => String(l.contact_id) === String(cid)).sort((a, b) => b.id - a.id)[0] || null
+  }, [licenses, contactIdFor])
 
-  // Free the temporary link when the license popup closes or changes
-  useEffect(() => () => {
-    if (licenseFile?.url) URL.revokeObjectURL(licenseFile.url)
-  }, [licenseFile])
+  const jobsFor = useCallback(w => {
+    const cid = contactIdFor(w)
+    return jobOrders.filter(jo => String(jo.worker_contact_id) === String(cid) || String(jo.worker_contact_id) === String(w.id) || jo.worker_name === w.full_name)
+  }, [jobOrders, contactIdFor])
 
+  const enriched = useMemo(() => workers.map(w => {
+    const jobs = jobsFor(w)
+    const current = jobs.find(j => RUNNING.includes(j.status)) || null
+    const license = licenseFor(w)
+    return { ...w, _jobs: jobs, _current: current, _license: license, _lic: licenseState(license).key }
+  }), [workers, jobsFor, licenseFor])
+
+  const counts = useMemo(() => {
+    const c = { all: enriched.length, Active: 0, Inactive: 0, 'On Leave': 0, onJob: 0, available: 0, licIssues: 0, licExpired: 0 }
+    enriched.forEach(w => {
+      if (c[w.status] != null) c[w.status]++
+      if (w._current) c.onJob++
+      if (w.status === 'Active' && !w._current) c.available++
+      if (w._lic === 'expired' || w._lic === 'expiring' || w._lic === 'none') c.licIssues++
+      if (w._lic === 'expired') c.licExpired++
+    })
+    return c
+  }, [enriched])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const list = enriched.filter(w =>
+      (!filterStatus || w.status === filterStatus) &&
+      (!filterSpec || w.specialization === filterSpec) &&
+      (!q || [w.full_name, w.email, w.mobile, w.contact_code, w.worker_code, w.specialization].some(v => String(v || '').toLowerCase().includes(q)))
+    )
+    const val = w => String(w[sort.key] || '').toLowerCase()
+    return [...list].sort((a, b) => { const r = val(a).localeCompare(val(b)); return sort.dir === 'asc' ? r : -r })
+  }, [enriched, search, filterStatus, filterSpec, sort])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
+  const safePage = Math.min(page, totalPages)
+  const pageItems = filtered.slice((safePage - 1) * perPage, safePage * perPage)
+  const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
+  const hasFilters = search || filterStatus || filterSpec
+  const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterSpec('') }
+  const activeRate = counts.all ? Math.round((counts.Active / counts.all) * 100) : 0
+
+  // ── Create (unchanged validation + email)
   const handleCreate = async () => {
-    // First Name
+    const nameRe = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/
     if (!form.first_name.trim()) { showToast('First name is required.', 'error'); return }
-    if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.first_name.trim())) { showToast('First name must contain letters only.', 'error'); return }
-    // Middle Name (optional but validate if filled)
-    if (form.middle_name.trim() && !/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.middle_name.trim())) { showToast('Middle name must contain letters only.', 'error'); return }
-    // Last Name
+    if (!nameRe.test(form.first_name.trim())) { showToast('First name must contain letters only.', 'error'); return }
+    if (form.middle_name.trim() && !nameRe.test(form.middle_name.trim())) { showToast('Middle name must contain letters only.', 'error'); return }
     if (!form.last_name.trim()) { showToast('Last name is required.', 'error'); return }
-    if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.last_name.trim())) { showToast('Last name must contain letters only.', 'error'); return }
-    // Mobile
+    if (!nameRe.test(form.last_name.trim())) { showToast('Last name must contain letters only.', 'error'); return }
     if (!form.mobile.trim()) { showToast('Mobile number is required.', 'error'); return }
     if (!/^(09\d{9}|\+639\d{9})$/.test(form.mobile.trim())) { showToast('Enter a valid PH mobile number (e.g. 09XXXXXXXXX or +639XXXXXXXXX).', 'error'); return }
-    // Email
     if (!form.email.trim()) { showToast('Email is required.', 'error'); return }
     const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
     const validTLDs = ['com','net','org','edu','gov','ph','io','info','biz','me','tv','us','uk','au','ca','de','fr','jp','sg','nz','in']
     if (!emailRegex.test(form.email.trim())) { showToast('Enter a valid email address (e.g. name@example.com).', 'error'); return }
     if (!validTLDs.includes(form.email.trim().split('.').pop().toLowerCase())) { showToast('Enter a valid email domain (e.g. .com, .net, .ph).', 'error'); return }
-    // Username
     if (!form.username.trim()) { showToast('Username is required.', 'error'); return }
     if (form.username.trim().length < 4) { showToast('Username must be at least 4 characters.', 'error'); return }
-        if (!/^[a-zA-Z0-9_]+$/.test(form.username.trim())) { showToast('Username can only contain letters, numbers, and underscores (no dots or spaces).', 'error'); return }
-    // Specialization
+    if (!/^[a-zA-Z0-9_]+$/.test(form.username.trim())) { showToast('Username can only contain letters, numbers, and underscores (no dots or spaces).', 'error'); return }
     if (!form.specialization_id) { showToast('Specialization is required.', 'error'); return }
     if (saving) return
     setSaving(true)
@@ -288,650 +660,354 @@ useEffect(() => {
       const data = await apiPost('/api/workers/create.php', { ...form, type: 'worker', password: generatedPassword })
       if (!data.success) throw new Error(data.error)
 
-      // Send welcome email
       let emailOk = true
       try {
         const mailRes = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/workers/send-welcome.php', {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify({
-            email:    form.email.trim(),
-            name:     `${form.first_name.trim()} ${form.last_name.trim()}`,
-            username: form.username.trim(),
-            password: generatedPassword,
-          }),
+          body: JSON.stringify({ email: form.email.trim(), name: `${form.first_name.trim()} ${form.last_name.trim()}`, username: form.username.trim(), password: generatedPassword }),
         })
-              const mailData = await mailRes.json()
+        const mailData = await mailRes.json()
         emailOk = mailData.email_sent !== false
       } catch (e) { console.warn('Worker email failed:', e); emailOk = false }
 
-      showToast(emailOk ? 'Worker added & email sent!' : 'Worker added, but the email was not sent.', emailOk ? 'success' : 'error')
-
-           setShowForm(false)
-     setForm({ first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', username: '', specialization_id: '', status_id: '4' })
+      showToast(emailOk ? 'Worker added and login details emailed' : 'Worker added, but the email was not sent.', emailOk ? 'success' : 'error')
+      setShowForm(false)
+      setForm(EMPTY_FORM)
       load()
-    } catch (err) { showToast(err.message || 'Failed.', 'error') }
+    } catch (err) { showToast(err.message || 'Failed to add worker.', 'error') }
     finally { setSaving(false) }
   }
 
-  const inputCls  = "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white text-gray-800 placeholder-gray-400"
-  const labelCls  = "block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider"
+  const closeDrawer = useCallback(() => setSelected(null), [])
+  const closeForm = useCallback(() => { if (!saving) setShowForm(false) }, [saving])
 
-  const WORKER_STATUSES = [
-    { id: 1, label: 'Active'   },
-    { id: 2, label: 'Inactive' },
-  ]
+  const rowActions = w => (
+    <div className="flex items-center justify-end gap-0.5">
+      <a href={w.email ? `mailto:${w.email}` : undefined} title="Send email" aria-label="Send email" className={`${iconBtn} ${!w.email ? 'pointer-events-none opacity-30' : ''}`}><Mail size={16} {...ICON} /></a>
+      <a href={w.mobile ? `tel:${w.mobile}` : undefined} title="Call" aria-label="Call" className={`${iconBtn} ${!w.mobile ? 'pointer-events-none opacity-30' : ''}`}><Phone size={16} {...ICON} /></a>
+      <button onClick={() => setSelected(w)} title="View details" aria-label="View details" className={iconBtn}><Eye size={16} {...ICON} /></button>
+    </div>
+  )
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="sc-page max-w-7xl space-y-5">
+      <style>{styles}</style>
       <Toast toast={toast} />
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Workers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage your workforce</p>
+          <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Workers</h1>
+          <p className="text-sm text-slate-500 mt-1">Your workforce, their skills, availability and licenses.</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg transition-colors"
-        >
-          <Plus size={16} />Add Worker
-        </button>
+        <button onClick={() => setShowForm(true)} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> Add worker</button>
       </div>
 
-      {/* Search */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative w-full max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300 placeholder-gray-400"
-            placeholder="Search workers..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <select
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-600"
-          value={filterStatus}
-          onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
-        >
-          <option value="">All Statuses</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-          <option value="On Leave">On Leave</option>
-        </select>
-        <select
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-600"
-          value={filterSpec}
-          onChange={e => { setFilterSpec(e.target.value); setPage(1) }}
-        >
-          <option value="">All Specializations</option>
-          {specializations.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-        </select>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <MiniStat icon={Users} label="Total workers" value={counts.all} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={0}
+          footer={
+            <div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="sc-bar h-full bg-emerald-500 rounded-full" style={{ width: `${activeRate}%` }} /></div>
+              <p className="text-xs text-slate-500 mt-1.5">{counts.Active} active · {counts.Inactive + counts['On Leave']} not active</p>
+            </div>
+          } />
+        <MiniStat icon={UserCheck} label="Available now" value={counts.available} tone="bg-sky-50 text-sky-600" loading={loading} delay={50}
+          footer={<p className="text-xs text-slate-500">Active, with no running job</p>} />
+        <MiniStat icon={Briefcase} label="On a job" value={counts.onJob} tone="bg-amber-50 text-amber-600" loading={loading} delay={100}
+          footer={<button onClick={() => navigate('/admin/job-orders')} className="text-xs font-medium text-amber-700 hover:text-amber-800">View job orders →</button>} />
+        <MiniStat icon={ShieldAlert} label="License issues" value={counts.licIssues} tone="bg-red-50 text-red-600" loading={loading} delay={150}
+          footer={counts.licIssues
+            ? <button onClick={() => navigate('/admin/licenses')} className="text-xs font-medium text-red-700 hover:text-red-800">{counts.licExpired} expired · review →</button>
+            : <p className="text-xs text-slate-500">All licenses are valid</p>} />
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 gap-3">
-            <RefreshCw size={18} className="animate-spin text-emerald-500" />
-            <span className="text-gray-400 text-sm">Loading...</span>
+      {/* Table card */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
+        <div className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center gap-3 border-b border-slate-100">
+          <div className="overflow-x-auto -mx-1 px-1">
+            <Segmented
+              value={filterStatus}
+              onChange={setFilterStatus}
+              options={[
+                { value: '',         label: 'All',      count: loading ? null : counts.all },
+                { value: 'Active',   label: 'Active',   count: loading ? null : counts.Active,      dot: 'bg-emerald-500' },
+                { value: 'On Leave', label: 'On leave', count: loading ? null : counts['On Leave'], dot: 'bg-orange-500' },
+                { value: 'Inactive', label: 'Inactive', count: loading ? null : counts.Inactive,    dot: 'bg-gray-400' },
+              ]}
+            />
           </div>
+          <div className="flex flex-1 items-center gap-2 lg:justify-end">
+            <div className="relative flex-1 lg:max-w-xs">
+              <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                placeholder="Search name, email, mobile or code" value={search} onChange={e => setSearch(e.target.value)} />
+              {search && <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700"><X size={14} {...ICON} /></button>}
+            </div>
+            <SelectBox value={filterSpec} onChange={setFilterSpec} className="w-44 flex-shrink-0">
+              <option value="">All specializations</option>
+              {specializations.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </SelectBox>
+          </div>
+        </div>
+
+        {hasFilters && !loading && (
+          <div className="px-5 py-2.5 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/50 text-sm">
+            <span className="text-slate-500">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+            {search && <Chip onRemove={() => setSearch('')}>“{search}”</Chip>}
+            {filterStatus && <Chip onRemove={() => setFilterStatus('')}>{filterStatus}</Chip>}
+            {filterSpec && <Chip onRemove={() => setFilterSpec('')}>{filterSpec}</Chip>}
+            <button onClick={clearFilters} className="ml-auto text-sm font-medium text-emerald-700 hover:text-emerald-800">Clear all</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="divide-y divide-slate-100">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="px-5 py-3.5 flex items-center gap-3">
+                <Skel className="w-9 h-9 rounded-full" />
+                <div className="flex-1 space-y-2"><Skel className="h-3 w-40" /><Skel className="h-2.5 w-24" /></div>
+                <Skel className="hidden md:block h-5 w-28 rounded-md" />
+                <Skel className="h-5 w-16 rounded-md" />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          hasFilters
+            ? <EmptyState icon={Search} title="No matching workers" text="Try a different search or remove a filter." action={<button onClick={clearFilters} className={btnSecondary}>Clear filters</button>} />
+            : <EmptyState icon={HardHat} title="Add your first worker" text="Workers get login details by email and can be assigned to job orders." action={<button onClick={() => setShowForm(true)} className={btnPrimary}><Plus size={16} {...ICON} /> Add worker</button>} />
         ) : (
           <>
-            {/* Mobile card view */}
-            <div className="block sm:hidden divide-y divide-gray-50">
-              {workers.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-16">
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                    <HardHat size={22} className="text-gray-400" />
-                  </div>
-                  <p className="text-gray-400 text-sm">No workers found</p>
-                  <button onClick={() => setShowForm(true)} className="text-emerald-500 text-xs font-semibold hover:underline">Add your first worker</button>
-                </div>
-              ) : workers.map(w => {
-                const initials = `${w.first_name?.[0] || ''}${w.last_name?.[0] || ''}`.toUpperCase()
-                const colorMap = ['bg-blue-100 text-blue-600','bg-emerald-100 text-emerald-600','bg-purple-100 text-purple-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600']
-                const color = colorMap[w.id % colorMap.length]
-                return (
-                  <div key={w.id} className="px-4 py-3 flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${color}`}>
-                      {initials}
-                    </div>
+            <ul className="sm:hidden divide-y divide-slate-100">
+              {pageItems.map((w, i) => (
+                <li key={w.id}>
+                  <button onClick={() => setSelected(w)} className="sc-rise w-full text-left px-4 py-3.5 flex items-center gap-3 active:bg-slate-50" style={{ animationDelay: `${i * 30}ms` }}>
+                    <Avatar first={w.first_name} last={w.last_name} seed={w.id} size="w-10 h-10" text="text-xs" />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs text-emerald-600 font-semibold">{w.contact_code || w.worker_code}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-900 truncate">{w.full_name}</p>
                         <StatusBadge status={w.status} />
                       </div>
-                      <p className="text-sm font-medium text-gray-700 truncate">{w.full_name}</p>
-                      <p className="text-xs text-gray-400 truncate">{w.specialization || '—'} · {w.mobile || '—'}</p>
+                      <p className="text-xs text-slate-600 truncate mt-0.5">{w.specialization || 'No specialization'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{w._current ? `On ${w._current.job_order_code}` : 'Available'} · {licenseState(w._license).label}</p>
                     </div>
-                    <button
-                      onClick={() => setSelected(selected?.id === w.id ? null : w)}
-                      className={`p-1.5 rounded-md border transition-colors flex-shrink-0 ${selected?.id === w.id ? 'border-amber-300 text-amber-500 bg-amber-50' : 'border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300'}`}
-                    >
-                      <Eye size={13} />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+                    <ChevronRight size={16} {...ICON} className="text-slate-300 flex-shrink-0" />
+                  </button>
+                </li>
+              ))}
+            </ul>
 
-            {/* Desktop table view */}
             <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    {['Code', 'Name', 'Specialization', 'Contact', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-                    ))}
+                  <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
+                    <SortHeader label="Worker"         sortKey="full_name"      sort={sort} onSort={onSort} />
+                    <SortHeader label="Specialization" sortKey="specialization" sort={sort} onSort={onSort} />
+                    <th className="px-5 py-2.5 font-medium">Mobile / email</th>
+                    <th className="px-5 py-2.5 font-medium">Availability</th>
+                    <th className="px-5 py-2.5 font-medium">License</th>
+                    <SortHeader label="Status"         sortKey="status"         sort={sort} onSort={onSort} />
+                    <th className="px-5 py-2.5 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {workers.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-16">
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                            <HardHat size={22} className="text-gray-400" />
-                          </div>
-                          <p className="text-gray-400 text-sm">No workers found</p>
-                          <button onClick={() => setShowForm(true)} className="text-emerald-500 text-xs font-semibold hover:underline">Add your first worker</button>
-                        </div>
+                <tbody className="divide-y divide-slate-100">
+                  {pageItems.map((w, i) => (
+                    <tr key={w.id} className="sc-rise group hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
+                      <td className="px-5 py-3">
+                        <button onClick={() => setSelected(w)} className="flex items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                          <Avatar first={w.first_name} last={w.last_name} seed={w.id} size="w-9 h-9" text="text-xs" />
+                          <span>
+                            <span className="block font-medium text-slate-900 group-hover:text-emerald-700 transition-colors whitespace-nowrap">{w.full_name}</span>
+                            <span className="block text-xs text-slate-500 tabular-nums">{w.contact_code || w.worker_code}</span>
+                          </span>
+                        </button>
                       </td>
+                      <td className="px-5 py-3"><SpecBadge name={w.specialization} /></td>
+                      <td className="px-5 py-3">
+                        <p className="text-slate-700 tabular-nums">{w.mobile || <span className="text-slate-400">—</span>}</p>
+                        {w.email && <p className="text-xs text-slate-500 truncate max-w-[200px]">{w.email}</p>}
+                      </td>
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        {w._current ? (
+                          <span className="inline-flex items-center gap-1.5 text-slate-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />On <span className="font-medium">{w._current.job_order_code}</span>
+                          </span>
+                        ) : w.status === 'Active' ? (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-700"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Available</span>
+                        ) : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-5 py-3"><LicenseBadge license={w._license} /></td>
+                      <td className="px-5 py-3"><StatusBadge status={w.status} /></td>
+                      <td className="px-5 py-3">{rowActions(w)}</td>
                     </tr>
-                  ) : workers.map(w => {
-                    const initials = `${w.first_name?.[0] || ''}${w.last_name?.[0] || ''}`.toUpperCase()
-                    const colorMap = ['bg-blue-100 text-blue-600','bg-emerald-100 text-emerald-600','bg-purple-100 text-purple-600','bg-amber-100 text-amber-600','bg-rose-100 text-rose-600']
-                    const color = colorMap[w.id % colorMap.length]
-                    return (
-                      <tr key={w.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3 font-mono text-xs text-emerald-600 font-semibold">{w.contact_code || w.worker_code}</td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${color}`}>
-                              {initials}
-                            </div>
-                            <div>
-                              <p className="text-gray-800 font-medium">{w.full_name}</p>
-                              {w.email && <p className="text-gray-400 text-xs">{w.email}</p>}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3">
-                          {w.specialization ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-100">
-                              {w.specialization}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-gray-500 text-xs">
-                          <div>{w.mobile || '—'}</div>
-                          {w.email && <div className="text-gray-400">{w.email}</div>}
-                        </td>
-                        <td className="px-5 py-3"><StatusBadge status={w.status} /></td>
-                        <td className="px-5 py-3">
-                          <button
-                            onClick={() => setSelected(selected?.id === w.id ? null : w)}
-                            className={`p-1.5 rounded-md border transition-colors ${selected?.id === w.id ? 'border-amber-300 text-amber-500 bg-amber-50' : 'border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300'}`}
-                          >
-                            <Eye size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
+
+            <Pagination page={safePage} total={filtered.length} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
           </>
         )}
-      </div>
-      <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />
+      </section>
 
-      {/* Detail panel */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelected(null)} />
-          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl z-10 max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center">
-                  <span className="font-bold text-sm text-emerald-600">
-                    {selected.first_name?.[0]?.toUpperCase()}{selected.last_name?.[0]?.toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-800">{selected.full_name}</h3>
-                  <span className="text-xs text-gray-400">{selected.contact_code || selected.worker_code}</span>
-                </div>
-              </div>
-              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100"><X size={20} /></button>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1 custom-scroll">
-              <div className="flex flex-wrap gap-2 mb-5">
-                <span className="text-xs px-2.5 py-1 bg-blue-50 text-blue-600 rounded-full font-medium border border-blue-100">
-                  {selected.specialization || 'No specialization'}
-                </span>
-                <StatusBadge status={selected.status} />
-              </div>
-              <div className="space-y-0">
-                {[
-  { label: 'Email',   value: selected.email   },
-  { label: 'Mobile',  value: selected.mobile  },
-  { label: 'Phone',   value: selected.phone   },
-  { label: 'Address', value: selected.address },
-].filter(({ label, value }) => !(label === 'Phone' && !value)).map(({ label, value }) => (
-  <div key={label} className="flex gap-4 py-2.5 border-b border-gray-100 last:border-0">
-    <span className="text-xs text-gray-400 w-20 flex-shrink-0">{label}</span>
-    <span className="text-sm text-gray-700 break-all">{value || '—'}</span>
-  </div>
-))}
-              </div>
-            </div>
-            <div className="flex gap-3 p-4 border-t border-gray-100">
-              <button
-  onClick={() => { setLicenseWorker(selected); setSelected(null) }}
-  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-600 font-semibold text-sm rounded-lg hover:bg-emerald-100 transition-colors"
->
-  <FileText size={14} />View Licenses
-</button>
-              <button
-                onClick={() => loadWorkerSchedules(selected)}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 text-amber-600 font-semibold text-sm rounded-lg hover:bg-amber-100 transition-colors"
-              >
-                <Calendar size={14} />Schedules
-              </button>
-            </div>
-          </div>
-        </div>
+        <WorkerDrawer
+          worker={selected}
+          jobs={selected._jobs || []}
+          license={selected._license}
+          onClose={closeDrawer}
+          showToast={showToast}
+          onOpenScheduling={() => {
+            const w = selected
+            setSelected(null)
+            navigate('/admin/scheduling', { state: { highlightWorkerName: w.full_name, highlightWorkerId: w.id } })
+          }}
+        />
       )}
 
-      {scheduleWorker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setScheduleWorker(null)} />
-          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl z-10 max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
-                  <Calendar size={16} className="text-amber-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-800">Schedules</h3>
-                  <p className="text-xs text-gray-400">
-                    {schedLoading ? 'Loading...' : `${workerSchedules.length} schedule${workerSchedules.length !== 1 ? 's' : ''} found for ${scheduleWorker.full_name}`}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setScheduleWorker(null)} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {schedLoading ? (
-                <div className="flex items-center justify-center py-16 gap-3">
-                  <RefreshCw size={18} className="animate-spin text-emerald-500" />
-                  <span className="text-gray-400 text-sm">Loading schedules...</span>
-                </div>
-             ) : (
-                <>
-                  {/* Mobile card view */}
-                  <div className="block sm:hidden divide-y divide-gray-50">
-                    {workerSchedules.length === 0 ? (
-                      <div className="flex flex-col items-center gap-3 py-16">
-                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                          <Calendar size={22} className="text-gray-400" />
-                        </div>
-                        <p className="text-gray-400 text-sm">No schedules found for this worker</p>
-                      </div>
-                    ) : workerSchedules.map(sc => (
-                      <div key={sc.id} className="px-4 py-3">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="font-mono text-xs text-emerald-600 font-semibold">{sc.schedule_code}</span>
-                          <span className="text-xs text-gray-400">{sc.start_time?.slice(0, 10) || '—'}</span>
-                        </div>
-                        <p className="text-sm font-medium text-gray-700">{sc.client_name || '—'}</p>
-                        <p className="text-xs text-gray-400">{sc.description || '—'}</p>
-                      </div>
-                    ))}
-                  </div>
+      {showForm && (
+        <NewWorkerModal form={form} f={f} specializations={specializations} usernameSuggestions={usernameSuggestions}
+          saving={saving} onClose={closeForm} onSubmit={handleCreate} />
+      )}
+    </div>
+  )
+}
 
-                  {/* Desktop table view */}
-                  <div className="hidden sm:block overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          {['Code', 'Client', 'Description', 'Start', 'End'].map(h => (
-                            <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workerSchedules.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="text-center py-16">
-                              <div className="flex flex-col items-center gap-3">
-                                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                                  <Calendar size={22} className="text-gray-400" />
-                                </div>
-                                <p className="text-gray-400 text-sm">No schedules found for this worker</p>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : workerSchedules.map(sc => (
-                          <tr key={sc.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                            <td className="px-5 py-3 font-mono text-xs text-emerald-600 font-semibold">{sc.schedule_code}</td>
-                            <td className="px-5 py-3 text-gray-700">{sc.client_name || '—'}</td>
-                            <td className="px-5 py-3 text-gray-500 text-xs">{sc.description || '—'}</td>
-                            <td className="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{sc.start_time?.slice(0, 10) || '—'}</td>
-                            <td className="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{sc.end_time?.slice(0, 10) || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="p-5 border-t border-gray-100 bg-white flex justify-between items-center">
-              <button
-                onClick={() => { setScheduleWorker(null); navigate('/admin/scheduling', { state: { highlightWorkerName: scheduleWorker.full_name, highlightWorkerId: scheduleWorker.id } }) }}
-                className="flex items-center gap-2 text-xs text-emerald-600 font-semibold hover:text-emerald-700"
-              >
-                <ArrowRight size={12} />Open in Scheduling page
-              </button>
-              <button onClick={() => setScheduleWorker(null)} className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                Close
-              </button>
+// ── Add worker modal ───────────────────────────────────────────
+function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving, onClose, onSubmit }) {
+  useEscapeAndLock(onClose)
+  const inp = 'w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors'
+  const lbl = 'block text-sm font-medium text-slate-700 mb-1.5'
+  const req = <span className="text-red-500 ml-0.5">*</span>
+  const opt = <span className="text-xs font-normal text-slate-400"> (optional)</span>
+  const Chev = () => <ChevronDown size={16} {...ICON} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+  const WORKER_STATUSES = [{ id: 1, label: 'Active' }, { id: 2, label: 'Inactive' }]
+  const Legend = ({ icon: Icon, children }) => (
+    <p className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><Icon size={16} {...ICON} className="text-slate-400" />{children}</p>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5 border-b border-slate-100">
+          <div className="flex items-start gap-4">
+            <span className="w-11 h-11 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0"><HardHat size={20} {...ICON} /></span>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Add worker</h3>
+              <p className="text-sm text-slate-500 mt-0.5">They’ll get their login details by email.</p>
             </div>
           </div>
+          <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
         </div>
-      )}
 
-      {licenseWorker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLicenseWorker(null)} />
-          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl z-10 max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
-                  <FileText size={16} className="text-emerald-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-800">Licenses</h3>
-                  <p className="text-xs text-gray-400">{licenseWorker.full_name}</p>
-                </div>
-              </div>
-              <button onClick={() => setLicenseWorker(null)} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition-colors"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-  {licenseLoading ? (
-    <div className="flex items-center justify-center py-16 gap-3">
-      <RefreshCw size={18} className="animate-spin text-emerald-500" />
-      <span className="text-gray-400 text-sm">Loading...</span>
-    </div>
-  ) : workerLicenses.length === 0 ? (
-    <div className="flex flex-col items-center justify-center py-16 gap-3">
-      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-        <FileText size={22} className="text-gray-400" />
-      </div>
-      <p className="text-gray-400 text-sm">No licenses found for this worker</p>
-    </div>
-  ) : (() => {
-    const l = workerLicenses[0]
-    const expired  = l.expiry_date && new Date(l.expiry_date) < new Date()
-    const expiring = l.expiry_date && !expired && (new Date(l.expiry_date) - new Date()) < 30 * 24 * 60 * 60 * 1000
-    const fileUrl  = licenseFile?.url || null
-    const fileType = licenseFile?.type || ''
-    return (
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="px-6 py-6 overflow-y-auto flex-1 custom-scroll space-y-6">
           <div>
-            <p className="text-sm font-semibold text-gray-700">{l.document_name}</p>
-            <div className={`text-xs mt-0.5 font-medium ${expired ? 'text-red-500' : expiring ? 'text-amber-500' : 'text-gray-400'}`}>
-              Expiry: {l.expiry_date || '—'} {expired ? '· Expired' : expiring ? '· Expiring soon' : ''}
+            <Legend icon={Users}>Personal information</Legend>
+            <div className="grid grid-cols-6 gap-4">
+              <div className="col-span-6 sm:col-span-3"><label className={lbl}>First name{req}</label><input className={inp} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Juan" autoFocus /></div>
+              <div className="col-span-6 sm:col-span-3"><label className={lbl}>Middle name{opt}</label><input className={inp} value={form.middle_name} onChange={e => f('middle_name', e.target.value)} placeholder="Santos" /></div>
+              <div className="col-span-4"><label className={lbl}>Last name{req}</label><input className={inp} value={form.last_name} onChange={e => f('last_name', e.target.value)} placeholder="Dela Cruz" /></div>
+              <div className="col-span-2"><label className={lbl}>Suffix{opt}</label><input className={inp} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." /></div>
             </div>
           </div>
-          {expired ? (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Expired</span>
-          ) : expiring ? (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Expiring Soon</span>
-          ) : (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">Valid</span>
-          )}
+
+          <div className="h-px bg-slate-100" />
+
+          <div>
+            <Legend icon={Phone}>Contact</Legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={lbl}>Mobile number{req}</label>
+                <div className="relative">
+                  <Smartphone size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input className={`${inp} pl-9`} value={form.mobile} maxLength={13} placeholder="+639XXXXXXXXX" inputMode="tel"
+                    onChange={e => {
+                      let val = e.target.value
+                      if (!val.startsWith('+63')) val = '+63'
+                      let digits = val.slice(3).replace(/\D/g, '')
+                      if (digits.startsWith('0')) digits = digits.slice(1)
+                      f('mobile', '+63' + digits.slice(0, 10))
+                    }} />
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Phone{opt}</label>
+                <div className="relative">
+                  <Phone size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input className={`${inp} pl-9`} value={form.phone} onChange={e => f('phone', e.target.value)} placeholder="02 XXXX XXXX" />
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <label className={lbl}>Email address{req}</label>
+                <div className="relative">
+                  <Mail size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input type="email" className={`${inp} pl-9`} value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@example.com" />
+                </div>
+                <p className="text-xs text-slate-500 mt-1.5">Login details are sent to this address.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-slate-100" />
+
+          <div>
+            <Legend icon={Wrench}>Account and work</Legend>
+            <div className="space-y-4">
+              <div>
+                <label className={lbl}>Username{req}</label>
+                <input className={inp} value={form.username} onChange={e => f('username', e.target.value)} placeholder="juan_delacruz" />
+                {usernameSuggestions.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-slate-500 mb-1.5">Suggestions</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {usernameSuggestions.map((s, i) => (
+                        <button key={i} type="button" onClick={() => f('username', s)}
+                          className="h-7 px-2.5 text-xs bg-white border border-slate-200 text-slate-700 rounded-full hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors font-medium">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={lbl}>Specialization{req}</label>
+                  <div className="relative">
+                    <select className={`${inp} appearance-none pr-9 cursor-pointer`} value={form.specialization_id} onChange={e => f('specialization_id', e.target.value)}>
+                      <option value="">Select a specialization</option>
+                      {specializations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <Chev />
+                  </div>
+                </div>
+                <div>
+                  <label className={lbl}>Status</label>
+                  <div className="relative">
+                    <select className={`${inp} appearance-none pr-9 cursor-pointer`} value={form.status_id} onChange={e => f('status_id', e.target.value)}>
+                      {WORKER_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </select>
+                    <Chev />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        {fileUrl ? (
-          fileType.startsWith('image/') ? (
-            <div className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center min-h-[300px]">
-              <img src={fileUrl} alt={l.document_name} className="max-w-full max-h-[400px] object-contain" />
-            </div>
-          ) : fileType === 'application/pdf' ? (
-            <iframe src={fileUrl} title={l.document_name} className="w-full min-h-[400px] rounded-xl border border-gray-100" />
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10 gap-3 bg-gray-50 rounded-xl border border-gray-100">
-              <FileText size={28} className="text-gray-400" />
-              <p className="text-sm text-gray-500">Preview not available</p>
-              <a href={fileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg transition-colors">
-                <Eye size={14} />Open file
-              </a>
-            </div>
-          )
-        ) : (
-          <div className="flex flex-col items-center justify-center py-10 gap-3 bg-gray-50 rounded-xl border border-gray-100">
-            <FileText size={28} className="text-gray-400" />
-            <p className="text-sm text-gray-500">No file attached</p>
+
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
+          <p className="hidden sm:block text-xs text-slate-500"><span className="text-red-500">*</span> Required fields</p>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button onClick={onClose} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
+            <button onClick={onSubmit} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
+              {saving ? <RefreshCw size={16} className="animate-spin" /> : <Plus size={16} {...ICON} />}
+              {saving ? 'Adding…' : 'Add worker'}
+            </button>
           </div>
-        )}
+        </div>
       </div>
-    )
-  })()}
-</div>
-            <div className="p-4 border-t border-gray-100">
-              <button onClick={() => setLicenseWorker(null)} className="w-full px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {viewFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setViewFile(null)} />
-          <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl z-10 flex flex-col overflow-hidden max-h-[90vh]">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                  <FileText size={16} className="text-emerald-600" />
-                </div>
-                <div>
-                  <p className="font-bold text-gray-800 text-sm">{viewFile.name}</p>
-                  <p className="text-xs text-gray-400">{viewFile.worker}</p>
-                </div>
-              </div>
-              <button onClick={() => setViewFile(null)} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-hidden bg-gray-100 min-h-[400px]">
-              {/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(viewFile.url) ? (
-                <div className="flex items-center justify-center h-full p-6">
-                  <img src={viewFile.url} alt={viewFile.name} className="max-w-full max-h-full object-contain rounded-lg shadow" />
-                </div>
-              ) : /\.pdf$/i.test(viewFile.url) ? (
-                <iframe src={viewFile.url} title={viewFile.name} className="w-full h-full min-h-[500px] border-0" />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-4 py-16">
-                  <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
-                    <FileText size={28} className="text-gray-400" />
-                  </div>
-                  <p className="text-sm text-gray-500">Preview not available for this file type.</p>
-                  <a href={viewFile.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg transition-colors">
-                    <Eye size={14} />Open file
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-            {/* Create Form */}
-      {showForm && (() => {
-        const inp = "w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
-        const lbl = "block text-sm font-semibold text-gray-700 mb-1.5"
-        const sec = "text-[11px] font-bold uppercase tracking-widest text-emerald-600 mb-3"
-        const req = <span className="text-red-500"> *</span>
-        const opt = <span className="text-xs font-normal text-gray-400"> (optional)</span>
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-            <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-10 max-h-[92vh] flex flex-col overflow-hidden">
-
-              {/* Header */}
-              <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-                    <HardHat size={18} className="text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-gray-900 leading-tight">Add Worker</h3>
-                    <p className="text-xs text-gray-500">Fill in the worker's details below</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="px-7 py-6 overflow-y-auto flex-1 custom-scroll space-y-6">
-
-                {/* Personal information */}
-                <div>
-                  <p className={sec}>Personal Information</p>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className={lbl}>First Name{req}</label>
-                        <input className={inp} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="First Name" />
-                      </div>
-                      <div>
-                        <label className={lbl}>Middle Name{opt}</label>
-                        <input className={inp} value={form.middle_name} onChange={e => f('middle_name', e.target.value)} placeholder="Middle Name" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-[1fr_120px] gap-4">
-                      <div>
-                        <label className={lbl}>Last Name{req}</label>
-                        <input className={inp} value={form.last_name} onChange={e => f('last_name', e.target.value)} placeholder="Last Name" />
-                      </div>
-                      <div>
-                        <label className={lbl}>Suffix{opt}</label>
-                        <input className={inp} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Contact */}
-                <div className="border-t border-gray-100 pt-5">
-                  <p className={sec}>Contact</p>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className={lbl}>Mobile Number{req}</label>
-                        <input
-                          className={inp}
-                          value={form.mobile}
-                          maxLength={13}
-                          placeholder="+639XXXXXXXXX"
-                          onChange={e => {
-                            let val = e.target.value
-                            if (!val.startsWith('+63')) val = '+63'
-                            let digits = val.slice(3).replace(/\D/g, '')
-                            if (digits.startsWith('0')) digits = digits.slice(1)
-                            f('mobile', '+63' + digits.slice(0, 10))
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className={lbl}>Phone{opt}</label>
-                        <input className={inp} value={form.phone} onChange={e => f('phone', e.target.value)} placeholder="02 XXXX XXXX" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className={lbl}>Email Address{req}</label>
-                      <input type="email" className={inp} value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@example.com" />
-                      <p className="text-xs text-gray-400 mt-1.5">Login credentials will be sent to this email.</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Account & work */}
-                <div className="border-t border-gray-100 pt-5">
-                  <p className={sec}>Account &amp; Work</p>
-                  <div className="space-y-4">
-                    <div>
-                      <label className={lbl}>Username{req}</label>
-                      <input className={inp} value={form.username} onChange={e => f('username', e.target.value)} placeholder="Username" />
-                      {usernameSuggestions.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-1.5">Suggested usernames</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {usernameSuggestions.map((s, i) => (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => f('username', s)}
-                                className="px-2.5 py-1 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full hover:bg-emerald-100 transition-colors font-medium"
-                              >
-                                {s}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className={lbl}>Specialization{req}</label>
-                        <select className={inp} value={form.specialization_id} onChange={e => f('specialization_id', e.target.value)}>
-                          <option value="">Select specialization...</option>
-                          {specializations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={lbl}>Status</label>
-                        <select className={inp} value={form.status_id} onChange={e => f('status_id', e.target.value)}>
-                          {WORKER_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex gap-3 px-7 py-4 border-t border-gray-100 bg-white">
-                <button
-                  onClick={() => setShowForm(false)}
-                  className="px-6 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={saving}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {saving ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-                  {saving ? 'Saving...' : 'Add Worker'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
     </div>
   )
 }
