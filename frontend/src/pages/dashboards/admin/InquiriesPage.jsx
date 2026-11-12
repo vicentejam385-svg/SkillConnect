@@ -6,6 +6,7 @@ import {
   TrendingUp, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
   Mail, Phone, Smartphone, MapPin, Copy, Check, Loader2, CalendarDays, MessageSquareText,
   Info, ArrowUp, ArrowDown, ArrowUpDown, Send, Home, User,
+  RefreshCw, CheckCircle,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 
@@ -512,19 +513,19 @@ export default function InquiriesPage() {
     const e = {}
     const nameOk = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/
     if (!form.first_name.trim()) e.first_name = 'First name is required.'
-    else if (!nameOk.test(form.first_name.trim())) e.first_name = 'Use letters only.'
-    if (!form.middle_initial.trim()) e.middle_initial = 'Required.'
+    else if (!nameOk.test(form.first_name.trim())) e.first_name = 'First name must contain letters only.'
+    if (!form.middle_initial.trim()) e.middle_initial = 'Middle initial is required.'
     if (!form.last_name.trim()) e.last_name = 'Last name is required.'
-    else if (!nameOk.test(form.last_name.trim())) e.last_name = 'Use letters only.'
+    else if (!nameOk.test(form.last_name.trim())) e.last_name = 'Last name must contain letters only.'
     if (!/^\+639\d{9}$/.test(form.mobile.trim())) e.mobile = 'Enter a valid PH mobile number (+639XXXXXXXXX).'
     if (!form.email.trim()) e.email = 'Email is required.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = 'Enter a valid email address.'
-    if (!form.province) e.province = 'Select a province.'
-    if (!form.city) e.city = 'Select a city or municipality.'
-    if (!form.barangay) e.barangay = 'Select a barangay.'
-    if (!form.house_street.trim()) e.house_street = 'House number and street are required.'
-    if (!form.reason) e.reason = 'Choose what the inquiry is about.'
-    if (form.reason === 'Other' && !form.description.trim()) e.description = 'Describe what the client needs.'
+    if (!form.province) e.province = 'Province is required.'
+    if (!form.city) e.city = 'City / Municipality is required.'
+    if (!form.barangay) e.barangay = 'Barangay is required.'
+    if (!form.house_street.trim()) e.house_street = 'House No. & Street is required.'
+    if (!form.reason) e.reason = 'Please select a reason for inquiry.'
+    if (form.reason === 'Other' && !form.description.trim()) e.description = 'Please specify your reason.'
     return e
   }
 
@@ -532,9 +533,7 @@ export default function InquiriesPage() {
     if (saving) return
     const errs = validate()
     if (Object.keys(errs).length) {
-      setErrors(errs)
-      showToast('Some fields need attention.', 'error')
-      document.querySelector(`[data-field="${Object.keys(errs)[0]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      showToast(Object.values(errs)[0], 'error')
       return
     }
 
@@ -857,63 +856,62 @@ export default function InquiriesPage() {
   )
 }
 
-// ── New inquiry modal ──────────────────────────────────────────
-function NewInquiryModal({ form, setForm, f, errors, saving, onClose, onSubmit }) {
-  useEscapeAndLock(onClose)
+// ── New inquiry modal (original layout) ────────────────────────
+function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit }) {
   const filteredCities    = form.province ? getMunicipalitiesByProvince(form.province) : []
   const filteredBarangays = form.city ? getBarangaysByMunicipality(form.city) : []
-
-  const input = (key, withIcon) =>
-    `w-full h-10 ${withIcon ? 'pl-9' : 'pl-3'} pr-3 text-sm rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 transition-colors disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed ${
-      errors[key] ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'
-    }`
-  const select = (key, withIcon) => `${input(key, withIcon)} appearance-none pr-9 cursor-pointer`
-  const Chev = () => <ChevronDown size={16} {...ICON} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+  const inputCls = "w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+  const labelCls = "block text-sm font-semibold text-gray-700 mb-1.5"
+  const req = <span className="text-red-500"> *</span>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden">
-        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5 border-b border-slate-100 flex-shrink-0">
-          <div className="flex items-start gap-4">
-            <span className="w-11 h-11 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0"><Inbox size={20} {...ICON} /></span>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">New inquiry</h3>
-              <p className="text-sm text-slate-500 mt-0.5">Record a project request from a potential client.</p>
-            </div>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-10 max-h-[92vh] overflow-y-auto custom-scroll">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="px-5 pt-8 pb-6 sm:px-8 sm:pb-8">
+          {/* Title */}
+          <div className="text-center mb-6">
+            <h3 className="text-2xl font-bold text-gray-900">Submit an Inquiry</h3>
+            <p className="text-sm text-gray-500 mt-1">Tell us about your project and we'll get back to you right away.</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
-        </div>
 
-        <div className="px-6 py-6 overflow-y-auto flex-1 custom-scroll space-y-6">
-          {/* Name */}
-          <fieldset>
-            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><User size={16} {...ICON} className="text-slate-400" />Client name</legend>
-            <div className="grid grid-cols-6 gap-4">
-              <Field label="First name" required error={errors.first_name} className="col-span-6 sm:col-span-4">
-                <input data-field="first_name" className={input('first_name')} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Juan" autoFocus />
-              </Field>
-              <Field label="M.I." required error={errors.middle_initial} className="col-span-2">
-                <input data-field="middle_initial" className={input('middle_initial')} value={form.middle_initial} maxLength={2} placeholder="A"
-                  onChange={e => f('middle_initial', e.target.value.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())} />
-              </Field>
-              <Field label="Last name" required error={errors.last_name} className="col-span-4">
-                <input data-field="last_name" className={input('last_name')} value={form.last_name} onChange={e => f('last_name', e.target.value)} placeholder="Dela Cruz" />
-              </Field>
-              <Field label="Suffix" className="col-span-6 sm:col-span-2">
-                <input className={input('suffix')} value={form.suffix} maxLength={10} placeholder="Jr." onChange={e => f('suffix', e.target.value)} />
-              </Field>
-            </div>
-          </fieldset>
-
-          <div className="h-px bg-slate-100" />
-
-          {/* Contact */}
-          <fieldset>
-            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><Phone size={16} {...ICON} className="text-slate-400" />How to reach them</legend>
+          <div className="space-y-4">
+            {/* First name | Middle initial */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Mobile number" required icon={Smartphone} error={errors.mobile} hint="Format: +639XXXXXXXXX">
-                <input data-field="mobile" className={input('mobile', true)} value={form.mobile} maxLength={13} placeholder="+639XXXXXXXXX" inputMode="tel"
+              <div>
+                <label className={labelCls}>First Name{req}</label>
+                <input className={inputCls} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="First Name" />
+              </div>
+              <div>
+                <label className={labelCls}>Middle Initial{req}</label>
+                <input className={inputCls} value={form.middle_initial} maxLength={2} placeholder="e.g. A."
+                  onChange={e => f('middle_initial', e.target.value.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())} />
+              </div>
+            </div>
+
+            {/* Last name + Suffix | Mobile */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-[1fr_88px] gap-3">
+                <div>
+                  <label className={labelCls}>Last Name{req}</label>
+                  <input className={inputCls} value={form.last_name} onChange={e => f('last_name', e.target.value)} placeholder="Last Name" />
+                </div>
+                <div>
+                  <label className={labelCls}>Suffix</label>
+                  <input className={inputCls} value={form.suffix} maxLength={10} placeholder="e.g. Jr."
+                    onChange={e => f('suffix', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Mobile Number{req}</label>
+                <input className={inputCls} value={form.mobile} maxLength={13} placeholder="+639XXXXXXXXX"
                   onChange={e => {
                     let val = e.target.value
                     if (!val.startsWith('+63')) val = '+63'
@@ -921,87 +919,74 @@ function NewInquiryModal({ form, setForm, f, errors, saving, onClose, onSubmit }
                     if (digits.startsWith('0')) digits = digits.slice(1)
                     f('mobile', '+63' + digits.slice(0, 10))
                   }} />
-              </Field>
-              <Field label="Email address" required icon={Mail} error={errors.email} hint="Login details are sent here if the inquiry is won.">
-                <input data-field="email" type="email" className={input('email', true)} value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@email.com" />
-              </Field>
+              </div>
             </div>
-          </fieldset>
 
-          <div className="h-px bg-slate-100" />
+            {/* Email */}
+            <div>
+              <label className={labelCls}>Email Address{req}</label>
+              <input type="email" className={inputCls} value={form.email} onChange={e => f('email', e.target.value)} placeholder="Email" />
+            </div>
 
-          {/* Address */}
-          <fieldset>
-            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><MapPin size={16} {...ICON} className="text-slate-400" />Project address</legend>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Field label="Province" required error={errors.province}>
-                <select data-field="province" className={select('province')} value={form.province}
-                  onChange={e => { setForm(p => ({ ...p, province: e.target.value, city: '', barangay: '' })); f('province', e.target.value) }}>
-                  <option value="">Select</option>
-                  <option value="1300000000">Metro Manila</option>
-                </select>
-                <Chev />
-              </Field>
-              <Field label="City / municipality" required error={errors.city}>
-                <select data-field="city" className={select('city')} value={form.city} disabled={!form.province}
-                  onChange={e => { setForm(p => ({ ...p, city: e.target.value, barangay: '' })); f('city', e.target.value) }}>
-                  <option value="">{form.province ? 'Select' : 'Choose province first'}</option>
+            {/* Province */}
+            <div>
+              <label className={labelCls}>Province{req}</label>
+              <select className={inputCls} value={form.province}
+                onChange={e => setForm(p => ({ ...p, province: e.target.value, city: '', barangay: '' }))}>
+                <option value="">Select province...</option>
+                <option value="1300000000">Metro Manila</option>
+              </select>
+            </div>
+
+            {/* City | Barangay */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>City / Municipality{req}</label>
+                <select className={inputCls} value={form.city} disabled={!form.province}
+                  onChange={e => setForm(p => ({ ...p, city: e.target.value, barangay: '' }))}>
+                  <option value="">Select city...</option>
                   {filteredCities.map(c => <option key={c.psgcCode} value={c.psgcCode}>{c.name}</option>)}
                 </select>
-                <Chev />
-              </Field>
-              <Field label="Barangay" required error={errors.barangay}>
-                <select data-field="barangay" className={select('barangay')} value={form.barangay} disabled={!form.city}
+              </div>
+              <div>
+                <label className={labelCls}>Barangay{req}</label>
+                <select className={inputCls} value={form.barangay} disabled={!form.city}
                   onChange={e => f('barangay', e.target.value)}>
-                  <option value="">{form.city ? 'Select' : 'Choose city first'}</option>
+                  <option value="">Select barangay...</option>
                   {filteredBarangays.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
                 </select>
-                <Chev />
-              </Field>
-              <Field label="House no. & street" required icon={Home} error={errors.house_street} className="sm:col-span-3">
-                <input data-field="house_street" className={input('house_street', true)} value={form.house_street} onChange={e => f('house_street', e.target.value)} placeholder="123 Rizal Street" />
-              </Field>
+              </div>
             </div>
-          </fieldset>
 
-          <div className="h-px bg-slate-100" />
-
-          {/* Reason */}
-          <fieldset data-field="reason">
-            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-1"><MessageSquareText size={16} {...ICON} className="text-slate-400" />What do they need?<span className="text-red-500">*</span></legend>
-            <p className="text-xs text-slate-500 mb-3">Choose the service that best fits the request.</p>
-            <div className="flex flex-wrap gap-2">
-              {REASONS.map(r => {
-                const on = form.reason === r
-                return (
-                  <button key={r} type="button" onClick={() => f('reason', r)} aria-pressed={on}
-                    className={`h-8 px-3 rounded-full text-sm border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
-                      ${on ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
-                    {on && <Check size={13} strokeWidth={2.5} className="inline -mt-0.5 mr-1" />}{r}
-                  </button>
-                )
-              })}
+            {/* House & street */}
+            <div>
+              <label className={labelCls}>House No. &amp; Street{req}</label>
+              <input className={inputCls} value={form.house_street} onChange={e => f('house_street', e.target.value)} placeholder="e.g. 123 Rizal Street" />
             </div>
-            {errors.reason && <p className="text-xs text-red-600 mt-2 flex items-center gap-1"><AlertCircle size={12} {...ICON} />{errors.reason}</p>}
 
+            {/* Reason */}
+            <div>
+              <label className={labelCls}>Reason for Inquiry{req}</label>
+              <select className={inputCls} value={form.reason} onChange={e => f('reason', e.target.value)}>
+                <option value="">Select a reason...</option>
+                {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+
+            {/* Description only when reason = Other */}
             {form.reason === 'Other' && (
-              <div className="sc-pop mt-4">
-                <Field label="Describe the request" required error={errors.description}>
-                  <textarea data-field="description" className={`${input('description')} h-auto py-2.5 resize-none`} rows={3} value={form.description}
-                    onChange={e => f('description', e.target.value)} placeholder="What does the client need help with?" />
-                </Field>
+              <div>
+                <label className={labelCls}>Please specify{req}</label>
+                <textarea className={`${inputCls} resize-none`} rows={3} value={form.description}
+                  onChange={e => f('description', e.target.value)} placeholder="Please specify your reason..." />
               </div>
             )}
-          </fieldset>
-        </div>
 
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
-          <p className="hidden sm:block text-xs text-slate-500"><span className="text-red-500">*</span> Required fields</p>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button onClick={onClose} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
-            <button onClick={onSubmit} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} {...ICON} />}
-              {saving ? 'Submitting…' : 'Submit inquiry'}
+            {/* Submit */}
+            <button onClick={onSubmit} disabled={saving}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              {saving ? 'Submitting...' : 'Submit Inquiry'}
             </button>
           </div>
         </div>
