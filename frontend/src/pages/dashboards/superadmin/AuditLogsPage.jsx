@@ -515,47 +515,65 @@ export default function AuditLogsPage() {
               ))}
             </ul>
 
-            {/* Desktop */}
+                        {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
-                    <th className="px-5 py-2.5 font-medium">User</th>
-                    <th className="px-5 py-2.5 font-medium">Action</th>
-                    <th className="px-5 py-2.5 font-medium">Changes</th>
-                    <th className="px-5 py-2.5 font-medium">When</th>
-                    <th className="px-5 py-2.5 font-medium text-right">Details</th>
+                    {['User', 'Action', 'Field name', 'Old value', 'New value', 'Time stamp', ''].map((h, i) => (
+                      <th key={i} className={`px-5 py-2.5 font-medium whitespace-nowrap ${i === 6 ? 'text-right' : ''}`}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((r, i) => (
-                    <tr key={r.id} className="sc-rise hover:bg-slate-50/70 transition-colors align-top" style={{ animationDelay: `${i * 15}ms` }}>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={r.actor_name} />
-                          <span className="min-w-0">
-                            <span className="block font-medium text-slate-900 whitespace-nowrap">{r.actor_name}</span>
-                            <span className="block text-xs text-slate-500">{ROLE_LABEL[r.actor_type] ?? r.actor_type}</span>
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex flex-col items-start gap-1">
-                          <ActionBadge action={r.action} />
-                          <span className="text-xs text-slate-500">{r.module}</span>
-                          {r.status === 'failed' && <ResultBadge status="failed" />}
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5 max-w-[420px]"><ChangeList log={r} onMore={() => setSelected(r)} /></td>
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        <p className="text-slate-700 tabular-nums">{fmtDate(r.created_at)}</p>
-                        <p className="text-xs text-slate-500 tabular-nums">{fmtTime(r.created_at)} · {r.log_code}</p>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <button onClick={() => setSelected(r)} className={rowBtn}><Eye size={14} {...ICON} /> View</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r, i) => {
+                    const all   = getChanges(r)
+                    const shown = all.slice(0, MAX_FIELDS)
+                    const extra = all.length - shown.length
+                    const Line  = ({ children }) => <div className="h-7 flex items-center min-w-0">{children}</div>
+                    const dash  = <Line><span className="text-slate-300">—</span></Line>
+                    return (
+                      <tr key={r.id} className="sc-rise hover:bg-slate-50/70 transition-colors align-top" style={{ animationDelay: `${i * 15}ms` }}>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <Avatar name={r.actor_name} />
+                            <span className="min-w-0">
+                              <span className="block font-medium text-slate-900 whitespace-nowrap">{r.actor_name}</span>
+                              <span className="block text-xs text-slate-500">{ROLE_LABEL[r.actor_type] ?? r.actor_type}</span>
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex flex-col items-start gap-1">
+                            <ActionBadge action={r.action} />
+                            <span className="text-xs text-slate-500">{r.module}</span>
+                            {r.status === 'failed' && <ResultBadge status="failed" />}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {all.length === 0 ? dash : shown.map(c => (
+                            <Line key={c.field}><span className="text-xs font-medium text-slate-700 truncate" title={c.field}>{prettyField(c.field)}</span></Line>
+                          ))}
+                          {extra > 0 && <Line><button onClick={() => setSelected(r)} className="text-xs font-medium text-emerald-700 hover:text-emerald-800">+{extra} more</button></Line>}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {all.length === 0 ? dash : shown.map(c => <Line key={c.field}><ValueChip value={c.old} tone="old" /></Line>)}
+                          {extra > 0 && <Line />}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {all.length === 0 ? dash : shown.map(c => <Line key={c.field}><ValueChip value={c.new} tone="new" /></Line>)}
+                          {extra > 0 && <Line />}
+                        </td>
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <p className="text-slate-700 tabular-nums">{fmtDate(r.created_at)} · {fmtTime(r.created_at)}</p>
+                          <p className="text-xs text-slate-500 tabular-nums">{r.log_code}</p>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button onClick={() => setSelected(r)} className={rowBtn}><Eye size={14} {...ICON} /> View</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
