@@ -295,8 +295,8 @@ const SERVICES = [
   { icon: ClipboardList, title: 'Project Management',      desc: 'End-to-end coordination, on time and on budget.', features: ['Planning & scheduling', 'Budget management', 'Quality control', 'Contractor coordination', 'Progress reporting'] },
 ]
 
-/* ── Service Card (compact, tap to expand) ── */
-function ServiceCard({ icon: Icon, title, desc, features }) {
+/* ── Compact card (tap to expand), used by Services and Why Choose Us ── */
+function CompactCard({ icon: Icon, title, desc, features }) {
   const [open, setOpen] = useState(false)
   return (
     <div className={`bg-white border rounded-lg transition-all duration-200 ${open ? 'border-emerald-300 shadow-sm' : 'border-gray-200 hover:border-emerald-200'}`}>
@@ -315,41 +315,20 @@ function ServiceCard({ icon: Icon, title, desc, features }) {
 
       <div className={`grid transition-[grid-template-rows] duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
         <div className="overflow-hidden">
-          <div className="px-4 pb-4 pt-1 border-t border-gray-100 mx-3 sm:mx-4 px-0">
+          <div className="mx-3 sm:mx-4 pb-4 border-t border-gray-100">
             <p className="text-gray-500 text-xs leading-relaxed mt-3">{desc}</p>
-            <ul className="mt-3 grid grid-cols-1 gap-1.5">
-              {features.map(feat => (
-                <li key={feat} className="flex items-center gap-2 text-xs text-gray-600">
-                  <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />{feat}
-                </li>
-              ))}
-            </ul>
+            {features && (
+              <ul className="mt-3 space-y-1.5">
+                {features.map(feat => (
+                  <li key={feat} className="flex items-center gap-2 text-xs text-gray-600">
+                    <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />{feat}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
-    </div>
-  )
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md hover:border-emerald-200 transition-all duration-200">
-      <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center mb-4">
-        <Icon size={22} className="text-emerald-600" />
-      </div>
-      <h3 className="font-bold text-gray-800 text-base mb-2">{title}</h3>
-      <p className="text-gray-500 text-sm leading-relaxed mb-4">{desc}</p>
-      {features && (
-        <div>
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Key Features</p>
-          <ul className="space-y-1">
-            {features.map(feat => (
-              <li key={feat} className="flex items-center gap-2 text-xs text-gray-500">
-                <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />
-                {feat}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   )
 }
@@ -594,59 +573,21 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div className="py-16 bg-white">
+                <div className="py-16 bg-white">
           <div className="max-w-6xl mx-auto px-6">
             <div className="text-center mb-10">
               <h3 className="font-bold text-2xl text-gray-800 mb-2">Our Services</h3>
               <p className="text-gray-500 text-sm">We offer a wide range of construction services to meet all your building needs.</p>
             </div>
 
-            {/* First 6 services */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              <ServiceCard icon={Hammer} title="New Construction"
-                desc="Complete building construction services. We handle residential, commercial, and industrial projects with expert planning, quality materials, and skilled workforce."
-                features={['Residential buildings', 'Commercial installations', 'Industrial facilities', 'Project management', 'Quality assurance']} />
-              <ServiceCard icon={Wrench} title="Renovation & Remodeling"
-                desc="Transform your living space with our comprehensive renovation services. We bring your vision to life while maintaining structural integrity."
-                features={['Kitchen renovation', 'Bathroom remodeling', 'Room additions', 'Structure modifications', 'Interior upgrades']} />
-              <ServiceCard icon={Shield} title="Repair & Maintenance"
-                desc="Keep your property in top condition with our professional repair and maintenance services. We address structural issues and preventive maintenance."
-                features={['Structural repairs', 'Preventive maintenance', 'Emergency repairs', 'Regular inspections', 'Damage restoration']} />
-              <ServiceCard icon={Zap} title="Electrical Installation"
-                desc="Complete electrical services from installation to maintenance. We ensure safe, efficient, and code-compliant electrical systems."
-                features={['Home panel framing', 'Commercial fitting', 'Renovation projects', 'Industrial panel fitting', 'Safety & compliance']} />
-              <ServiceCard icon={Droplets} title="Plumbing Services"
-                desc="Professional plumbing solutions for all your water and drainage needs. From installation to repairs, our expert team delivers reliable service."
-                features={['Pipe installation', 'Leak detection', 'Drain cleaning', 'Water heater service', 'Leak search & repair']} />
-              <ServiceCard icon={PaintBucket} title="Painting & Finishing"
-                desc="Expert painting services that add beauty and protection to your property. We use premium paints and modern techniques for superior finishes."
-                features={['Interior painting', 'Exterior painting', 'Texture coating', 'Waterproofing', 'Decorative finishes']} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+              {SERVICES.map(s => <CompactCard key={s.title} {...s} />)}
             </div>
-
-            {/* Second 6 services */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <ServiceCard icon={Layers} title="Carpentry"
-                desc="Custom carpentry services for all your woodworking needs. From furniture to structural woodwork, we create durable and beautiful wooden solutions."
-                features={['Custom furniture', 'Cabinet installation', 'Door and window frames', 'Wooden flooring', 'Deck construction']} />
-              <ServiceCard icon={Building2} title="Masonry"
-                desc="Professional masonry work including brickwork, stonework, and concrete structures. We build strong, durable structures that stand the test of time."
-                features={['Brick and block laying', 'Concrete work', 'Stone masonry', 'Retaining walls', 'Repointing work']} />
-              <ServiceCard icon={HardHat} title="Roofing"
-                desc="Complete roofing solutions from installation to replacement. We use high-quality roofing materials to provide durable weather and protection for your property."
-                features={['New installation', 'Roof repair', 'Gutter installation', 'Waterproofing', 'Roof inspection']} />
-              <ServiceCard icon={TreePine} title="Landscaping"
-                desc="Transform your outdoor spaces with professional landscaping services. We design and create beautiful, functional landscapes for your property's appeal."
-                features={['Landscape design', 'Garden installation', 'Hardscaping', 'Irrigation systems', 'Lawn maintenance']} />
-              <ServiceCard icon={LayoutGrid} title="Interior Design"
-                desc="Professional interior design services that combine aesthetics with functionality. We create beautiful, livable spaces tailored to your style and needs."
-                features={['Space planning', 'Furniture selection', 'Color consultation', 'Lighting design', '3D visualization']} />
-              <ServiceCard icon={ClipboardList} title="Project Management"
-                desc="Comprehensive project management services ensuring smooth execution from start to finish. All aspects of your construction project is handled."
-                features={['Planning & scheduling', 'Budget management', 'Quality control', 'Contractor coordination', 'Progress reporting']} />
-            </div>
+            <p className="text-center text-xs text-gray-400 mt-4">Tap a service to see what’s included.</p>
           </div>
         </div>
 
+        {/* Why Choose Us */}
         {/* Why Choose Us */}
         <div className="py-16 bg-gray-50">
           <div className="max-w-5xl mx-auto px-6">
@@ -654,25 +595,15 @@ export default function LandingPage() {
               <h3 className="font-bold text-2xl text-gray-800 mb-2">Why Choose Us</h3>
               <p className="text-gray-500 text-sm">What sets us apart in the construction industry</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
               {[
-                { icon: Building2,     title: 'Construction Services', desc: 'Professional construction and renovation services for residential and commercial projects.' },
-                { icon: Star,          title: 'Quality Materials',     desc: 'We only use premium, tested materials trusted by all projects.' },
-                { icon: Clock,         title: 'On-Time Delivery',      desc: 'Committed to completing projects within agreed timelines.' },
-                { icon: Award,         title: 'Competitive Pricing',   desc: 'Professional services at rates that fit your budget without compromise.' },
-                { icon: Users,         title: 'Support',               desc: 'Dedicated client support for your peace of mind.' },
-                { icon: Shield,        title: 'Licensed',              desc: 'Professional, licensed, and insured for your protection.' },
-              ].map(item => (
-                <div key={item.title} className="flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-lg hover:border-emerald-200 transition-colors">
-                  <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <item.icon size={18} className="text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm mb-0.5">{item.title}</p>
-                    <p className="text-gray-500 text-xs leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
+                { icon: Building2, title: 'Construction Services', desc: 'Professional construction and renovation services for residential and commercial projects.' },
+                { icon: Star,      title: 'Quality Materials',     desc: 'We only use premium, tested materials trusted by all projects.' },
+                { icon: Clock,     title: 'On-Time Delivery',      desc: 'Committed to completing projects within agreed timelines.' },
+                { icon: Award,     title: 'Competitive Pricing',   desc: 'Professional services at rates that fit your budget without compromise.' },
+                { icon: Users,     title: 'Support',               desc: 'Dedicated client support for your peace of mind.' },
+                { icon: Shield,    title: 'Licensed',              desc: 'Professional, licensed, and insured for your protection.' },
+              ].map(item => <CompactCard key={item.title} {...item} />)}
             </div>
           </div>
         </div>
@@ -692,23 +623,32 @@ export default function LandingPage() {
         </div>
 
         {/* Contact info cards */}
-        <div className="py-12 bg-white border-b border-gray-100">
+                <div className="py-8 bg-white border-b border-gray-100">
           <div className="max-w-5xl mx-auto px-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                { icon: Mail,    title: 'Email Us',       lines: ['info@emeraldbuilders.com', 'support@emeraldbuilders.com'] },
-                { icon: Phone,   title: 'Call Us',        lines: ['+63 123 456 7890', '+63 456 654 3210'] },
-                { icon: MapPin,  title: 'Visit Us',       lines: ['123 Batikan John Avenue', 'Quezon City, Metro Manila 1010'] },
-                { icon: Clock,   title: 'Working Hours',  lines: ['Monday – Sunday', '8:00 AM – 6:00 PM'] },
-              ].map(info => (
-                <div key={info.title} className="flex flex-col items-center">
-                  <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
-                    <info.icon size={20} className="text-emerald-600" />
-                  </div>
-                  <p className="font-semibold text-gray-800 text-sm mb-1">{info.title}</p>
-                  {info.lines.map(l => <p key={l} className="text-gray-500 text-xs">{l}</p>)}
-                </div>
-              ))}
+                { icon: Mail,   title: 'Email Us',      lines: ['info@emeraldbuilders.com', 'support@emeraldbuilders.com'], href: 'mailto:info@emeraldbuilders.com' },
+                { icon: Phone,  title: 'Call Us',       lines: ['+63 123 456 7890', '+63 456 654 3210'],                    href: 'tel:+631234567890' },
+                { icon: MapPin, title: 'Visit Us',      lines: ['123 Batikan John Avenue', 'Quezon City, Metro Manila 1010'] },
+                { icon: Clock,  title: 'Working Hours', lines: ['Monday – Sunday', '8:00 AM – 6:00 PM'] },
+              ].map(info => {
+                const Wrap = info.href ? 'a' : 'div'
+                return (
+                  <Wrap
+                    key={info.title}
+                    {...(info.href ? { href: info.href } : {})}
+                    className={`flex items-start gap-3 p-3 sm:p-4 bg-white border border-gray-200 rounded-lg transition-colors ${info.href ? 'hover:border-emerald-300' : ''}`}
+                  >
+                    <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <info.icon size={18} className="text-emerald-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 text-sm">{info.title}</p>
+                      {info.lines.map(l => <p key={l} className="text-gray-500 text-xs break-words">{l}</p>)}
+                    </div>
+                  </Wrap>
+                )
+              })}
             </div>
           </div>
         </div>
