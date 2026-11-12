@@ -2,145 +2,99 @@ import { useState, useEffect, useRef } from 'react'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 import { useNavigate } from 'react-router-dom'
 import {
-  HardHat, Users, ClipboardList, ArrowRight, CheckCircle2, Building2, Wrench, Shield, Send,
-  AlertCircle, Mail, Phone, MapPin, Clock, CalendarDays, Star, Zap, Award, Hammer, TreePine,
-  PaintBucket, Layers, Droplets, LayoutGrid, Menu, X, ChevronDown, Loader2, BadgeCheck,
-  MessageSquareText, UserCheck, LineChart, Sparkles, Quote,
+  HardHat, Users, ClipboardList, ArrowRight, CheckCircle,
+  Building2, Wrench, Shield, Send, AlertCircle, Mail,
+  Phone, MapPin, Clock, ChevronDown, Calendar, Star,
+  Zap, Award, Hammer, TreePine, PaintBucket, Layers,
+  Settings, Droplets, LayoutGrid
 } from 'lucide-react'
 
-const ICON = { strokeWidth: 1.75 }
-const prefersReduced = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
-/* ── Page-level animation styles ── */
-const styles = `
-  .lp, .lp h1, .lp h2, .lp h3, .lp h4 { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-  @keyframes lp-up    { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-  @keyframes lp-zoom  { from { transform: scale(1.1); } to { transform: scale(1); } }
-  @keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-  @keyframes lp-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-  @keyframes lp-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
-  @keyframes lp-bar   { from { width: 0; } }
-  .lp-up     { animation: lp-up .8s cubic-bezier(.2,.7,.2,1) both; }
-  .lp-zoom   { animation: lp-zoom 14s ease-out both; }
-  .lp-float  { animation: lp-float 6s ease-in-out infinite; }
-  .lp-marquee { animation: lp-marquee 38s linear infinite; }
-  .lp-marquee-wrap:hover .lp-marquee { animation-play-state: paused; }
-  .lp-pulse  { animation: lp-pulse 2s infinite; }
-  .lp-bar    { animation: lp-bar 1.6s cubic-bezier(.2,.7,.2,1) .9s both; }
-  @media (prefers-reduced-motion: reduce) {
-    .lp-up, .lp-zoom, .lp-float, .lp-marquee, .lp-pulse, .lp-bar { animation: none !important; }
-    html { scroll-behavior: auto; }
-  }
-`
-
-/* ── Reveal on scroll ── */
-function Reveal({ children, delay = 0, className = '', as: Tag = 'div' }) {
-  const ref = useRef(null)
-  const [shown, setShown] = useState(false)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    if (prefersReduced()) { setShown(true); return }
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { setShown(true); io.disconnect() }
-    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' })
-    io.observe(el)
-    return () => io.disconnect()
-  }, [])
-  return (
-    <Tag
-      ref={ref}
-      style={{ transitionDelay: `${delay}ms` }}
-      className={`${className} transition-[opacity,transform] duration-700 ease-[cubic-bezier(.2,.7,.2,1)] ${shown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'}`}
-    >
-      {children}
-    </Tag>
-  )
-}
-
-/* ── Count-up ── */
-function useCountUp(target, duration = 1800, start = false) {
+/* ── Count-up hook ── */
+function useCountUp(target, duration = 2000, start = false) {
   const [count, setCount] = useState(0)
   useEffect(() => {
     if (!start) return
-    if (prefersReduced()) { setCount(target); return }
-    let startTime = null, raf
-    const step = ts => {
+    let startTime = null
+    const step = (ts) => {
       if (!startTime) startTime = ts
       const p = Math.min((ts - startTime) / duration, 1)
-      setCount(Math.round(target * (1 - Math.pow(1 - p, 3))))
-      if (p < 1) raf = requestAnimationFrame(step)
+      setCount(Math.floor(p * target))
+      if (p < 1) requestAnimationFrame(step)
     }
-    raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
+    requestAnimationFrame(step)
   }, [target, duration, start])
   return count
 }
 
-/* ── Section heading ── */
-function SectionHeading({ eyebrow, title, text, align = 'center', dark = false }) {
-  return (
-    <Reveal className={`${align === 'center' ? 'text-center mx-auto' : ''} max-w-2xl`}>
-      {eyebrow && (
-        <p className={`inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase ${dark ? 'text-emerald-300' : 'text-emerald-700'}`}>
-          <span className={`w-6 h-px ${dark ? 'bg-emerald-300' : 'bg-emerald-600'}`} />{eyebrow}
-        </p>
-      )}
-      <h2 className={`mt-3 text-3xl sm:text-4xl font-semibold tracking-tight leading-tight ${dark ? 'text-white' : 'text-slate-900'}`}>{title}</h2>
-      {text && <p className={`mt-4 text-base leading-relaxed ${dark ? 'text-emerald-100/80' : 'text-slate-600'}`}>{text}</p>}
-    </Reveal>
-  )
-}
-
-/* ── Inquiry form (same fields, rules and API as before) ── */
-const REASONS = [
-  'New Construction', 'Renovation & Remodeling', 'Repair & Maintenance', 'Electrical Installation',
-  'Plumbing Services', 'Painting & Finishing', 'Carpentry', 'Masonry', 'Roofing', 'Landscaping',
-  'Interior Design', 'Project Management', 'Other',
-]
-
+/* ── Inquiry Form (moved to Contact Us section) ── */
 function InquiryForm() {
   const [form, setForm] = useState({
     first_name: '', middle_initial: '', last_name: '', suffix: '',
     email: '', mobile: '+63',
     province: '', city: '', barangay: '', house_street: '',
-    description: '', reason: '',
+    description: '', reason: ''
   })
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [apiError, setApiError] = useState('')
 
-  const f = (key, val) => { setForm(p => ({ ...p, [key]: val })); setErrors(e => ({ ...e, [key]: undefined })) }
+  const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
 
   const NCR_CODE = '1300000000'
   const filteredCities = form.province ? getMunicipalitiesByProvince(form.province) : []
   const filteredBarangays = form.city ? getBarangaysByMunicipality(form.city) : []
-  const provinceName = form.province === NCR_CODE ? 'Metro Manila' : getAllProvinces().find(p => p.psgcCode === form.province)?.name ?? ''
+  const provinceName = form.province === NCR_CODE
+    ? 'Metro Manila'
+    : getAllProvinces().find(p => p.psgcCode === form.province)?.name ?? ''
   const cityName = filteredCities.find(c => c.psgcCode === form.city)?.name
-  const buildAddress = () => [form.house_street, form.barangay, cityName, provinceName].filter(Boolean).join(', ')
+
+  const buildAddress = () =>
+    [form.house_street, form.barangay, cityName, provinceName].filter(Boolean).join(', ')
 
   const validate = () => {
     const e = {}
-    if (!form.first_name.trim()) e.first_name = 'First name is required.'
-    else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.first_name.trim())) e.first_name = 'First name must contain letters only, with no repeated or trailing hyphens.'
-    if (!form.last_name.trim()) e.last_name = 'Last name is required.'
-    else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.last_name.trim())) e.last_name = 'Last name must contain letters only, with no repeated or trailing hyphens.'
-    if (!form.middle_initial.trim()) e.middle_initial = 'Middle initial is required.'
-    else if (!/^[A-Za-z]{1,2}\.?$/.test(form.middle_initial.trim())) e.middle_initial = 'Enter a valid middle initial (e.g. A or A.).'
-    if (!form.email.trim()) e.email = 'Email address is required.'
-    else {
+    if (!form.first_name.trim()) {
+      e.first_name = 'First name is required.'
+    } else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.first_name.trim())) {
+      e.first_name = 'First name must contain letters only, with no repeated or trailing hyphens.'
+    }
+    if (!form.last_name.trim()) {
+      e.last_name = 'Last name is required.'
+    } else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.last_name.trim())) {
+      e.last_name = 'Last name must contain letters only, with no repeated or trailing hyphens.'
+    }
+    if (!form.middle_initial.trim()) {
+      e.middle_initial = 'Middle initial is required.'
+    } else if (!/^[A-Za-z]{1,2}\.?$/.test(form.middle_initial.trim())) {
+      e.middle_initial = 'Enter a valid middle initial (e.g. A or A.).'
+    }
+    if (!form.email.trim()) {
+      e.email = 'Email address is required.'
+    } else {
       const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
       const validTLDs = ['com','net','org','edu','gov','ph','io','info','biz','me','tv','us','uk','au','ca','de','fr','jp','sg','nz','in']
       const tld = form.email.trim().split('.').pop().toLowerCase()
-      if (!emailRegex.test(form.email.trim())) e.email = 'Enter a valid email address (e.g. name@example.com).'
-      else if (!validTLDs.includes(tld)) e.email = 'Enter a valid email domain (e.g. .com, .net, .org, .ph).'
+      if (!emailRegex.test(form.email.trim())) {
+        e.email = 'Enter a valid email address (e.g. name@example.com).'
+      } else if (!validTLDs.includes(tld)) {
+        e.email = 'Enter a valid email domain (e.g. .com, .net, .org, .ph).'
+      }
     }
-    const m = form.mobile.trim()
-    if (!m || m === '+63') e.mobile = 'Mobile number is required.'
-    else if (m.startsWith('+63')) { if (!/^\+639\d{9}$/.test(m)) e.mobile = 'Enter a valid PH mobile number (e.g. +639XXXXXXXXX).' }
-    else if (m.startsWith('09')) { if (!/^09\d{9}$/.test(m)) e.mobile = 'Enter a valid PH mobile number (e.g. 09XXXXXXXXX).' }
-    else e.mobile = 'Mobile number must start with +639 or 09.'
+    const mobileDigits = form.mobile.trim()
+    if (!mobileDigits || mobileDigits === '+63') {
+      e.mobile = 'Mobile number is required.'
+    } else if (mobileDigits.startsWith('+63')) {
+      if (!/^\+639\d{9}$/.test(mobileDigits)) {
+        e.mobile = 'Enter a valid PH mobile number (e.g. +639XXXXXXXXX).'
+      }
+    } else if (mobileDigits.startsWith('09')) {
+      if (!/^09\d{9}$/.test(mobileDigits)) {
+        e.mobile = 'Enter a valid PH mobile number (e.g. 09XXXXXXXXX).'
+      }
+    } else {
+      e.mobile = 'Mobile number must start with +639 or 09.'
+    }
     if (!form.province) e.province = 'Province is required.'
     if (!form.city) e.city = 'City / Municipality is required.'
     if (!form.barangay) e.barangay = 'Barangay is required.'
@@ -172,738 +126,649 @@ function InquiryForm() {
     }
   }
 
-  const input = key => `w-full h-11 px-3.5 text-sm rounded-lg bg-white text-slate-900 placeholder-slate-400 border transition-colors focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed
-    ${errors[key] ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border-slate-200 hover:border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20'}`
-  const label = 'block text-sm font-medium text-slate-700 mb-1.5'
-  const req = <span className="text-red-500">*</span>
-  const Err = ({ k }) => errors[k] ? <p className="text-red-600 text-xs mt-1.5 flex items-start gap-1"><AlertCircle size={12} {...ICON} className="mt-0.5 flex-shrink-0" />{errors[k]}</p> : null
-  const Chev = () => <ChevronDown size={16} {...ICON} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-
   if (success) return (
-    <div className="lp-up flex flex-col items-center justify-center text-center py-14 px-4">
-      <div className="w-16 h-16 rounded-full bg-emerald-50 ring-8 ring-emerald-50/60 flex items-center justify-center">
-        <CheckCircle2 size={32} {...ICON} className="text-emerald-600" />
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+        <CheckCircle size={32} className="text-emerald-600" />
       </div>
-      <h3 className="mt-6 text-2xl font-semibold text-slate-900">Inquiry received</h3>
-      <p className="mt-2 text-slate-600 max-w-sm">Thank you. Our team will review your project and get back to you within one business day.</p>
-      <button onClick={() => setSuccess(false)} className="mt-6 h-10 px-5 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-        Submit another inquiry
+      <h3 className="font-bold text-2xl text-gray-800">Inquiry Submitted!</h3>
+      <p className="text-gray-500 text-center max-w-sm">Thank you! Our team will get in touch with you shortly.</p>
+      <button onClick={() => setSuccess(false)}
+        className="mt-2 px-6 py-2.5 bg-emerald-600 text-white font-semibold rounded text-sm hover:bg-emerald-700 transition-colors">
+        Submit Another
       </button>
     </div>
   )
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {apiError && (
-        <div className="sm:col-span-2 flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-          <AlertCircle size={16} {...ICON} className="mt-0.5 flex-shrink-0" />{apiError}
+        <div className="md:col-span-2 flex items-center gap-2 p-3 rounded bg-red-50 border border-red-200 text-red-600 text-sm">
+          <AlertCircle size={14} />{apiError}
         </div>
       )}
-
+      {/* First Name */}
       <div>
-        <label className={label}>First name {req}</label>
-        <input className={input('first_name')} value={form.first_name} onChange={e => f('first_name', e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s'\-]/g, ''))} placeholder="Juan" />
-        <Err k="first_name" />
+        <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
+        <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          value={form.first_name} onChange={e => f('first_name', e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s'\-]/g, ''))} placeholder="First Name" />
+        {errors.first_name && <p className="text-red-500 text-xs mt-1">{errors.first_name}</p>}
       </div>
+      {/* Middle Initial */}
       <div>
-        <label className={label}>Middle initial {req}</label>
-        <input className={input('middle_initial')} value={form.middle_initial} onChange={e => f('middle_initial', e.target.value)} placeholder="A." maxLength={3} />
-        <Err k="middle_initial" />
+        <label className="block text-sm font-medium text-gray-700 mb-1">Middle Initial <span className="text-red-500">*</span></label>
+        <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          value={form.middle_initial} onChange={e => f('middle_initial', e.target.value)} placeholder="e.g. A." maxLength={3} />
+        {errors.middle_initial && <p className="text-red-500 text-xs mt-1">{errors.middle_initial}</p>}
       </div>
-      <div className="flex gap-3">
-        <div className="flex-1 min-w-0">
-          <label className={label}>Last name {req}</label>
-          <input className={input('last_name')} value={form.last_name} onChange={e => f('last_name', e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s'\-]/g, ''))} placeholder="Dela Cruz" />
-          <Err k="last_name" />
+      {/* Last Name + Suffix */}
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
+          <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            value={form.last_name} onChange={e => f('last_name', e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s'\-]/g, ''))} placeholder="Last Name" />
+          {errors.last_name && <p className="text-red-500 text-xs mt-1">{errors.last_name}</p>}
         </div>
         <div className="w-24">
-          <label className={label}>Suffix</label>
-          <input className={input('suffix')} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." maxLength={10} />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Suffix</label>
+          <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="e.g. Jr." maxLength={10} />
         </div>
       </div>
+     {/* Mobile */}
       <div>
-        <label className={label}>Mobile number {req}</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number <span className="text-red-500">*</span></label>
         <input
-          className={input('mobile')}
+          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
           value={form.mobile}
-          inputMode="tel"
           onChange={e => {
             let val = e.target.value
             if (!val.startsWith('+63')) val = '+63'
             let digits = val.slice(3).replace(/\D/g, '')
             if (digits.startsWith('0')) digits = digits.slice(1)
-            f('mobile', '+63' + digits.slice(0, 10))
+            val = '+63' + digits.slice(0, 10)
+            f('mobile', val)
           }}
           placeholder="+639XXXXXXXXX"
           maxLength={13}
         />
-        <Err k="mobile" />
+        {errors.mobile && <p className="text-red-500 text-xs mt-1">{errors.mobile}</p>}
       </div>
-      <div className="sm:col-span-2">
-        <label className={label}>Email address {req}</label>
-        <input className={input('email')} type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@email.com" />
-        <Err k="email" />
+      {/* Email */}
+      <div className="md:col-span-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Email Address <span className="text-red-500">*</span></label>
+        <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder="Email" />
+        {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
       </div>
-
-      <div className="sm:col-span-2 pt-1">
-        <p className="text-sm font-semibold text-slate-900 flex items-center gap-2"><MapPin size={15} {...ICON} className="text-emerald-600" />Project address</p>
+      {/* Province */}
+      <div className="md:col-span-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Province <span className="text-red-500">*</span></label>
+        <select className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+          value={form.province} onChange={e => setForm(p => ({ ...p, province: e.target.value, city: '', barangay: '' }))}>
+          <option value="">Select province...</option>
+          <option value="1300000000">Metro Manila (NCR)</option>
+        </select>
+        {errors.province && <p className="text-red-500 text-xs mt-1">{errors.province}</p>}
       </div>
-      <div className="sm:col-span-2">
-        <label className={label}>Province {req}</label>
-        <div className="relative">
-          <select className={`${input('province')} appearance-none pr-9 cursor-pointer`} value={form.province}
-            onChange={e => { setForm(p => ({ ...p, province: e.target.value, city: '', barangay: '' })); setErrors(er => ({ ...er, province: undefined })) }}>
-            <option value="">Select province</option>
-            <option value="1300000000">Metro Manila (NCR)</option>
-          </select>
-          <Chev />
-        </div>
-        <Err k="province" />
-      </div>
+      {/* City */}
       <div>
-        <label className={label}>City / municipality {req}</label>
-        <div className="relative">
-          <select className={`${input('city')} appearance-none pr-9 cursor-pointer`} value={form.city} disabled={!form.province}
-            onChange={e => { setForm(p => ({ ...p, city: e.target.value, barangay: '' })); setErrors(er => ({ ...er, city: undefined })) }}>
-            <option value="">{form.province ? 'Select city' : 'Choose a province first'}</option>
-            {filteredCities.map(c => <option key={c.psgcCode} value={c.psgcCode}>{c.name}</option>)}
-          </select>
-          <Chev />
-        </div>
-        <Err k="city" />
+        <label className="block text-sm font-medium text-gray-700 mb-1">City / Municipality <span className="text-red-500">*</span></label>
+        <select className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white disabled:opacity-50"
+          value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value, barangay: '' }))} disabled={!form.province}>
+          <option value="">Select city...</option>
+          {filteredCities.map(c => <option key={c.psgcCode} value={c.psgcCode}>{c.name}</option>)}
+        </select>
+        {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
       </div>
+      {/* Barangay */}
       <div>
-        <label className={label}>Barangay {req}</label>
-        <div className="relative">
-          <select className={`${input('barangay')} appearance-none pr-9 cursor-pointer`} value={form.barangay} disabled={!form.city} onChange={e => f('barangay', e.target.value)}>
-            <option value="">{form.city ? 'Select barangay' : 'Choose a city first'}</option>
-            {filteredBarangays.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
-          </select>
-          <Chev />
-        </div>
-        <Err k="barangay" />
+        <label className="block text-sm font-medium text-gray-700 mb-1">Barangay <span className="text-red-500">*</span></label>
+        <select className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white disabled:opacity-50"
+          value={form.barangay} onChange={e => f('barangay', e.target.value)} disabled={!form.city}>
+          <option value="">Select barangay...</option>
+          {filteredBarangays.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+        </select>
+        {errors.barangay && <p className="text-red-500 text-xs mt-1">{errors.barangay}</p>}
       </div>
-      <div className="sm:col-span-2">
-        <label className={label}>House no. and street {req}</label>
-        <input className={input('house_street')} value={form.house_street} onChange={e => f('house_street', e.target.value)} placeholder="123 Rizal Street" />
-        <Err k="house_street" />
+      {/* House No. & Street */}
+      <div className="md:col-span-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1">House No. & Street <span className="text-red-500">*</span></label>
+        <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          value={form.house_street} onChange={e => f('house_street', e.target.value)} placeholder="e.g. 123 Rizal Street" />
+        {errors.house_street && <p className="text-red-500 text-xs mt-1">{errors.house_street}</p>}
       </div>
-
-      <div className="sm:col-span-2">
-        <label className={label}>What do you need help with? {req}</label>
-        <div className="relative">
-          <select className={`${input('reason')} appearance-none pr-9 cursor-pointer`} value={form.reason} onChange={e => f('reason', e.target.value)}>
-            <option value="">Select a service</option>
-            {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <Chev />
-        </div>
-        <Err k="reason" />
+      {/* Reason */}
+      <div className="md:col-span-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Inquiry <span className="text-red-500">*</span></label>
+        <select className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+          value={form.reason} onChange={e => f('reason', e.target.value)}>
+          <option value="">Select a reason...</option>
+<option value="New Construction">New Construction</option>
+<option value="Renovation & Remodeling">Renovation & Remodeling</option>
+<option value="Repair & Maintenance">Repair & Maintenance</option>
+<option value="Electrical Installation">Electrical Installation</option>
+<option value="Plumbing Services">Plumbing Services</option>
+<option value="Painting & Finishing">Painting & Finishing</option>
+<option value="Carpentry">Carpentry</option>
+<option value="Masonry">Masonry</option>
+<option value="Roofing">Roofing</option>
+<option value="Landscaping">Landscaping</option>
+<option value="Interior Design">Interior Design</option>
+<option value="Project Management">Project Management</option>
+<option value="Other">Other</option>
+        </select>
+        {errors.reason && <p className="text-red-500 text-xs mt-1">{errors.reason}</p>}
       </div>
       {form.reason === 'Other' && (
-        <div className="sm:col-span-2 lp-up">
-          <label className={label}>Tell us more {req}</label>
-          <textarea className={`${input('description')} h-auto py-3 resize-none`} rows={3} value={form.description} onChange={e => f('description', e.target.value)} placeholder="Describe your project or what you need" />
-          <Err k="description" />
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Please specify <span className="text-red-500">*</span></label>
+          <input className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            value={form.description} onChange={e => f('description', e.target.value)} placeholder="Tell us about your inquiry..." />
+          {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
         </div>
       )}
-
-      <div className="sm:col-span-2 pt-1">
+      {/* Submit */}
+      <div className="md:col-span-2">
         <button onClick={handleSubmit} disabled={submitting}
-          className="group w-full h-12 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-sm shadow-emerald-600/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2">
-          {submitting
-            ? <><Loader2 size={17} className="animate-spin" /> Sending your inquiry…</>
-            : <><Send size={16} {...ICON} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" /> Submit inquiry</>}
+          className="w-full flex items-center justify-center gap-2 py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+          {submitting ? <span className="animate-pulse">Submitting...</span> : <><Send size={16} />Submit Inquiry</>}
         </button>
-        <p className="mt-3 text-xs text-slate-500 text-center">We only use your details to respond to this inquiry.</p>
       </div>
     </div>
   )
 }
 
-/* ── Data ── */
-const SERVICES = [
-  { icon: Hammer,       title: 'New Construction',        desc: 'Residential, commercial and industrial builds with expert planning, quality materials and a skilled crew.', features: ['Residential buildings', 'Commercial installations', 'Industrial facilities', 'Project management', 'Quality assurance'] },
-  { icon: Wrench,       title: 'Renovation & Remodeling', desc: 'Transform your space while keeping its structure sound, from kitchens and baths to full room additions.', features: ['Kitchen renovation', 'Bathroom remodeling', 'Room additions', 'Structure modifications', 'Interior upgrades'] },
-  { icon: Shield,       title: 'Repair & Maintenance',    desc: 'Keep your property in top shape with structural repairs, inspections and preventive maintenance.', features: ['Structural repairs', 'Preventive maintenance', 'Emergency repairs', 'Regular inspections', 'Damage restoration'] },
-  { icon: Zap,          title: 'Electrical Installation', desc: 'Safe, efficient and code-compliant electrical systems, from installation to upkeep.', features: ['Home panel framing', 'Commercial fitting', 'Renovation projects', 'Industrial panel fitting', 'Safety & compliance'] },
-  { icon: Droplets,     title: 'Plumbing Services',       desc: 'Reliable water and drainage solutions, from new pipework to leak detection and repairs.', features: ['Pipe installation', 'Leak detection', 'Drain cleaning', 'Water heater service', 'Leak search & repair'] },
-  { icon: PaintBucket,  title: 'Painting & Finishing',    desc: 'Premium paints and modern techniques for finishes that look great and protect your property.', features: ['Interior painting', 'Exterior painting', 'Texture coating', 'Waterproofing', 'Decorative finishes'] },
-  { icon: Layers,       title: 'Carpentry',               desc: 'Custom woodwork, from built-in furniture to structural framing, made to last.', features: ['Custom furniture', 'Cabinet installation', 'Door and window frames', 'Wooden flooring', 'Deck construction'] },
-  { icon: Building2,    title: 'Masonry',                 desc: 'Brickwork, stonework and concrete structures built strong and durable.', features: ['Brick and block laying', 'Concrete work', 'Stone masonry', 'Retaining walls', 'Repointing work'] },
-  { icon: HardHat,      title: 'Roofing',                 desc: 'Installation, repair and replacement with high-quality materials for lasting weather protection.', features: ['New installation', 'Roof repair', 'Gutter installation', 'Waterproofing', 'Roof inspection'] },
-  { icon: TreePine,     title: 'Landscaping',             desc: 'Beautiful, functional outdoor spaces designed and built around how you live.', features: ['Landscape design', 'Garden installation', 'Hardscaping', 'Irrigation systems', 'Lawn maintenance'] },
-  { icon: LayoutGrid,   title: 'Interior Design',         desc: 'Spaces that balance looks and function, tailored to your style and needs.', features: ['Space planning', 'Furniture selection', 'Color consultation', 'Lighting design', '3D visualization'] },
-  { icon: ClipboardList,title: 'Project Management',      desc: 'End-to-end coordination so your project runs on time and on budget.', features: ['Planning & scheduling', 'Budget management', 'Quality control', 'Contractor coordination', 'Progress reporting'] },
-]
+/* ── Service Card ── */
+function ServiceCard({ icon: Icon, title, desc, features }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md hover:border-emerald-200 transition-all duration-200">
+      <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center mb-4">
+        <Icon size={22} className="text-emerald-600" />
+      </div>
+      <h3 className="font-bold text-gray-800 text-base mb-2">{title}</h3>
+      <p className="text-gray-500 text-sm leading-relaxed mb-4">{desc}</p>
+      {features && (
+        <div>
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Key Features</p>
+          <ul className="space-y-1">
+            {features.map(feat => (
+              <li key={feat} className="flex items-center gap-2 text-xs text-gray-500">
+                <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />
+                {feat}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
 
-const NAV_LINKS = [
-  { id: 'home',     label: 'About us' },
-  { id: 'services', label: 'Services' },
-  { id: 'process',  label: 'How it works' },
-  { id: 'contact',  label: 'Contact' },
-]
-
-/* ── Main page ── */
+/* ── Main Page ── */
 export default function LandingPage() {
   const navigate = useNavigate()
   const statsRef = useRef(null)
   const [statsVisible, setStatsVisible] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
-  const [openService, setOpenService] = useState(null)
 
-  const projects = useCountUp(500, 1800, statsVisible)
-  const workers  = useCountUp(120, 1800, statsVisible)
-  const clients  = useCountUp(85,  1800, statsVisible)
-  const years    = useCountUp(12,  1800, statsVisible)
+  const projects = useCountUp(500, 2000, statsVisible)
+  const workers  = useCountUp(120, 2000, statsVisible)
+  const clients  = useCountUp(85,  2000, statsVisible)
+  const years    = useCountUp(12,  2000, statsVisible)
 
-  // Stats count-up when visible
   useEffect(() => {
-    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStatsVisible(true) }, { threshold: 0.3 })
-    if (statsRef.current) io.observe(statsRef.current)
-    return () => io.disconnect()
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setStatsVisible(true) },
+      { threshold: 0.3 }
+    )
+    if (statsRef.current) observer.observe(statsRef.current)
+    return () => observer.disconnect()
   }, [])
 
-  // Solid nav after scrolling
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  // Highlight the section in view
-  useEffect(() => {
-    const ids = NAV_LINKS.map(l => l.id)
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id) })
-    }, { rootMargin: '-45% 0px -50% 0px' })
-    ids.forEach(id => { const el = document.getElementById(id); if (el) io.observe(el) })
-    return () => io.disconnect()
-  }, [])
-
-  const scrollTo = id => {
-    setMobileMenuOpen(false)
+  const scrollTo = (id) => {
+    setActiveSection(id)
     const el = document.getElementById(id)
-    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: prefersReduced() ? 'auto' : 'smooth' })
+    if (el) el.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const solidNav = scrolled || mobileMenuOpen
+  /* ── Nav link style ── */
+  const navLink = (id) =>
+    `text-sm font-medium transition-colors cursor-pointer px-1 pb-0.5 border-b-2 ${
+      activeSection === id
+        ? 'text-gray-900 border-emerald-500'
+        : 'text-gray-600 hover:text-gray-900 border-transparent'
+    }`
 
   return (
-    <div className="lp min-h-screen bg-white text-slate-800 antialiased">
-      <style>{styles}</style>
+    <div className="min-h-screen bg-white text-gray-800" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
 
-      {/* ══════════════ NAV ══════════════ */}
-      <nav className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${solidNav ? 'bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.06)]' : 'bg-transparent border-b border-transparent'}`}>
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-          <button onClick={() => scrollTo('home')} className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-lg">
-            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-sm ring-1 ring-emerald-700/20 flex items-center justify-center">
-              <HardHat size={18} strokeWidth={2} className="text-white" />
-            </span>
-            <span className="text-left">
-              <span className={`block font-semibold text-[15px] leading-tight tracking-tight transition-colors ${solidNav ? 'text-slate-900' : 'text-white'}`}>SkillConnect</span>
-              <span className={`block text-xs leading-tight transition-colors ${solidNav ? 'text-slate-500' : 'text-white/70'}`}>Emerald Builders</span>
-            </span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <div className="hidden md:flex items-center gap-1 mr-3">
-              {NAV_LINKS.map(l => {
-                const on = activeSection === l.id
-                return (
-                  <button key={l.id} onClick={() => scrollTo(l.id)}
-                    className={`relative px-3 h-9 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
-                      ${solidNav ? (on ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100') : (on ? 'text-white' : 'text-white/75 hover:text-white hover:bg-white/10')}`}>
-                    {l.label}
-                    <span className={`absolute left-3 right-3 -bottom-[1px] h-0.5 rounded-full transition-all duration-300 ${on ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'} ${solidNav ? 'bg-emerald-600' : 'bg-white'}`} />
-                  </button>
-                )
-              })}
-            </div>
-            <button onClick={() => navigate('/login')}
-              className={`hidden sm:inline-flex items-center h-9 px-4 rounded-lg text-sm font-medium transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
-              Sign in
-            </button>
-            <button onClick={() => scrollTo('contact')}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2">
-              Get a quote
-            </button>
-            <button onClick={() => setMobileMenuOpen(o => !o)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}
-              className={`md:hidden p-2 rounded-lg transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
-              {mobileMenuOpen ? <X size={22} {...ICON} /> : <Menu size={22} {...ICON} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile menu */}
-        <div className={`md:hidden grid transition-[grid-template-rows] duration-300 ${mobileMenuOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-          <div className="overflow-hidden">
-            <div className="px-5 pb-5 pt-2 space-y-1 border-t border-slate-100 bg-white">
-              {NAV_LINKS.map(l => (
-                <button key={l.id} onClick={() => scrollTo(l.id)}
-                  className={`w-full text-left px-3 h-11 rounded-lg text-sm font-medium ${activeSection === l.id ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700 hover:bg-slate-50'}`}>
-                  {l.label}
-                </button>
-              ))}
-              <button onClick={() => navigate('/login')} className="w-full h-11 mt-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50">Sign in</button>
-            </div>
-          </div>
-        </div>
+      {/* ══════════════════════════════════════════
+          NAV
+      ══════════════════════════════════════════ */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+  {/* Logo */}
+  <div className="flex items-center gap-2">
+    <div className="w-8 h-8 bg-emerald-600 rounded flex items-center justify-center">
+      <span className="text-white font-black text-xs">EB</span>
+    </div>
+    <div>
+      <span className="font-bold text-gray-800 text-sm">SkillConnect</span>
+      <p className="text-gray-400 text-[10px] leading-none">Emerald Builders</p>
+    </div>
+  </div>
+  {/* Links + Sign In (grouped right) */}
+  <div className="flex items-center gap-3">
+    <div className="hidden md:flex items-center gap-6">
+      <button onClick={() => scrollTo('home')} className={navLink('home')}>About Us</button>
+      <button onClick={() => scrollTo('services')} className={navLink('services')}>Products & Services</button>
+      <button onClick={() => scrollTo('contact')} className={navLink('contact')}>Contact Us</button>
+    </div>
+    <button onClick={() => navigate('/login')}
+      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded transition-colors">
+      Sign In
+    </button>
+    <button
+      className="md:hidden flex flex-col justify-center items-center w-8 h-8 gap-1.5"
+      onClick={() => setMobileMenuOpen(p => !p)}
+      aria-label="Toggle menu"
+    >
+      <span className={`block w-5 h-0.5 bg-gray-700 transition-all duration-200 ${mobileMenuOpen ? 'rotate-45 translate-y-2' : ''}`} />
+      <span className={`block w-5 h-0.5 bg-gray-700 transition-all duration-200 ${mobileMenuOpen ? 'opacity-0' : ''}`} />
+      <span className={`block w-5 h-0.5 bg-gray-700 transition-all duration-200 ${mobileMenuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
+    </button>
+  </div>
+</div>
       </nav>
 
-      {/* ══════════════ HERO ══════════════ */}
-      <section id="home" className="relative min-h-[92vh] flex items-center overflow-hidden bg-slate-900">
-        <img src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1800&q=80" alt="" aria-hidden="true"
-          className="lp-zoom absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-emerald-900/50" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent" />
-        <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '56px 56px' }} />
+      {/* Mobile nav drawer */}
+      {mobileMenuOpen && (
+        <div className="fixed top-14 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-md md:hidden">
+          <div className="flex flex-col px-6 py-4 gap-4">
+            <button onClick={() => { scrollTo('home'); setMobileMenuOpen(false) }} className="text-sm font-medium text-gray-700 text-left py-1">About Us</button>
+            <button onClick={() => { scrollTo('services'); setMobileMenuOpen(false) }} className="text-sm font-medium text-gray-700 text-left py-1">Products & Services</button>
+            <button onClick={() => { scrollTo('contact'); setMobileMenuOpen(false) }} className="text-sm font-medium text-gray-700 text-left py-1">Contact Us</button>
+          </div>
+        </div>
+      )}
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 pt-28 pb-20 grid lg:grid-cols-[1.15fr_0.85fr] gap-12 items-center">
-          <div>
-            <p className="lp-up inline-flex items-center gap-2 h-8 pl-2 pr-3.5 rounded-full bg-white/10 ring-1 ring-white/20 backdrop-blur text-xs font-medium text-white" style={{ animationDelay: '100ms' }}>
-              <span className="lp-pulse w-2 h-2 rounded-full bg-emerald-400 ml-1" />
-              Trusted construction partner in Metro Manila
-            </p>
-            <h1 className="lp-up mt-6 text-4xl sm:text-5xl lg:text-6xl font-semibold text-white tracking-tight leading-[1.05]" style={{ animationDelay: '200ms' }}>
-              Building dreams,<br />
-              <span className="bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-300 bg-clip-text text-transparent">connecting skills.</span>
+      {/* ══════════════════════════════════════════
+          HERO (Home / About Us section)
+      ══════════════════════════════════════════ */}
+      <section id="home" className="pt-14">
+        {/* Hero with construction background via unsplash */}
+        <div className="relative h-[420px] sm:h-[500px] overflow-hidden">
+          <img
+            src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1400&q=80"
+            alt="Construction site"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          {/* Green overlay */}
+          <div className="absolute inset-0 bg-emerald-700/75" />
+          <div className="relative z-10 h-full flex flex-col justify-center px-8 sm:px-16 max-w-3xl">
+            <h1 className="text-white font-black text-3xl sm:text-5xl leading-tight mb-4">
+              Building Dreams,<br />Connecting Skills
             </h1>
-            <p className="lp-up mt-6 text-base sm:text-lg text-slate-300 leading-relaxed max-w-xl" style={{ animationDelay: '320ms' }}>
-              Book skilled construction professionals, manage job orders and follow every site visit in one place, from your first inquiry to project handover.
+            <p className="text-emerald-100 text-xs sm:text-base leading-relaxed mb-6 max-w-xl">
+              Your premier multi-service booking and workforce management for construction excellence.
+              Connect with skilled professionals and manage your projects seamlessly.
             </p>
-            <div className="lp-up mt-8 flex flex-wrap gap-3" style={{ animationDelay: '440ms' }}>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => navigate('/login')}
+                className="px-5 py-2.5 bg-white text-emerald-700 font-semibold text-sm rounded hover:bg-gray-100 transition-colors">
+                Get Started
+              </button>
               <button onClick={() => scrollTo('contact')}
-                className="group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-                Request a free quote <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
+                className="px-5 py-2.5 border border-white/60 text-white font-semibold text-sm rounded hover:bg-white/10 transition-colors">
+                Learn More
               </button>
-              <button onClick={() => scrollTo('services')}
-                className="inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-white/10 hover:bg-white/15 ring-1 ring-white/25 backdrop-blur text-white text-sm font-semibold transition-colors">
-                Explore services
-              </button>
-            </div>
-            <div className="lp-up mt-12 flex flex-wrap items-center gap-x-8 gap-y-4" style={{ animationDelay: '560ms' }}>
-              {[['500+', 'Projects delivered'], ['120+', 'Skilled workers'], ['12 yrs', 'In the industry']].map(([v, l]) => (
-                <div key={l}>
-                  <p className="text-2xl font-semibold text-white tabular-nums">{v}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{l}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Floating product preview */}
-          <div className="hidden lg:block lp-up" style={{ animationDelay: '500ms' }}>
-            <div className="lp-float relative">
-              <div className="rounded-2xl bg-white/95 backdrop-blur shadow-2xl shadow-black/40 ring-1 ring-white/50 p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-slate-500">Job order</p>
-                    <p className="text-sm font-semibold text-slate-900">JO-00024 · Kitchen renovation</p>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 text-xs font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />In progress
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <div className="flex justify-between text-xs text-slate-500"><span>Progress</span><span className="tabular-nums font-medium text-slate-700">68%</span></div>
-                  <div className="mt-1.5 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="lp-bar h-full w-[68%] rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" /></div>
-                </div>
-                <div className="mt-5 space-y-2.5">
-                  {[
-                    { icon: CheckCircle2, text: 'Site inspection completed', tone: 'text-emerald-600', time: 'Mon' },
-                    { icon: CheckCircle2, text: 'Cabinets installed',        tone: 'text-emerald-600', time: 'Wed' },
-                    { icon: Clock,        text: 'Tiling and finishing',      tone: 'text-amber-500',   time: 'Today' },
-                  ].map(s => (
-                    <div key={s.text} className="flex items-center gap-2.5 text-sm">
-                      <s.icon size={16} {...ICON} className={s.tone} />
-                      <span className="flex-1 text-slate-700">{s.text}</span>
-                      <span className="text-xs text-slate-400">{s.time}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-semibold">JR</div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-slate-900">Jose Reyes</p>
-                    <p className="text-xs text-slate-500">Licensed carpenter · 4.9 ★</p>
-                  </div>
-                  <BadgeCheck size={18} {...ICON} className="text-emerald-600" />
-                </div>
-              </div>
-              <div className="absolute -left-10 -bottom-8 rounded-xl bg-white shadow-xl shadow-black/30 ring-1 ring-slate-900/5 px-4 py-3 flex items-center gap-3">
-                <span className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><CalendarDays size={18} {...ICON} /></span>
-                <div>
-                  <p className="text-xs text-slate-500">Next site visit</p>
-                  <p className="text-sm font-semibold text-slate-900">Tomorrow, 8:00 AM</p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
-
-        <button onClick={() => scrollTo('services')} aria-label="Scroll to services"
-          className="hidden sm:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-10 h-10 items-center justify-center rounded-full ring-1 ring-white/30 text-white/80 hover:text-white hover:bg-white/10 transition-colors">
-          <ChevronDown size={18} {...ICON} className="animate-bounce" />
-        </button>
       </section>
 
-      {/* ══════════════ MARQUEE ══════════════ */}
-      <div className="lp-marquee-wrap bg-white border-b border-slate-200 overflow-hidden py-5">
-        <div className="lp-marquee flex w-max gap-10">
-          {[...SERVICES, ...SERVICES].map((s, i) => (
-            <span key={i} className="flex items-center gap-2.5 text-sm font-medium text-slate-500 whitespace-nowrap">
-              <s.icon size={16} {...ICON} className="text-emerald-600" />{s.title}
-              <span className="ml-8 w-1 h-1 rounded-full bg-slate-300" />
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* ══════════════ PLATFORM FEATURES ══════════════ */}
-      <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <SectionHeading eyebrow="One platform" title="Everything your project needs, connected" text="From booking to handover, SkillConnect keeps clients, workers and our team on the same page." />
-          <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* ── Our Services (Home page — 4 cards) ── */}
+      <section className="py-16 bg-white">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <h2 className="font-bold text-2xl text-gray-800 mb-2">Our Services</h2>
+            <p className="text-gray-500 text-sm">Comprehensive construction solutions tailored to your needs.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
             {[
-              { icon: CalendarDays,  title: 'Flexible scheduling',   desc: 'Book visits that fit your week, with real-time availability on every worker.' },
-              { icon: ClipboardList, title: 'Job order tracking',    desc: 'Follow each job from review to completion, with clear status at every step.' },
-              { icon: Users,         title: 'Verified workforce',    desc: 'Licensed, experienced tradespeople matched to the exact skill your project needs.' },
-              { icon: Building2,     title: 'End-to-end delivery',   desc: 'Residential and commercial projects handled by one accountable team.' },
-            ].map((s, i) => (
-              <Reveal key={s.title} delay={i * 90}>
-                <div className="group h-full rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-900/5">
-                  <span className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center transition-colors group-hover:bg-emerald-600 group-hover:text-white">
-                    <s.icon size={20} {...ICON} />
-                  </span>
-                  <h3 className="mt-5 text-base font-semibold text-slate-900">{s.title}</h3>
-                  <p className="mt-2 text-sm text-slate-600 leading-relaxed">{s.desc}</p>
+              { icon: Calendar,      title: 'Flexible Scheduling',   desc: 'Book services at your convenience with real-time availability tracking.' },
+              { icon: ClipboardList, title: 'Job Management',        desc: 'Efficient job-order processing and project management from start to finish.' },
+              { icon: Users,         title: 'Skilled Workforce',     desc: 'Access to verified and experienced construction professionals and tradespeople.' },
+              { icon: Building2,     title: 'Construction Services', desc: 'Professional construction and renovation services for residential and commercial projects.' },
+            ].map(s => (
+              <div key={s.title} className="border border-gray-200 rounded-lg p-5 hover:shadow-sm hover:border-emerald-200 transition-all">
+                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center mb-3">
+                  <s.icon size={20} className="text-emerald-600" />
                 </div>
-              </Reveal>
+                <h3 className="font-semibold text-gray-800 text-sm mb-1.5">{s.title}</h3>
+                <p className="text-gray-500 text-xs leading-relaxed">{s.desc}</p>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ══════════════ WHY EMERALD ══════════════ */}
-      <section className="py-24 bg-slate-50 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-14 items-center">
-          <Reveal className="relative order-2 lg:order-1">
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/10 ring-1 ring-slate-900/5">
-              <img src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1000&q=80" alt="Construction worker on site"
-                className="w-full h-[420px] object-cover transition-transform duration-700 hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent" />
-            </div>
-            <div className="lp-float absolute -bottom-6 -right-2 sm:right-6 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 p-4 flex items-center gap-3">
-              <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center"><Award size={20} {...ICON} /></span>
-              <div>
-                <p className="text-xl font-semibold text-slate-900 tabular-nums">500+</p>
-                <p className="text-xs text-slate-500">Completed projects</p>
-              </div>
-            </div>
-            <div className="absolute -top-5 -left-2 sm:left-6 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 px-4 py-3 flex items-center gap-2">
-              <div className="flex text-amber-400">{Array.from({ length: 5 }).map((_, i) => <Star key={i} size={14} fill="currentColor" strokeWidth={0} />)}</div>
-              <p className="text-sm font-medium text-slate-900">Rated 4.9 by clients</p>
-            </div>
-          </Reveal>
-
-          <div className="order-1 lg:order-2">
-            <SectionHeading align="left" eyebrow="Why Emerald Builders" title="Quality work, from people you can trust"
-              text="We connect you with the right professionals and stay accountable from the first inquiry to the final inspection." />
-            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-              {['Verified professional workers', 'Real-time project tracking', 'Competitive pricing', 'Quality assurance', 'Dedicated customer support', 'Flexible payment options'].map((item, i) => (
-                <Reveal key={item} delay={i * 60} className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0"><CheckCircle2 size={14} strokeWidth={2.25} /></span>
-                  <span className="text-sm font-medium text-slate-700">{item}</span>
-                </Reveal>
-              ))}
-            </div>
-            <Reveal delay={400}>
-              <button onClick={() => scrollTo('contact')} className="group mt-10 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-                Start your project <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
-              </button>
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════════ STATS ══════════════ */}
-      <section ref={statsRef} className="relative py-20 bg-emerald-700 overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
-        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-emerald-500/30 blur-3xl" />
-        <div className="relative max-w-6xl mx-auto px-5 sm:px-8 grid grid-cols-2 lg:grid-cols-4 gap-y-10">
-          {[
-            { value: projects, label: 'Projects completed', suffix: '+' },
-            { value: workers,  label: 'Skilled workers',    suffix: '+' },
-            { value: clients,  label: 'Happy clients',      suffix: '+' },
-            { value: years,    label: 'Years of experience', suffix: '' },
-          ].map((s, i) => (
-            <div key={s.label} className={`text-center ${i > 0 ? 'lg:border-l lg:border-white/15' : ''}`}>
-              <p className="text-4xl sm:text-5xl font-semibold text-white tabular-nums tracking-tight">{s.value}{s.suffix}</p>
-              <p className="mt-2 text-sm text-emerald-100/80">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ══════════════ SERVICES ══════════════ */}
-      <section id="services" className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <SectionHeading eyebrow="Products & services" title="Every trade your project needs"
-            text="Twelve specialties delivered by licensed professionals, from new builds to everyday maintenance." />
-          <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {SERVICES.map((s, i) => {
-              const open = openService === s.title
-              return (
-                <Reveal key={s.title} delay={(i % 3) * 90}>
-                  <article className="group h-full flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-900/5">
-                    <div className="flex items-start justify-between">
-                      <span className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center transition-all duration-300 group-hover:bg-emerald-600 group-hover:text-white group-hover:scale-105">
-                        <s.icon size={22} {...ICON} />
-                      </span>
-                      <span className="text-xs font-medium text-slate-300 tabular-nums">{String(i + 1).padStart(2, '0')}</span>
-                    </div>
-                    <h3 className="mt-5 text-lg font-semibold text-slate-900">{s.title}</h3>
-                    <p className="mt-2 text-sm text-slate-600 leading-relaxed flex-1">{s.desc}</p>
-
-                    <div className={`grid transition-[grid-template-rows] duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                      <div className="overflow-hidden">
-                        <ul className="mt-4 pt-4 border-t border-slate-100 space-y-2">
-                          {s.features.map(feat => (
-                            <li key={feat} className="flex items-center gap-2 text-sm text-slate-600">
-                              <CheckCircle2 size={15} {...ICON} className="text-emerald-500 flex-shrink-0" />{feat}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex items-center justify-between">
-                      <button onClick={() => setOpenService(open ? null : s.title)} aria-expanded={open}
-                        className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900">
-                        {open ? 'Hide details' : 'What’s included'}
-                        <ChevronDown size={15} {...ICON} className={`transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
-                      </button>
-                      <button onClick={() => scrollTo('contact')} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-                        Inquire <ArrowRight size={14} {...ICON} className="transition-transform group-hover:translate-x-0.5" />
-                      </button>
-                    </div>
-                  </article>
-                </Reveal>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════════ HOW IT WORKS ══════════════ */}
-      <section id="process" className="py-24 bg-slate-50">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <SectionHeading eyebrow="How it works" title="From inquiry to handover in four steps" text="A simple, transparent process so you always know what happens next." />
-          <div className="relative mt-16 grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="hidden md:block absolute top-7 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-emerald-200 via-emerald-400 to-emerald-200" />
-            {[
-              { icon: MessageSquareText, title: 'Send an inquiry',   desc: 'Tell us what you need and where. It takes about two minutes.' },
-              { icon: UserCheck,         title: 'We match a pro',    desc: 'Our team reviews your request and assigns the right specialist.' },
-              { icon: CalendarDays,      title: 'Schedule the work', desc: 'Pick visit days that suit you. We plan around weekdays.' },
-              { icon: LineChart,         title: 'Track to the finish', desc: 'Follow progress in your account until the job is complete.' },
-            ].map((s, i) => (
-              <Reveal key={s.title} delay={i * 120} className="relative text-center">
-                <span className="relative z-10 mx-auto w-14 h-14 rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm text-emerald-600 flex items-center justify-center">
-                  <s.icon size={22} {...ICON} />
-                  <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-semibold flex items-center justify-center ring-4 ring-slate-50">{i + 1}</span>
-                </span>
-                <h3 className="mt-6 text-base font-semibold text-slate-900">{s.title}</h3>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed max-w-[230px] mx-auto">{s.desc}</p>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════════ WHY CHOOSE US ══════════════ */}
-      <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-[0.8fr_1.2fr] gap-14 items-start">
-          <div className="lg:sticky lg:top-28">
-            <SectionHeading align="left" eyebrow="Our promise" title="What sets us apart" text="Six commitments we make on every project, big or small." />
-            <Reveal delay={150}>
-              <figure className="mt-8 rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-6">
-                <Quote size={22} {...ICON} className="text-emerald-500" />
-                <blockquote className="mt-3 text-slate-700 leading-relaxed">“The team kept us updated every step of the way and finished our renovation on schedule. It felt effortless.”</blockquote>
-                <figcaption className="mt-4 flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-full bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-semibold">MS</span>
-                  <span>
-                    <span className="block text-sm font-semibold text-slate-900">Maria Santos</span>
-                    <span className="block text-xs text-slate-500">Homeowner, Parañaque</span>
-                  </span>
-                </figcaption>
-              </figure>
-            </Reveal>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {[
-              { icon: Building2, title: 'Full-service delivery', desc: 'Professional construction and renovation for residential and commercial projects.' },
-              { icon: Star,      title: 'Quality materials',     desc: 'Only premium, tested materials trusted on every project we take on.' },
-              { icon: Clock,     title: 'On-time delivery',      desc: 'Committed to finishing within the timeline we agree on together.' },
-              { icon: Award,     title: 'Fair pricing',          desc: 'Professional work at rates that fit your budget, with no surprises.' },
-              { icon: Users,     title: 'Dedicated support',     desc: 'A real person to answer your questions throughout your project.' },
-              { icon: Shield,    title: 'Licensed and insured',  desc: 'Every worker is licensed and every job is insured for your protection.' },
-            ].map((item, i) => (
-              <Reveal key={item.title} delay={(i % 2) * 90}>
-                <div className="group h-full rounded-2xl border border-slate-200 p-6 transition-all duration-300 hover:border-emerald-200 hover:bg-emerald-50/30">
-                  <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"><item.icon size={19} {...ICON} /></span>
-                  <h3 className="mt-4 font-semibold text-slate-900">{item.title}</h3>
-                  <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{item.desc}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════════ CTA ══════════════ */}
-      <section className="px-5 sm:px-8 pb-24 bg-white">
-        <Reveal className="max-w-7xl mx-auto">
-          <div className="relative overflow-hidden rounded-3xl bg-slate-900 px-6 sm:px-14 py-14 sm:py-16">
-            <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/30 blur-3xl" />
-            <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-teal-500/20 blur-3xl" />
-            <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-              <div className="max-w-xl">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-300"><Sparkles size={14} {...ICON} />Free consultation</p>
-                <h2 className="mt-3 text-3xl sm:text-4xl font-semibold text-white tracking-tight">Ready to start your project?</h2>
-                <p className="mt-3 text-slate-300 leading-relaxed">Tell us what you have in mind and we’ll get back to you within one business day.</p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button onClick={() => scrollTo('contact')} className="group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold transition-colors">
-                  Request a quote <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
-                </button>
-                <a href="tel:+631234567890" className="inline-flex items-center gap-2 h-12 px-6 rounded-lg ring-1 ring-white/25 text-white text-sm font-semibold hover:bg-white/10 transition-colors">
-                  <Phone size={16} {...ICON} /> Call us
-                </a>
-              </div>
-            </div>
-          </div>
-        </Reveal>
-      </section>
-
-      {/* ══════════════ CONTACT ══════════════ */}
-      <section id="contact" className="py-24 bg-slate-50 border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <SectionHeading eyebrow="Contact us" title="Let’s talk about your project" text="Send us an inquiry and our team will reach out. You can also call, email or visit our office." />
-
-          <div className="mt-14 grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">
-            {/* Info + map */}
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* ── Why Choose Emerald Builders ── */}
+      <section className="py-16 bg-gray-50">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            {/* Left text */}
+            <div>
+              <h2 className="font-bold text-2xl text-gray-800 mb-3">Why Choose Emerald Builders?</h2>
+              <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                We connect you with the best construction professionals and provide a seamless
+                experience from inquiry to project completion.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
                 {[
-                  { icon: Mail,   title: 'Email us',      lines: ['info@emeraldbuilders.com', 'support@emeraldbuilders.com'], href: 'mailto:info@emeraldbuilders.com' },
-                  { icon: Phone,  title: 'Call us',       lines: ['+63 123 456 7890', '+63 456 654 3210'],                    href: 'tel:+631234567890' },
-                  { icon: MapPin, title: 'Visit us',      lines: ['123 Batikan John Avenue', 'Quezon City, Metro Manila 1010'] },
-                  { icon: Clock,  title: 'Working hours', lines: ['Monday – Sunday', '8:00 AM – 6:00 PM'] },
-                ].map((info, i) => {
-                  const Wrap = info.href ? 'a' : 'div'
-                  return (
-                    <Reveal key={info.title} delay={i * 70}>
-                      <Wrap {...(info.href ? { href: info.href } : {})}
-                        className={`block h-full rounded-2xl bg-white ring-1 ring-slate-200 p-5 transition-all duration-300 ${info.href ? 'hover:ring-emerald-300 hover:shadow-lg hover:shadow-emerald-900/5 hover:-translate-y-0.5' : ''}`}>
-                        <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center"><info.icon size={18} {...ICON} /></span>
-                        <p className="mt-4 text-sm font-semibold text-slate-900">{info.title}</p>
-                        {info.lines.map(l => <p key={l} className="text-sm text-slate-600 mt-0.5 break-words">{l}</p>)}
-                      </Wrap>
-                    </Reveal>
-                  )
-                })}
-              </div>
-              <Reveal delay={200}>
-                <div className="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-sm bg-white" style={{ height: 300 }}>
-                  <iframe
-                    title="office-location-map"
-                    width="100%"
-                    height="100%"
-                    style={{ border: 'none' }}
-                    srcDoc={`<!DOCTYPE html><html><head>
-                      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-                      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                      <style>html,body,#map{margin:0;padding:0;width:100%;height:100%;}</style>
-                    </head><body><div id="map"></div><script>
-                      var addressBounds = [[14.4829, 120.9991],[14.4929, 121.0091]];
-                      var map = L.map('map', {
-                        center: [14.4879, 121.0041], zoom: 17, minZoom: 17, maxZoom: 19,
-                        maxBounds: addressBounds, maxBoundsViscosity: 1.0,
-                        zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false
-                      });
-                      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
-                      L.marker([14.4879, 121.0041]).addTo(map)
-                        .bindPopup('<b>Emerald Builders</b><br>804 Chaffee St, Moonwalk, Parañaque').openPopup();
-                    </script></body></html>`}
-                  />
-                </div>
-              </Reveal>
-            </div>
-
-            {/* Form */}
-            <Reveal delay={120}>
-              <div className="rounded-3xl bg-white ring-1 ring-slate-200 shadow-xl shadow-slate-900/5 p-6 sm:p-8">
-                <div className="flex items-start gap-4 mb-7">
-                  <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0"><Send size={19} {...ICON} /></span>
-                  <div>
-                    <h3 className="text-xl font-semibold text-slate-900">Submit an inquiry</h3>
-                    <p className="text-sm text-slate-500 mt-0.5">Tell us about your project and we’ll get back to you right away.</p>
+                  'Verified Professional Workers',
+                  'Real-time Project Tracking',
+                  'Competitive Pricing',
+                  'Quality Assurance',
+                  '24/7 Customer Support',
+                  'Flexible Payment Options',
+                ].map(item => (
+                  <div key={item} className="flex items-center gap-2">
+                    <CheckCircle size={15} className="text-emerald-500 flex-shrink-0" />
+                    <span className="text-sm text-gray-600">{item}</span>
                   </div>
-                </div>
-                <InquiryForm />
+                ))}
               </div>
-            </Reveal>
+            </div>
+            {/* Right image */}
+            <div className="relative">
+              <img
+                src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&q=80"
+                alt="Construction worker"
+                className="w-full h-64 object-cover rounded-lg shadow-md"
+              />
+              <div className="absolute bottom-4 left-4 bg-emerald-600 text-white px-4 py-2 rounded flex items-center gap-2 shadow-lg">
+                <CheckCircle size={16} />
+                <span className="font-bold text-sm">500+ Completed Projects</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ══════════════ FOOTER ══════════════ */}
-      <footer className="bg-slate-950 text-slate-400">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 pt-16 pb-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr] gap-10">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center"><HardHat size={18} strokeWidth={2} className="text-white" /></span>
-                <span>
-                  <span className="block font-semibold text-white text-[15px] leading-tight">SkillConnect</span>
-                  <span className="block text-xs text-slate-500 leading-tight">Emerald Builders & Construction</span>
-                </span>
+      {/* ── Stats ── */}
+      <section ref={statsRef} className="py-16 bg-emerald-600">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            {[
+              { value: projects, label: 'Projects Completed', suffix: '+' },
+              { value: workers,  label: 'Skilled Workers',    suffix: '+' },
+              { value: clients,  label: 'Happy Clients',      suffix: '+' },
+              { value: years,    label: 'Years Experience',   suffix: '' },
+            ].map(s => (
+              <div key={s.label}>
+                <div className="font-black text-3xl sm:text-4xl text-white mb-1">{s.value}{s.suffix}</div>
+              <div className="text-emerald-100 text-[10px] sm:text-xs uppercase tracking-wider">{s.label}</div>
               </div>
-              <p className="mt-5 text-sm leading-relaxed max-w-xs">Your trusted partner in construction excellence, connecting clients with skilled professionals.</p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Ready To Start CTA ── */}
+      <section className="py-14 bg-emerald-600">
+        <div className="max-w-3xl mx-auto px-6 text-center">
+          <h2 className="font-bold text-2xl text-white mb-2">Ready to Start Your Project?</h2>
+          <p className="text-emerald-100 text-sm mb-6">Get in touch with us today and let's build something amazing together.</p>
+          <button onClick={() => scrollTo('contact')}
+            className="px-8 py-3 bg-white text-emerald-700 font-semibold text-sm rounded hover:bg-gray-100 transition-colors">
+            Contact Us Today
+          </button>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          PRODUCTS & SERVICES SECTION
+      ══════════════════════════════════════════ */}
+      <section id="services">
+        {/* Section hero */}
+        <div className="bg-emerald-600 py-12 px-6 text-center">
+          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Building2 size={28} className="text-white" />
+          </div>
+          <h2 className="font-bold text-2xl sm:text-3xl text-white mb-3">Products & Services</h2>
+          <p className="text-emerald-100 text-sm max-w-xl mx-auto leading-relaxed">
+            Comprehensive construction and renovation services delivered by skilled professionals.
+            From new construction to maintenance, we've got you covered.
+          </p>
+        </div>
+
+        <div className="py-16 bg-white">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="text-center mb-10">
+              <h3 className="font-bold text-2xl text-gray-800 mb-2">Our Services</h3>
+              <p className="text-gray-500 text-sm">We offer a wide range of construction services to meet all your building needs.</p>
             </div>
+
+            {/* First 6 services */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <ServiceCard icon={Hammer} title="New Construction"
+                desc="Complete building construction services. We handle residential, commercial, and industrial projects with expert planning, quality materials, and skilled workforce."
+                features={['Residential buildings', 'Commercial installations', 'Industrial facilities', 'Project management', 'Quality assurance']} />
+              <ServiceCard icon={Wrench} title="Renovation & Remodeling"
+                desc="Transform your living space with our comprehensive renovation services. We bring your vision to life while maintaining structural integrity."
+                features={['Kitchen renovation', 'Bathroom remodeling', 'Room additions', 'Structure modifications', 'Interior upgrades']} />
+              <ServiceCard icon={Shield} title="Repair & Maintenance"
+                desc="Keep your property in top condition with our professional repair and maintenance services. We address structural issues and preventive maintenance."
+                features={['Structural repairs', 'Preventive maintenance', 'Emergency repairs', 'Regular inspections', 'Damage restoration']} />
+              <ServiceCard icon={Zap} title="Electrical Installation"
+                desc="Complete electrical services from installation to maintenance. We ensure safe, efficient, and code-compliant electrical systems."
+                features={['Home panel framing', 'Commercial fitting', 'Renovation projects', 'Industrial panel fitting', 'Safety & compliance']} />
+              <ServiceCard icon={Droplets} title="Plumbing Services"
+                desc="Professional plumbing solutions for all your water and drainage needs. From installation to repairs, our expert team delivers reliable service."
+                features={['Pipe installation', 'Leak detection', 'Drain cleaning', 'Water heater service', 'Leak search & repair']} />
+              <ServiceCard icon={PaintBucket} title="Painting & Finishing"
+                desc="Expert painting services that add beauty and protection to your property. We use premium paints and modern techniques for superior finishes."
+                features={['Interior painting', 'Exterior painting', 'Texture coating', 'Waterproofing', 'Decorative finishes']} />
+            </div>
+
+            {/* Second 6 services */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <ServiceCard icon={Layers} title="Carpentry"
+                desc="Custom carpentry services for all your woodworking needs. From furniture to structural woodwork, we create durable and beautiful wooden solutions."
+                features={['Custom furniture', 'Cabinet installation', 'Door and window frames', 'Wooden flooring', 'Deck construction']} />
+              <ServiceCard icon={Building2} title="Masonry"
+                desc="Professional masonry work including brickwork, stonework, and concrete structures. We build strong, durable structures that stand the test of time."
+                features={['Brick and block laying', 'Concrete work', 'Stone masonry', 'Retaining walls', 'Repointing work']} />
+              <ServiceCard icon={HardHat} title="Roofing"
+                desc="Complete roofing solutions from installation to replacement. We use high-quality roofing materials to provide durable weather and protection for your property."
+                features={['New installation', 'Roof repair', 'Gutter installation', 'Waterproofing', 'Roof inspection']} />
+              <ServiceCard icon={TreePine} title="Landscaping"
+                desc="Transform your outdoor spaces with professional landscaping services. We design and create beautiful, functional landscapes for your property's appeal."
+                features={['Landscape design', 'Garden installation', 'Hardscaping', 'Irrigation systems', 'Lawn maintenance']} />
+              <ServiceCard icon={LayoutGrid} title="Interior Design"
+                desc="Professional interior design services that combine aesthetics with functionality. We create beautiful, livable spaces tailored to your style and needs."
+                features={['Space planning', 'Furniture selection', 'Color consultation', 'Lighting design', '3D visualization']} />
+              <ServiceCard icon={ClipboardList} title="Project Management"
+                desc="Comprehensive project management services ensuring smooth execution from start to finish. All aspects of your construction project is handled."
+                features={['Planning & scheduling', 'Budget management', 'Quality control', 'Contractor coordination', 'Progress reporting']} />
+            </div>
+          </div>
+        </div>
+
+        {/* Why Choose Us */}
+        <div className="py-16 bg-gray-50">
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="text-center mb-10">
+              <h3 className="font-bold text-2xl text-gray-800 mb-2">Why Choose Us</h3>
+              <p className="text-gray-500 text-sm">What sets us apart in the construction industry</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {[
+                { icon: Building2,     title: 'Construction Services', desc: 'Professional construction and renovation services for residential and commercial projects.' },
+                { icon: Star,          title: 'Quality Materials',     desc: 'We only use premium, tested materials trusted by all projects.' },
+                { icon: Clock,         title: 'On-Time Delivery',      desc: 'Committed to completing projects within agreed timelines.' },
+                { icon: Award,         title: 'Competitive Pricing',   desc: 'Professional services at rates that fit your budget without compromise.' },
+                { icon: Users,         title: 'Support',               desc: 'Dedicated client support for your peace of mind.' },
+                { icon: Shield,        title: 'Licensed',              desc: 'Professional, licensed, and insured for your protection.' },
+              ].map(item => (
+                <div key={item.title} className="flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-lg hover:border-emerald-200 transition-colors">
+                  <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <item.icon size={18} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm mb-0.5">{item.title}</p>
+                    <p className="text-gray-500 text-xs leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          CONTACT US SECTION
+      ══════════════════════════════════════════ */}
+      <section id="contact">
+        {/* Section hero */}
+        <div className="bg-emerald-600 py-16 text-center">
+          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Mail size={28} className="text-white" />
+          </div>
+          <h2 className="font-bold text-3xl text-white mb-3">Contact Us</h2>
+          <p className="text-emerald-100 text-sm">Get in touch with our team. We're here to help you with your construction needs.</p>
+        </div>
+
+        {/* Contact info cards */}
+        <div className="py-12 bg-white border-b border-gray-100">
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-center">
+              {[
+                { icon: Mail,    title: 'Email Us',       lines: ['info@emeraldbuilders.com', 'support@emeraldbuilders.com'] },
+                { icon: Phone,   title: 'Call Us',        lines: ['+63 123 456 7890', '+63 456 654 3210'] },
+                { icon: MapPin,  title: 'Visit Us',       lines: ['123 Batikan John Avenue', 'Quezon City, Metro Manila 1010'] },
+                { icon: Clock,   title: 'Working Hours',  lines: ['Monday – Sunday', '8:00 AM – 6:00 PM'] },
+              ].map(info => (
+                <div key={info.title} className="flex flex-col items-center">
+                  <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
+                    <info.icon size={20} className="text-emerald-600" />
+                  </div>
+                  <p className="font-semibold text-gray-800 text-sm mb-1">{info.title}</p>
+                  {info.lines.map(l => <p key={l} className="text-gray-500 text-xs">{l}</p>)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+       {/* Map */}
+        <div className="bg-gray-50 py-6">
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="rounded-lg overflow-hidden border border-gray-200 shadow-sm" style={{ height: '320px' }}>
+              <iframe
+  title="office-location-map"
+  width="100%"
+  height="100%"
+  style={{ border: 'none' }}
+  srcDoc={`<!DOCTYPE html><html><head>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>html,body,#map{margin:0;padding:0;width:100%;height:100%;}</style>
+  </head><body><div id="map"></div><script>
+    var addressBounds = [[14.4829, 120.9991],[14.4929, 121.0091]];
+    var map = L.map('map', {
+      center: [14.4879, 121.0041],
+      zoom: 17,
+      minZoom: 17,
+      maxZoom: 19,
+      maxBounds: addressBounds,
+      maxBoundsViscosity: 1.0,
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    L.marker([14.4879, 121.0041]).addTo(map)
+      .bindPopup('<b>Emerald Builders</b><br>804 Chaffee St, Moonwalk, Parañaque').openPopup();
+  </script></body></html>`}
+/>
+            </div>
+          </div>
+        </div>
+        
+
+        {/* ── Inquiry Form ── */}
+        <div className="py-14 bg-gray-50 border-t border-gray-100">
+          <div className="max-w-3xl mx-auto px-6">
+            <div className="text-center mb-8">
+              <h3 className="font-bold text-2xl text-gray-800 mb-2">Submit an Inquiry</h3>
+              <p className="text-gray-500 text-sm">Tell us about your project and we'll get back to you right away.</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-8 shadow-sm">
+              <InquiryForm />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          FOOTER
+      ══════════════════════════════════════════ */}
+      <footer className="bg-gray-900 text-gray-300 pt-12 pb-6">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+            {/* Brand */}
             <div>
-              <p className="text-sm font-semibold text-white">Company</p>
-              <ul className="mt-4 space-y-2.5 text-sm">
-                {NAV_LINKS.map(l => (
-                  <li key={l.id}><button onClick={() => scrollTo(l.id)} className="hover:text-emerald-400 transition-colors">{l.label}</button></li>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 bg-emerald-600 rounded flex items-center justify-center">
+                  <span className="text-white font-black text-xs">EB</span>
+                </div>
+                <span className="font-bold text-white text-sm">SkillConnect</span>
+              </div>
+              <p className="text-gray-500 text-xs leading-relaxed mb-2">
+                Emerald Builders & Construction – Your trusted partner in construction excellence.
+              </p>
+              <p className="text-gray-600 text-xs">© 2026 Emerald Builders & Construction. All rights reserved.</p>
+            </div>
+            {/* Quick Links */}
+            <div>
+              <p className="font-semibold text-white text-sm mb-3">Quick Links</p>
+              <ul className="space-y-2">
+                {['Home', 'Inquiry', 'Contact'].map(l => (
+                  <li key={l}><button onClick={() => scrollTo(l === 'Home' ? 'home' : l === 'Inquiry' ? 'contact' : 'contact')}
+                    className="text-gray-500 hover:text-emerald-400 text-xs transition-colors">{l}</button></li>
                 ))}
               </ul>
             </div>
+            {/* Services */}
             <div>
-              <p className="text-sm font-semibold text-white">Platform</p>
-              <ul className="mt-4 space-y-2.5 text-sm">
-                <li><button onClick={() => navigate('/login')} className="hover:text-emerald-400 transition-colors">Sign in</button></li>
-                <li><button onClick={() => scrollTo('contact')} className="hover:text-emerald-400 transition-colors">Submit an inquiry</button></li>
-                <li><button onClick={() => scrollTo('process')} className="hover:text-emerald-400 transition-colors">Job orders</button></li>
-                <li><button onClick={() => scrollTo('process')} className="hover:text-emerald-400 transition-colors">Scheduling</button></li>
+              <p className="font-semibold text-white text-sm mb-3">Services</p>
+              <ul className="space-y-2">
+                {['Job Orders', 'Scheduling'].map(l => (
+                  <li key={l}><button onClick={() => scrollTo('services')}
+                    className="text-gray-500 hover:text-emerald-400 text-xs transition-colors">{l}</button></li>
+                ))}
               </ul>
             </div>
+            {/* Contact */}
             <div>
-              <p className="text-sm font-semibold text-white">Contact</p>
-              <ul className="mt-4 space-y-3 text-sm">
-                <li className="flex items-center gap-2.5"><Mail size={15} {...ICON} className="text-emerald-500" /><a href="mailto:info@emeraldbuilders.com" className="hover:text-emerald-400 transition-colors">info@emeraldbuilders.com</a></li>
-                <li className="flex items-center gap-2.5"><Phone size={15} {...ICON} className="text-emerald-500" /><a href="tel:+631234567890" className="hover:text-emerald-400 transition-colors">+63 123 456 7890</a></li>
-                <li className="flex items-center gap-2.5"><Clock size={15} {...ICON} className="text-emerald-500" />Mon–Sun, 8:00 AM – 6:00 PM</li>
+              <p className="font-semibold text-white text-sm mb-3">Contact</p>
+              <ul className="space-y-2 text-xs text-gray-500">
+                <li>Email: info@emeraldbuilders.com</li>
+                <li>Phone: +63 123 456 7890</li>
+                <li>Mon–Sat: 8AM – 6PM</li>
               </ul>
             </div>
           </div>
-          <div className="mt-14 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p>© {new Date().getFullYear()} Emerald Builders & Construction. All rights reserved.</p>
-            <button onClick={() => scrollTo('home')} className="hover:text-emerald-400 transition-colors">Back to top ↑</button>
+          <div className="border-t border-gray-800 pt-5 text-center">
+            <p className="text-gray-600 text-xs">© 2026 Emerald Builders & Construction. All rights reserved.</p>
           </div>
         </div>
       </footer>
