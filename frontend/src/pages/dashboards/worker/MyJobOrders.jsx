@@ -1,27 +1,62 @@
 import { useState, useEffect } from 'react'
 import {
-  RefreshCw, AlertCircle, ClipboardList, FileText, Upload, X,
-  Eye, ChevronRight, MapPin, Clock
+  RefreshCw, AlertCircle, ClipboardList, FileText, Upload, X, Eye, Camera, Briefcase,
+  ChevronLeft, ChevronRight, MapPin, CalendarDays, CalendarCheck2, CheckCircle2, User,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { apiGet } from '../../../utils/api'
 
-// ── Helpers ────────────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const colors = {
-    'Pending':     'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-    'Active':      'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    'Complete':    'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    'Completed':   'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    'On Hold':     'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    'In Progress': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    'Scheduled':   'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
-    'Cancelled':   'bg-red-500/10 text-red-400 border-red-500/20',
+const ICON = { strokeWidth: 1.75 }
+const HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
+const API  = `${HOST}/backend/api`
+
+// Skeleton stays visible at least this long (ms). Set to 0 to show data as soon as it arrives.
+const MIN_SKELETON_MS = 1000
+const JOB_PER_PAGE = 3
+
+// ── Local styles (same as the dashboard) ───────────────────────
+const styles = `
+  .sc-page, .sc-page h1, .sc-page h2, .sc-page h3 {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
+  @keyframes sc-shimmer { 100% { transform: translateX(100%); } }
+  .sc-skel { position: relative; overflow: hidden; background: #e8edf2; border-radius: 8px; }
+  .sc-skel::after {
+    content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent);
+    animation: sc-shimmer 1.2s infinite;
+  }
+  @keyframes sc-in     { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes sc-slide  { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+  @keyframes sc-fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sc-modal  { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+  .sc-rise   { animation: sc-in .7s cubic-bezier(.16,1,.3,1) both; }
+  .sc-slide  { animation: sc-slide .55s cubic-bezier(.16,1,.3,1) both; }
+  .sc-fadein { animation: sc-fadein .35s ease both; }
+  .sc-modal  { animation: sc-modal .35s cubic-bezier(.16,1,.3,1) both; }
+  @media (prefers-reduced-motion: reduce) {
+    .sc-skel::after, .sc-rise, .sc-slide, .sc-fadein, .sc-modal { animation: none; }
+  }
+`
+
+const Skel = ({ className = '' }) => <div className={`sc-skel ${className}`} />
+
+// ── Helpers ────────────────────────────────────────────────────
+const STATUS = {
+  'Pending':     ['bg-yellow-50 text-yellow-800 ring-yellow-200',    'bg-yellow-500'],
+  'Active':      ['bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500'],
+  'Complete':    ['bg-blue-50 text-blue-700 ring-blue-200',          'bg-blue-500'],
+  'Completed':   ['bg-blue-50 text-blue-700 ring-blue-200',          'bg-blue-500'],
+  'On Hold':     ['bg-orange-50 text-orange-700 ring-orange-200',    'bg-orange-500'],
+  'In Progress': ['bg-amber-50 text-amber-700 ring-amber-200',       'bg-amber-500'],
+  'Scheduled':   ['bg-cyan-50 text-cyan-700 ring-cyan-200',          'bg-cyan-500'],
+  'Cancelled':   ['bg-red-50 text-red-700 ring-red-200',             'bg-red-500'],
+}
+function StatusBadge({ status }) {
+  const [cls, dot] = STATUS[status] || ['bg-slate-50 text-slate-600 ring-slate-200', 'bg-slate-400']
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold border rounded-sm
-      ${colors[status] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}`}>
-      {status || '—'}
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{status || '—'}
     </span>
   )
 }
@@ -40,23 +75,105 @@ function progressPercent(status, start_date, end_date, uploadedPhotos = []) {
   return Math.min(99, Math.round((uniqueDays / totalDays) * 100))
 }
 
+const fmtDate = (s) => {
+  if (!s) return '—'
+  const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
+  return isNaN(d) ? s : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+const todayStr = () => new Date().toISOString().slice(0, 10)
+const esc = s => String(s || '').replace(/[\\'"<>&\r\n`$]/g, ' ')
+
+// ── Small UI pieces ────────────────────────────────────────────
+function InfoItem({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-start gap-2.5 min-w-0">
+      <span className="mt-0.5 w-7 h-7 rounded-lg bg-white ring-1 ring-slate-200 text-slate-400 flex items-center justify-center flex-shrink-0"><Icon size={14} {...ICON} /></span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-slate-400">{label}</p>
+        <p className="text-[13px] font-medium text-slate-800 break-words">{value || '—'}</p>
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, value }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-sm font-medium text-slate-800 break-words">{value || '—'}</p>
+    </div>
+  )
+}
+
+function Modal({ onBackdrop, children }) {
+  return (
+    <div className="sc-fadein fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+      onMouseDown={e => { if (onBackdrop && e.target === e.currentTarget) onBackdrop() }}>
+      <div role="dialog" aria-modal="true"
+        className="sc-modal relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-[0_24px_64px_-16px_rgba(16,24,40,0.35)] overflow-hidden">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ModalHeader({ job, onClose }) {
+  return (
+    <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><Briefcase size={19} {...ICON} /></span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-slate-900 tracking-tight truncate">{job.job_order_code}</h2>
+          <p className="text-xs text-slate-500 mt-0.5 truncate">{job.contract_type || 'Construction Project'}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <StatusBadge status={job.status} />
+        <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:scale-90 transition">
+          <X size={18} {...ICON} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function JobsSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[0, 1, 2].map(i => (
+        <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+          <div className="flex justify-between gap-4">
+            <div className="flex gap-3"><Skel className="w-10 h-10 rounded-xl" /><div className="space-y-2"><Skel className="h-4 w-44" /><Skel className="h-3 w-28" /></div></div>
+            <Skel className="h-5 w-20" />
+          </div>
+          <Skel className="h-16 w-full rounded-lg" />
+          <div className="flex justify-end gap-2"><Skel className="h-9 w-20 rounded-lg" /><Skel className="h-9 w-36 rounded-lg" /></div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── MY JOB ORDERS ──────────────────────────────────────────────
 export default function MyJobOrders() {
-  const { user }  = useAuth()
-  const [jobs,         setJobs]         = useState([])
-const [loading,      setLoading]      = useState(true)
-const [viewJob,      setViewJob]      = useState(null)
-const [photoError, setPhotoError] = useState(null)
-const [progressJob,     setProgressJob]    = useState(null)
-const [progressVal,     setProgressVal]    = useState(0)
-const [mapCoords,       setMapCoords]      = useState(null)
-const [mapLoading,      setMapLoading]     = useState(false)
-const [progressPhotos,  setProgressPhotos] = useState([])
-const [jobPhotos,       setJobPhotos]       = useState({}) // { [job_order_id]: [photos] }
-const [jobPage,         setJobPage]         = useState(1)
-const JOB_PER_PAGE = 3
+  const { user } = useAuth()
+  const [jobs,           setJobs]           = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [viewJob,        setViewJob]        = useState(null)
+  const [photoError,     setPhotoError]     = useState(null)
+  const [progressJob,    setProgressJob]    = useState(null)
+  const [progressVal,    setProgressVal]    = useState(0)
+  const [mapCoords,      setMapCoords]      = useState(null)
+  const [mapLoading,     setMapLoading]     = useState(false)
+  const [progressPhotos, setProgressPhotos] = useState([])
+  const [jobPhotos,      setJobPhotos]      = useState({}) // { [job_order_id]: [photos] }
+  const [jobPage,        setJobPage]        = useState(1)
+  const [saving,         setSaving]         = useState(false)
+  const [toast,          setToast]          = useState(null)
 
+  // Load the worker's jobs
   useEffect(() => {
+    const t0 = Date.now()
     apiGet('/api/workers/list.php')
       .then(wData => {
         const workers = wData.workers || []
@@ -76,7 +193,7 @@ const JOB_PER_PAGE = 3
         })
       })
       .catch(err => console.error('MyJobOrders error:', err))
-      .finally(() => setLoading(false))
+      .finally(() => setTimeout(() => setLoading(false), Math.max(0, MIN_SKELETON_MS - (Date.now() - t0))))
   }, [])
 
   // Load progress photos for all jobs
@@ -85,9 +202,7 @@ const JOB_PER_PAGE = 3
     const token = JSON.parse(localStorage.getItem('sc_user'))?.token
     Promise.all(
       jobs.map(jo =>
-        fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        fetch(`${API}/job-orders/get-progress.php?job_order_id=${jo.id}`, { headers: { Authorization: `Bearer ${token}` } })
           .then(r => r.json())
           .then(d => ({ id: jo.id, photos: d.photos || [] }))
           .catch(() => ({ id: jo.id, photos: [] }))
@@ -101,7 +216,7 @@ const JOB_PER_PAGE = 3
 
   // Auto-complete jobs past their end date
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayStr()
     jobs.forEach(async jo => {
       if (
         jo.end_date &&
@@ -112,7 +227,7 @@ const JOB_PER_PAGE = 3
       ) {
         try {
           const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-          await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/update.php?id=${jo.id}`, {
+          await fetch(`${API}/job-orders/update.php?id=${jo.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ status_id: 'Complete' }),
@@ -125,220 +240,232 @@ const JOB_PER_PAGE = 3
     })
   }, [jobs])
 
-  return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="font-bold text-xl text-slate-800 tracking-tight">Job Orders</h2>
-        <p className="text-slate-400 text-sm mt-0.5">Jobs assigned to you</p>
-      </div>
+  // Esc closes modals · toast auto-hides
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') { setViewJob(null); setProgressJob(null); setPhotoError(null) } }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 3200)
+    return () => clearTimeout(id)
+  }, [toast])
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16 gap-3">
-          <RefreshCw size={18} className="animate-spin text-emerald-500" />
-          <span className="text-slate-400 text-sm">Loading...</span>
-        </div>
-      ) : jobs.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-lg p-12 text-center shadow-sm">
-          <ClipboardList size={32} className="mx-auto mb-3 text-slate-300" />
-          <p className="text-slate-400">No job orders assigned</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {(() => {
-            const totalJobPages = Math.ceil(jobs.length / JOB_PER_PAGE)
-            const pagedJobs = jobs.slice((jobPage - 1) * JOB_PER_PAGE, jobPage * JOB_PER_PAGE)
-            return (
-              <>
-              {pagedJobs.map(jo => {
-            const pct = progressPercent(jo.status, jo.start_date, jo.end_date, jobPhotos[jo.id] || [])
-            return (
-              <div key={jo.id} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all">
-                {/* Header */}
-                <div className="flex flex-col gap-2 mb-2">
-                  <div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <StatusBadge status={jo.status} />
-                    </div>
-                    <p className="text-sm font-bold text-slate-700">{jo.contract_type || 'Construction Project'}</p>
-                    <p className="text-xs font-mono text-slate-400">{jo.job_order_code}</p>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-  onClick={e => {
-    e.stopPropagation()
+  // ── Actions ──
+  const openView = (jo) => {
     setMapCoords(null)
     setMapLoading(false)
     setViewJob(jo)
     const addr = jo.client_address || jo.location
-    console.log('Address to geocode:', addr)
-    if (addr) {
-      setMapLoading(true)
-      const cleanAddr = addr.replace(/\s+/g, ' ').trim()
-const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanAddr)}&limit=1&countrycodes=ph&accept-language=en`
-      console.log('Fetching:', url)
-      const geocode = (query) =>
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=ph&accept-language=en`, {
-    headers: { 'Accept-Language': 'en', 'User-Agent': 'SkillConnect/1.0' }
-  }).then(r => r.json())
+    if (!addr) return
+    setMapLoading(true)
+    const cleanAddr = addr.replace(/\s+/g, ' ').trim()
+    const geocode = (query) =>
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=ph&accept-language=en`, {
+        headers: { 'Accept-Language': 'en', 'User-Agent': 'SkillConnect/1.0' }
+      }).then(r => r.json())
 
-geocode(cleanAddr)
-  .then(data => {
-    if (data?.[0]) return data
-    // fallback: try just the city portion (last 2 comma-parts)
-    const parts = cleanAddr.split(',')
-    const fallback = parts.slice(-2).join(',').trim()
-    console.log('Trying fallback:', fallback)
-    return geocode(fallback)
-  })
-  .then(data => {
-    console.log('Final result:', data)
-    if (data?.[0]) setMapCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) })
-  })
-  .catch(err => console.error('Geocode error:', err))
-  .finally(() => setMapLoading(false))
-    } else {
-      console.warn('No address found on job order:', jo)
+    geocode(cleanAddr)
+      .then(data => {
+        if (data?.[0]) return data
+        // fallback: try just the city portion (last 2 comma-parts)
+        const fallback = cleanAddr.split(',').slice(-2).join(',').trim()
+        return geocode(fallback)
+      })
+      .then(data => { if (data?.[0]) setMapCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }) })
+      .catch(err => console.error('Geocode error:', err))
+      .finally(() => setMapLoading(false))
+  }
+
+  const openProgress = async (jo, pct) => {
+    setProgressVal(pct)
+    setProgressJob(jo)
+    setProgressPhotos([])
+    setPhotoError(null)
+    try {
+      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
+      const res = await fetch(`${API}/job-orders/get-progress.php?job_order_id=${jo.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (data.success) setProgressPhotos(data.photos || [])
+    } catch (err) { console.error('Failed to load photos:', err) }
+  }
+
+  const MAX_SIZE_MB = 50
+  const pickPhoto = (f) => {
+    if (!f) return false
+    if (!f.type.startsWith('image/')) { setPhotoError('Only image files (JPG, PNG) are allowed.'); return false }
+    if (f.size > MAX_SIZE_MB * 1024 * 1024) {
+      setPhotoError(`Photo must be under ${MAX_SIZE_MB}MB. Your file is ${(f.size / 1024 / 1024).toFixed(2)}MB.`)
+      return false
     }
-  }}
-  className="px-3 py-1 text-xs bg-white border border-slate-200 text-slate-600 rounded font-medium hover:bg-slate-50 transition-colors">
-  View
-</button>
-<button
-  onClick={async e => {
-  e.stopPropagation()
-  setProgressVal(pct)
-  setProgressJob(jo)
-  setProgressPhotos([])
-  try {
-    const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-    const res = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${jo.id}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const data = await res.json()
-    if (data.success) setProgressPhotos(data.photos || [])
-  } catch (err) { console.error('Failed to load photos:', err) }
-}}
-  className="px-3 py-1 text-xs bg-emerald-500 text-white rounded font-medium hover:bg-emerald-600 transition-colors">
-  Update Progress
-</button>
-                  </div>
-                </div>
+    setPhotoError(null)
+    setProgressJob(prev => ({ ...prev, _photo: f, _photoDate: todayStr(), status: 'In Progress' }))
+    return true
+  }
 
-                {/* Info Grid */}
-                <div className="flex flex-col gap-2 mb-3">
-                  <div className="flex items-start gap-1.5 min-w-0 flex-1">
-                    <MapPin size={11} className="text-slate-400 mt-0.5 flex-shrink-0" />
+  const saveProgress = async () => {
+    setSaving(true)
+    try {
+      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
+
+      // Upload photo if present
+      if (progressJob._photo) {
+        if (progressJob._photo.size > MAX_SIZE_MB * 1024 * 1024) {
+          setPhotoError(`Photo must be under ${MAX_SIZE_MB}MB. Your file is ${(progressJob._photo.size / 1024 / 1024).toFixed(2)}MB.`)
+          setSaving(false)
+          return
+        }
+        setPhotoError(null)
+        const formData = new FormData()
+        formData.append('photo', progressJob._photo)
+        formData.append('job_order_id', progressJob.id)
+        formData.append('upload_date', todayStr())
+        await fetch(`${API}/job-orders/upload-progress.php`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        })
+      }
+
+      // Refresh jobs list
+      setJobs(prev => prev.map(j => j.id === progressJob.id ? { ...j, status: progressJob.status } : j))
+
+      // Refresh photos for this job so progress updates immediately
+      const photoRes = await fetch(`${API}/job-orders/get-progress.php?job_order_id=${progressJob.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      const photoData = await photoRes.json()
+      if (photoData.success) {
+        setJobPhotos(prev => ({ ...prev, [progressJob.id]: photoData.photos || [] }))
+        setProgressPhotos(photoData.photos || [])
+      }
+
+      setProgressJob(null)
+      setToast({ type: 'success', msg: 'Progress saved!' })
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Failed to save: ' + err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Upload rules for the progress modal
+  const today = todayStr()
+  const pStart = progressJob?.start_date?.slice(0, 10)
+  const pEnd   = progressJob?.end_date?.slice(0, 10)
+  const withinRange = !!(pStart && pEnd && today >= pStart && today <= pEnd)
+  const alreadyUploaded = progressJob?._photoDate === today && progressJob?._photo
+  const blocked = !withinRange || alreadyUploaded
+
+  const totalJobPages = Math.ceil(jobs.length / JOB_PER_PAGE)
+  const pagedJobs = jobs.slice((jobPage - 1) * JOB_PER_PAGE, jobPage * JOB_PER_PAGE)
+
+  return (
+    <div className="sc-page w-full space-y-6">
+      <style>{styles}</style>
+
+      {/* Header */}
+      <div className="sc-rise">
+        <h1 className="text-2xl sm:text-[30px] leading-tight font-semibold text-slate-900 tracking-tight">Job Orders</h1>
+        <p className="text-sm text-slate-500 mt-1">Jobs assigned to you</p>
+      </div>
+
+      {loading ? <JobsSkeleton /> : jobs.length === 0 ? (
+        <div className="sc-fadein bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(16,24,40,0.04)] py-16 flex flex-col items-center text-center px-6">
+          <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
+          <p className="mt-4 text-sm font-semibold text-slate-900">No job orders assigned</p>
+          <p className="text-sm text-slate-500 mt-1">New job orders assigned to you will show up here.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {pagedJobs.map((jo, i) => {
+            const pct = progressPercent(jo.status, jo.start_date, jo.end_date, jobPhotos[jo.id] || [])
+            return (
+              <article key={jo.id} style={{ animationDelay: `${i * 120}ms` }}
+                className="sc-rise bg-white rounded-xl border border-slate-200 p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:border-slate-300 hover:shadow-[0_12px_24px_-14px_rgba(16,24,40,0.2)] transition-all duration-300">
+                {/* Title */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><Briefcase size={19} {...ICON} /></span>
                     <div className="min-w-0">
-                      <p className="text-[10px] text-slate-400">Location</p>
-                      <p className="text-xs font-medium text-slate-700 break-words">{jo.client_address || jo.location || '—'}</p>
+                      <h3 className="text-[15px] font-semibold text-slate-900 tracking-tight truncate">{jo.contract_type || 'Construction Project'}</h3>
+                      <p className="text-xs font-mono text-slate-400 mt-0.5">{jo.job_order_code}</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-1.5 flex-shrink-0">
-                    <Clock size={11} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-slate-400">Start Time</p>
-                      <p className="text-xs font-medium text-slate-700">{jo.start_date || '—'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-1.5 flex-shrink-0">
-                    <Clock size={11} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-slate-400">Completion</p>
-                      <p className="text-xs font-medium text-slate-700">{jo.end_date || '—'}</p>
-                    </div>
-                  </div>
+                  <StatusBadge status={jo.status} />
                 </div>
 
-                {/* Progress removed */}
-              </div>
+                {/* Info */}
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-[1.6fr_1fr_1fr] gap-4 rounded-lg bg-slate-50/70 ring-1 ring-slate-100 p-3.5">
+                  <InfoItem icon={MapPin}         label="Location"   value={jo.client_address || jo.location} />
+                  <InfoItem icon={CalendarDays}   label="Start date" value={fmtDate(jo.start_date)} />
+                  <InfoItem icon={CalendarCheck2} label="Completion" value={fmtDate(jo.end_date)} />
+                </div>
+
+                {/* Actions */}
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button onClick={e => { e.stopPropagation(); openView(jo) }}
+                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-[.97] transition-all">
+                    <Eye size={15} {...ICON} /> View
+                  </button>
+                  <button onClick={e => { e.stopPropagation(); openProgress(jo, pct) }}
+                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-medium shadow-sm active:scale-[.97] transition-all">
+                    <Camera size={15} {...ICON} /> Update progress
+                  </button>
+                </div>
+              </article>
             )
           })}
 
-              {/* Pagination */}
-              {totalJobPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <p className="text-xs text-slate-400">
-                    Showing {(jobPage - 1) * JOB_PER_PAGE + 1}–{Math.min(jobPage * JOB_PER_PAGE, jobs.length)} of {jobs.length} jobs
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setJobPage(p => Math.max(1, p - 1))}
-                      disabled={jobPage === 1}
-                      className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                      <ChevronRight size={13} className="rotate-180" />
-                    </button>
-                    {Array.from({ length: totalJobPages }, (_, i) => i + 1).map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setJobPage(p)}
-                        className={`w-7 h-7 flex items-center justify-center rounded border text-xs font-medium transition-colors
-                          ${jobPage === p
-                            ? 'bg-emerald-500 text-white border-emerald-500'
-                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                        {p}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setJobPage(p => Math.min(totalJobPages, p + 1))}
-                      disabled={jobPage === totalJobPages}
-                      className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                      <ChevronRight size={13} />
-                    </button>
-                  </div>
-                </div>
-              )}
-              </>
-            )
-          })()}
+          {/* Pagination */}
+          {totalJobPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <p className="text-xs text-slate-500">
+                Showing {(jobPage - 1) * JOB_PER_PAGE + 1}–{Math.min(jobPage * JOB_PER_PAGE, jobs.length)} of {jobs.length} jobs
+              </p>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setJobPage(p => Math.max(1, p - 1))} disabled={jobPage === 1} aria-label="Previous page"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-90 transition">
+                  <ChevronLeft size={15} {...ICON} />
+                </button>
+                {Array.from({ length: totalJobPages }, (_, i) => i + 1).map(p => (
+                  <button key={p} onClick={() => setJobPage(p)} aria-current={jobPage === p ? 'page' : undefined}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg border text-[13px] font-medium tabular-nums transition-all active:scale-90
+                      ${jobPage === p ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                    {p}
+                  </button>
+                ))}
+                <button onClick={() => setJobPage(p => Math.min(totalJobPages, p + 1))} disabled={jobPage === totalJobPages} aria-label="Next page"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-90 transition">
+                  <ChevronRight size={15} {...ICON} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* ── View Job Order Modal ── */}
       {viewJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-start justify-between p-5 border-b border-slate-100">
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">{viewJob.job_order_code}</h2>
-                <p className="text-sm text-slate-400">{viewJob.contract_type || 'Construction Project'}</p>
+        <Modal onBackdrop={() => setViewJob(null)}>
+          <ModalHeader job={viewJob} onClose={() => setViewJob(null)} />
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            <div>
+              <p className="text-xs font-semibold text-slate-900 mb-3">Project details</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 rounded-xl bg-slate-50/70 ring-1 ring-slate-100 p-4">
+                <Field label="Customer"   value={viewJob.client_name} />
+                <Field label="Location"   value={viewJob.client_address || viewJob.location} />
+                <Field label="Start date" value={fmtDate(viewJob.start_date)} />
+                <Field label="Completion" value={fmtDate(viewJob.end_date)} />
               </div>
-              <button onClick={() => setViewJob(null)} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition-colors">
-                <X size={20} />
-              </button>
             </div>
 
-            <div className="p-5 flex flex-col gap-5">
-              {/* Left: details */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center">
-                    <ClipboardList size={14} className="text-emerald-600" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Project Details</span>
-                </div>
-
-                {[
-                  { label: 'Customer',   value: viewJob.client_name   },
-                  { label: 'Location',   value: viewJob.client_address || viewJob.location },
-                  { label: 'Start Date', value: viewJob.start_date    },
-                  { label: 'Completion', value: viewJob.end_date      },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-                    <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
-                  </div>
-                ))}
-
-                {/* Progress removed */}
-              </div>
-
-              {/* Right: map via geocode */}
-              <div className="rounded-lg overflow-hidden border border-slate-200 min-h-[200px] flex flex-col">
+            <div>
+              <p className="text-xs font-semibold text-slate-900 mb-3">Map</p>
+              <div className="rounded-xl overflow-hidden border border-slate-200 h-[260px] flex flex-col">
                 {mapLoading ? (
-                  <div className="bg-slate-100 flex flex-col items-center justify-center h-[220px] gap-2">
-                    <RefreshCw size={18} className="animate-spin text-emerald-500" />
-                    <p className="text-xs text-slate-400">Loading map...</p>
+                  <div className="flex-1 bg-slate-50 flex flex-col items-center justify-center gap-2">
+                    <RefreshCw size={18} {...ICON} className="animate-spin text-emerald-500" />
+                    <p className="text-xs text-slate-500">Loading map…</p>
                   </div>
                 ) : mapCoords ? (
                   <iframe
@@ -346,7 +473,7 @@ geocode(cleanAddr)
                     title="job-location-map"
                     width="100%"
                     height="100%"
-                    style={{ border: 'none', minHeight: '100%', flex: 1 }}
+                    style={{ border: 'none', flex: 1 }}
                     srcDoc={`<!DOCTYPE html><html><head>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -364,243 +491,141 @@ geocode(cleanAddr)
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
   L.marker([${mapCoords.lat}, ${mapCoords.lng}]).addTo(map)
-    .bindPopup('<b>${viewJob.client_name || 'Job Location'}</b><br>${viewJob.client_address || viewJob.location || ''}').openPopup();
+    .bindPopup('<b>${esc(viewJob.client_name) || 'Job Location'}</b><br>${esc(viewJob.client_address || viewJob.location)}').openPopup();
 </script></body></html>`}
                   />
                 ) : (
-                  <div className="bg-slate-100 flex flex-col items-center justify-center h-[220px]">
-                    <MapPin size={28} className="mb-2 text-slate-300" />
-                    <p className="text-xs text-slate-400">{viewJob.client_address || viewJob.location || 'No location set'}</p>
-                    <p className="text-[10px] text-slate-300 mt-1">No address to map</p>
+                  <div className="flex-1 bg-slate-50 flex flex-col items-center justify-center text-center px-6">
+                    <span className="w-11 h-11 rounded-full bg-white ring-1 ring-slate-200 text-slate-300 flex items-center justify-center"><MapPin size={20} {...ICON} /></span>
+                    <p className="mt-3 text-sm font-medium text-slate-700">{viewJob.client_address || viewJob.location || 'No location set'}</p>
+                    <p className="text-xs text-slate-400 mt-1">We couldn’t place this address on the map.</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
-        </div>
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex justify-end">
+            <button onClick={() => setViewJob(null)} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 active:scale-[.97] transition-all">Close</button>
+          </div>
+        </Modal>
       )}
 
       {/* ── Update Progress Modal ── */}
       {progressJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-start justify-between p-5 border-b border-slate-100">
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">{progressJob.job_order_code}</h2>
-                <p className="text-sm text-slate-400">{progressJob.contract_type || 'Construction Project'}</p>
-              </div>
-              <button onClick={() => setProgressJob(null)} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition-colors">
-                <X size={20} />
-              </button>
+        <Modal>
+          <ModalHeader job={progressJob} onClose={() => { setProgressJob(null); setPhotoError(null) }} />
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            {/* Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 rounded-xl bg-slate-50/70 ring-1 ring-slate-100 p-4">
+              <Field label="Customer"   value={progressJob.client_name} />
+              <Field label="Location"   value={progressJob.client_address || progressJob.location} />
+              <Field label="Start date" value={fmtDate(progressJob.start_date)} />
+              <Field label="Completion" value={fmtDate(progressJob.end_date)} />
             </div>
 
-            <div className="p-5 space-y-4">
-              {/* Info */}
-              {[
-                { label: 'Customer', value: progressJob.client_name },
-                { label: 'Location', value: progressJob.client_address || progressJob.location },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-                  <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
-                </div>
-              ))}
+            {/* Photo upload */}
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-xs font-semibold text-slate-900">Progress photo</p>
+                <span className="text-[11px] text-slate-400">JPG or PNG · up to {MAX_SIZE_MB}MB</span>
+              </div>
 
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Start Date',  value: progressJob.start_date },
-                  { label: 'Completion',  value: progressJob.end_date   },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-                    <p className="text-sm font-medium text-slate-700">{value || '—'}</p>
+              {!withinRange && (
+                <p className="mb-2.5 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-3 py-2">
+                  <AlertCircle size={13} {...ICON} className="flex-shrink-0" />
+                  Uploads are only allowed between {fmtDate(pStart)} and {fmtDate(pEnd)}.
+                </p>
+              )}
+
+              <div
+                onDragOver={e => { if (!blocked) e.preventDefault() }}
+                onDrop={e => { e.preventDefault(); if (blocked) return; pickPhoto(e.dataTransfer.files[0]) }}
+                onClick={() => { if (!blocked) document.getElementById('progress-photo-input').click() }}
+                className={`rounded-xl border-2 border-dashed p-7 text-center transition-all duration-200
+                  ${blocked ? 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-60'
+                    : 'border-slate-300 hover:border-emerald-400 hover:bg-emerald-50/40 cursor-pointer'}`}>
+                <input
+                  id="progress-photo-input"
+                  type="file"
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png"
+                  onChange={e => { if (!pickPhoto(e.target.files[0] || null)) e.target.value = '' }}
+                />
+                {progressJob._photo ? (
+                  <div className="sc-fadein inline-flex items-center gap-2.5 rounded-lg bg-white ring-1 ring-slate-200 px-3 py-2">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><FileText size={16} {...ICON} /></span>
+                    <div className="text-left min-w-0">
+                      <p className="text-[13px] font-medium text-slate-800 truncate max-w-[220px]">{progressJob._photo.name}</p>
+                      <p className="text-[11px] text-slate-400">{(progressJob._photo.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); setProgressJob(prev => ({ ...prev, _photo: null })) }}
+                      aria-label="Remove photo" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <X size={14} {...ICON} />
+                    </button>
                   </div>
-                ))}
+                ) : (
+                  <>
+                    <span className="mx-auto w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><Upload size={20} {...ICON} /></span>
+                    <p className="mt-3 text-sm text-slate-600">Drop a photo here or <span className="text-emerald-700 font-semibold">browse</span></p>
+                    <p className="text-xs text-slate-400 mt-1">One photo per day counts toward progress</p>
+                  </>
+                )}
               </div>
 
-              
-              {/* Photo Upload */}
-<div>
-  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Progress Photo</p>
-  {(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const start = progressJob.start_date?.slice(0, 10)
-    const end   = progressJob.end_date?.slice(0, 10)
-    const withinRange = start && end && today >= start && today <= end
-    const alreadyUploaded = progressJob._photoDate === today && progressJob._photo
-    const blocked = !withinRange || alreadyUploaded
-    return (
-      <>
-        {!withinRange && (
-          <p className="text-[10px] text-red-400 mb-1">Uploads only allowed between {start} and {end}.</p>
-        )}
-        {/* {withinRange && alreadyUploaded && (
-          <p className="text-[10px] text-amber-400 mb-1">You've already uploaded a photo today.</p>
-        )} */}
-  <div
-    onDragOver={e => { if (!blocked) e.preventDefault() }}
-    onDrop={e => {
-      e.preventDefault()
-      if (blocked) return
-      const f = e.dataTransfer.files[0]
-      if (f) {
-        if (!f.type.startsWith('image/')) {
-          setPhotoError('Only image files (JPG, PNG) are allowed.')
-          return
-        }
-        if (f.size > 50 * 1024 * 1024) {
-          setPhotoError(`Photo must be under 50MB. Your file is ${(f.size / 1024 / 1024).toFixed(2)}MB.`)
-          return
-        }
-        setPhotoError(null)
-        setProgressJob(prev => ({ ...prev, _photo: f, _photoDate: today, status: 'In Progress' }))
-      }
-    }}
-    onClick={() => { if (!blocked) document.getElementById('progress-photo-input').click() }}
-    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${blocked ? 'border-slate-100 bg-slate-50 cursor-not-allowed opacity-50' : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 cursor-pointer'}`}>
-    <input
-      id="progress-photo-input"
-      type="file"
-      className="hidden"
-      accept=".jpg,.jpeg,.png"
-      onChange={e => {
-        const f = e.target.files[0] || null
-        const today = new Date().toISOString().slice(0, 10)
-        if (f) {
-          if (!f.type.startsWith('image/')) {
-            setPhotoError('Only image files (JPG, PNG) are allowed.')
-            e.target.value = ''
-            return
-          }
-          if (f.size > 50 * 1024 * 1024) {
-            setPhotoError(`Photo must be under 50MB. Your file is ${(f.size / 1024 / 1024).toFixed(2)}MB.`)
-            e.target.value = ''
-            return
-          }
-          setPhotoError(null)
-          setProgressJob(prev => ({ ...prev, _photo: f, _photoDate: today, status: 'In Progress' }))
-        }
-      }}
-    />
-    {progressJob._photo ? (
-      <div className="flex items-center justify-center gap-2">
-        <FileText size={14} className="text-emerald-500" />
-        <span className="text-sm text-slate-600 truncate max-w-[200px]">{progressJob._photo.name}</span>
-        <button
-          onClick={e => { e.stopPropagation(); setProgressJob(prev => ({ ...prev, _photo: null })) }}
-          className="text-slate-400 hover:text-red-500">
-          <X size={13} />
-        </button>
-      </div>
-    ) : (
-      <>
-        <Upload size={20} className="mx-auto mb-2 text-slate-300" />
-        <p className="text-sm text-slate-400">Drop file or <span className="text-emerald-600 font-medium">browse</span></p>
-        <p className="text-xs text-slate-300 mt-1">JPG, PNG</p>
-      </>
-    )}
-  </div>
-      </>
-    )
-  })()}
-</div>
-
-{/* Uploaded Photos */}
-{progressPhotos.length > 0 && (
-  <div>
-    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Uploaded Progress Photos</p>
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-      {progressPhotos.map(photo => (
-        <div
-          key={photo.id}
-          className="relative group rounded-lg overflow-hidden border border-slate-200 cursor-pointer"
-          onClick={() => window.open(`https://saddlebrown-swan-877763.hostingersite.com/${photo.file_path}`, '_blank')}>
-          <img
-            src={`https://saddlebrown-swan-877763.hostingersite.com/${photo.file_path}`}
-            alt={`Progress ${photo.upload_date}`}
-            className="w-full h-24 object-cover group-hover:opacity-80 transition-opacity"
-          />
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-            <Eye size={20} className="text-white drop-shadow" />
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1.5 py-0.5">
-            <p className="text-[9px] text-white">{photo.upload_date}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
-
-{/* Photo Upload Input — add this wherever your file input lives */}
-{photoError && (
-  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-    <AlertCircle size={12} /> {photoError}
-  </p>
-)}
-
-{/* Actions */}
-<div className="flex gap-3 pt-2">
-  <button onClick={() => { setProgressJob(null); setPhotoError(null) }}
-    className="flex-1 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-    Close
-  </button>
-  <button
-    onClick={async () => {
-      try {
-        const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-
-
-        // Upload photo if present
-        if (progressJob._photo) {
-
-          // ✅ 1MB size validation
-          const MAX_SIZE_MB = 50
-          const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
-          if (progressJob._photo.size > MAX_SIZE_BYTES) {
-            setPhotoError(`Photo must be under ${MAX_SIZE_MB}MB. Your file is ${(progressJob._photo.size / 1024 / 1024).toFixed(2)}MB.`)
-            return
-          }
-
-          setPhotoError(null) // clear any previous error
-          const formData = new FormData()
-          formData.append('photo', progressJob._photo)
-          formData.append('job_order_id', progressJob.id)
-          formData.append('upload_date', new Date().toISOString().slice(0, 10))
-          await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/upload-progress.php', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          })
-        }
-
-        // Refresh jobs list
-        setJobs(prev => prev.map(j => j.id === progressJob.id ? { ...j, status: progressJob.status } : j))
-
-        // Refresh photos for this job so progress bar updates immediately
-        const photoRes = await fetch(`https://saddlebrown-swan-877763.hostingersite.com/backend/api/job-orders/get-progress.php?job_order_id=${progressJob.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const photoData = await photoRes.json()
-        if (photoData.success) {
-          setJobPhotos(prev => ({ ...prev, [progressJob.id]: photoData.photos || [] }))
-          setProgressPhotos(photoData.photos || [])
-        }
-
-        setProgressJob(null)
-        alert('Progress saved!')
-      } catch (err) {
-        alert('Failed to save: ' + err.message)
-      }
-    }}
-    className="flex-1 py-2 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors">
-    Save Progress
-  </button>
-</div>
+              {photoError && (
+                <p className="sc-fadein mt-2 flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={13} {...ICON} /> {photoError}</p>
+              )}
             </div>
+
+            {/* Uploaded photos */}
+            {progressPhotos.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="text-xs font-semibold text-slate-900">Uploaded photos</p>
+                  <span className="text-[11px] text-slate-400">{progressPhotos.length} total</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-52 overflow-y-auto pr-0.5">
+                  {progressPhotos.map((photo, i) => (
+                    <button key={photo.id} type="button" style={{ animationDelay: `${i * 50}ms` }}
+                      className="sc-rise relative group rounded-lg overflow-hidden border border-slate-200 text-left"
+                      onClick={() => window.open(`${HOST}/${photo.file_path}`, '_blank')}>
+                      <img src={`${HOST}/${photo.file_path}`} alt={`Progress ${photo.upload_date}`}
+                        className="w-full h-24 object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/35">
+                        <Eye size={20} {...ICON} className="text-white" />
+                      </span>
+                      <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/60 text-[10px] font-medium text-white">{fmtDate(photo.upload_date)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Actions */}
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex gap-3 justify-end">
+            <button onClick={() => { setProgressJob(null); setPhotoError(null) }} disabled={saving}
+              className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 active:scale-[.97] transition-all">
+              Close
+            </button>
+            <button onClick={saveProgress} disabled={saving}
+              className="inline-flex items-center justify-center gap-2 h-9 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white text-[13px] font-semibold shadow-sm active:scale-[.97] transition-all">
+              {saving && <RefreshCw size={14} {...ICON} className="animate-spin" />}
+              {saving ? 'Saving…' : 'Save progress'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div role="status" className={`sc-slide fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium shadow-[0_12px_32px_-8px_rgba(16,24,40,0.25)] bg-white
+          ${toast.type === 'success' ? 'border-emerald-200 text-emerald-800' : 'border-red-200 text-red-700'}`}>
+          {toast.type === 'success'
+            ? <CheckCircle2 size={18} {...ICON} className="text-emerald-600" />
+            : <AlertCircle size={18} {...ICON} className="text-red-500" />}
+          {toast.msg}
         </div>
       )}
     </div>
