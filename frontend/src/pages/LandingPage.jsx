@@ -523,7 +523,7 @@ export default function LandingPage() {
   const closeQuote = useCallback(() => setQuoteOpen(false), [])
 
   const solidNav = scrolled || mobileMenuOpen
-  const showSticky = pastHero && !quoteOpen && activeSection !== 'contact'
+  const showSticky = pastHero && !quoteOpen
 
   return (
     <div className="lp min-h-screen bg-white text-slate-800 antialiased">
@@ -700,19 +700,7 @@ export default function LandingPage() {
                 </ul>
               </Reveal>
 
-              <Reveal delay={180}>
-                <button onClick={() => openQuote()}
-                  className="lp-shine group mt-5 w-full flex items-center justify-between gap-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-4 text-left shadow-lg shadow-emerald-600/20 transition-colors">
-                  <span className="flex items-center gap-3.5">
-                    <span className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center"><Send size={18} {...ICON} /></span>
-                    <span>
-                      <span className="block text-base font-semibold text-white">Submit an inquiry</span>
-                      <span className="block text-sm text-emerald-100">Takes about two minutes</span>
-                    </span>
-                  </span>
-                  <ArrowRight size={18} {...ICON} className="text-white transition-transform group-hover:translate-x-1" />
-                </button>
-              </Reveal>
+
             </div>
 
             <Reveal delay={120} className="h-full">
