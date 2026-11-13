@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 import {
   RefreshCw, CheckCircle2, AlertCircle, User, Eye, EyeOff, FileText, Upload, X,
-  Mail, Phone, MapPin, Wrench, Lock, ShieldCheck, Trash2, Sparkles, Pencil,
+  Mail, Phone, MapPin, Wrench, Lock, ShieldCheck, Trash2, Sparkles, Pencil, Camera,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { apiGet, apiPut, apiPost } from '../../../utils/api'
@@ -11,6 +11,9 @@ import { apiGet, apiPut, apiPost } from '../../../utils/api'
 const ICON = { strokeWidth: 1.75 }
 const HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
 const API  = `${HOST}/backend/api`
+// Backend endpoint that receives the profile photo (multipart: photo, user_id)
+const PHOTO_ENDPOINT = 'workers/upload-photo.php'
+const MAX_PHOTO_MB = 5
 
 // ── Local styles ───────────────────────────────────────────────
 const styles = `
@@ -32,7 +35,7 @@ const styles = `
   @keyframes sp-modal  { from { opacity: 0; transform: translateY(18px) scale(.95); } to { opacity: 1; transform: none; } }
   @keyframes sp-pop    { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
   @keyframes sp-float  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-  @keyframes sp-drift  { from { background-position: 0 0; } to { background-position: 160px 0; } }
+  @keyframes sp-drift  { from { background-position: 0 0, 0 0; } to { background-position: 160px 0, 0 0; } }
   @keyframes sp-scan   { 0% { top: 8%; } 100% { top: 88%; } }
   @keyframes sp-toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
@@ -52,8 +55,17 @@ const styles = `
       repeating-linear-gradient(115deg, rgba(255,255,255,.08) 0 2px, transparent 2px 22px),
       linear-gradient(120deg, #047857, #10b981);
     background-size: 160px 100%, 100% 100%;
+    background-repeat: repeat-x, no-repeat;
     animation: sp-drift 14s linear infinite;
   }
+
+  /* Avatar photo picker */
+  .sp-avatar-ov { transition: opacity .25s ease, backdrop-filter .25s; }
+  .sp-avatar:hover .sp-avatar-ov, .sp-avatar:focus-visible .sp-avatar-ov { opacity: 1; }
+  .sp-avatar img { transition: transform .5s cubic-bezier(.16,1,.3,1); }
+  .sp-avatar:hover img { transform: scale(1.08); }
+  @keyframes sp-ring { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 100% { box-shadow: 0 0 0 12px rgba(16,185,129,0); } }
+  .sp-ring { animation: sp-ring 1.6s ease-out infinite; }
 
   /* Tab indicator slides between tabs */
   .sp-ind { transition: transform .45s cubic-bezier(.16,1,.3,1); }
@@ -66,7 +78,7 @@ const styles = `
   .sp-row:hover { transform: translateY(-2px); border-color: #cbd5e1; box-shadow: 0 14px 26px -18px rgba(16,24,40,.28); }
 
   @media (prefers-reduced-motion: reduce) {
-    .sp-skel::after, .sp-rise, .sp-tab, .sp-slide, .sp-fadein, .sp-modal, .sp-pop, .sp-float, .sp-cover, .sp-beam, .sp-toast-bar { animation: none; }
+    .sp-skel::after, .sp-rise, .sp-tab, .sp-slide, .sp-fadein, .sp-modal, .sp-pop, .sp-float, .sp-cover, .sp-beam, .sp-toast-bar, .sp-ring { animation: none; }
     .sp-ind, .sp-row { transition: none; }
   }
 `
@@ -165,6 +177,9 @@ export default function MyProfile() {
   const [editSaving, setEditSaving] = useState(false)
   const [specializations, setSpecializations] = useState([])
   const [confirmDel, setConfirmDel] = useState(null) // license pending delete
+  const [photoPreview,   setPhotoPreview]   = useState(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoRef = useRef()
   const [deleting,   setDeleting]   = useState(false)
 
   const filteredCities    = editForm.province ? getMunicipalitiesByProvince(editForm.province) : []
@@ -267,6 +282,40 @@ export default function MyProfile() {
     }
     load()
   }, [])
+
+  // Profile photo: preview instantly, upload right away
+  const savedPhoto = profile?.photo_path || profile?.photo_url || profile?.photo || profile?.profile_photo || profile?.avatar
+  const photoSrc = photoPreview || (savedPhoto ? (/^https?:/.test(savedPhoto) ? savedPhoto : `${HOST}/${savedPhoto}`) : null)
+
+  const handlePhotoPick = async (file) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { showToast('Only image files (JPG, PNG) are allowed.', 'error'); return }
+    if (file.size > MAX_PHOTO_MB * 1024 * 1024) {
+      showToast(`Photo must be under ${MAX_PHOTO_MB}MB. Yours is ${(file.size / 1024 / 1024).toFixed(1)}MB.`, 'error'); return
+    }
+    const previous = photoPreview
+    const url = URL.createObjectURL(file)
+    setPhotoPreview(url)
+    setPhotoUploading(true)
+    try {
+      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
+      const fd = new FormData()
+      fd.append('photo', file)
+      fd.append('user_id', profile?.id || '')
+      const res = await fetch(`${API}/${PHOTO_ENDPOINT}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error || 'Upload failed')
+      const path = data.photo_path || data.photo_url || data.file_path || data.path
+      if (path) setProfile(p => ({ ...p, photo_path: path }))
+      showToast('Profile photo updated')
+    } catch (err) {
+      console.error('Photo upload error:', err)
+      URL.revokeObjectURL(url)
+      setPhotoPreview(previous)
+      showToast('Could not upload your photo. Try again.', 'error')
+    }
+    setPhotoUploading(false)
+  }
 
   const handlePasswordChange = async () => {
     if (!pwForm.current_password)          { showToast('Enter your current password.', 'error'); return }
@@ -406,8 +455,26 @@ export default function MyProfile() {
         <div className="sp-cover h-24" />
         <div className="px-6">
           <div className="flex items-end justify-between gap-3 -mt-10 flex-wrap">
-            <div className="sp-pop w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-full border-4 border-white flex items-center justify-center shadow-[0_10px_24px_-8px_rgba(5,150,105,.7)] flex-shrink-0">
-              <span className="font-semibold text-3xl text-white">{displayName.charAt(0).toUpperCase()}</span>
+            <div className="relative w-20 h-20 flex-shrink-0">
+              <input ref={photoRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp"
+                onChange={e => { handlePhotoPick(e.target.files[0] || null); e.target.value = '' }} />
+              <button type="button" onClick={() => photoRef.current?.click()} disabled={photoUploading}
+                aria-label="Change profile photo" title="Change profile photo"
+                className={`sp-pop sp-avatar group relative w-20 h-20 rounded-full border-4 border-white overflow-hidden bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-[0_10px_24px_-8px_rgba(5,150,105,.7)] cursor-pointer ${editing && !photoUploading ? 'sp-ring' : ''}`}>
+                {photoSrc
+                  ? <img src={photoSrc} alt={displayName} className="absolute inset-0 w-full h-full object-cover" />
+                  : <span className="font-semibold text-3xl text-white">{displayName.charAt(0).toUpperCase()}</span>}
+                <span className={`sp-avatar-ov absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-slate-900/55 text-white backdrop-blur-[1px] ${editing || photoUploading ? 'opacity-100' : 'opacity-0'}`}>
+                  {photoUploading
+                    ? <RefreshCw size={18} {...ICON} className="animate-spin" />
+                    : <><Camera size={18} {...ICON} /><span className="text-[10px] font-medium leading-none">{photoSrc ? 'Change' : 'Add photo'}</span></>}
+                </span>
+              </button>
+              {editing && !photoUploading && (
+                <span className="sp-pop pointer-events-none absolute -bottom-0.5 -right-0.5 w-7 h-7 rounded-full bg-emerald-600 text-white border-2 border-white flex items-center justify-center shadow-md">
+                  <Camera size={13} {...ICON} />
+                </span>
+              )}
             </div>
             <button
               onClick={() => { setActiveTab('info'); setEditing(e => !e) }}
