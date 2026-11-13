@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 import { useNavigate } from 'react-router-dom'
 import {
   HardHat, ClipboardList, ArrowRight, CheckCircle2, Building2, Wrench, Shield, Send,
   AlertCircle, Mail, Phone, MapPin, Clock, CalendarDays, Zap, Award, Hammer, TreePine,
-  PaintBucket, Layers, Droplets, LayoutGrid, Menu, X, ChevronDown, ChevronLeft, ChevronRight,
-  Loader2, BadgeCheck, MessageSquareText, UserCheck, LineChart, Star, Users,
+  PaintBucket, Layers, Droplets, LayoutGrid, Menu, X, ChevronDown, Loader2, BadgeCheck,
+  UserCheck, LineChart, Star, Users,
 } from 'lucide-react'
 
 const ICON = { strokeWidth: 1.75 }
@@ -27,10 +27,14 @@ const styles = `
   .lp-marquee-wrap:hover .lp-marquee { animation-play-state: paused; }
   .lp-pulse  { animation: lp-pulse 2s infinite; }
   .lp-bar    { animation: lp-bar 1.6s cubic-bezier(.2,.7,.2,1) .9s both; }
+  @keyframes lp-fade  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes lp-sheet { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+  .lp-fade  { animation: lp-fade .25s ease both; }
+  .lp-sheet { animation: lp-sheet .4s cubic-bezier(.2,.8,.2,1) both; }
   .lp-noscroll::-webkit-scrollbar { display: none; }
   .lp-noscroll { scrollbar-width: none; }
   @media (prefers-reduced-motion: reduce) {
-    .lp-up, .lp-zoom, .lp-float, .lp-marquee, .lp-pulse, .lp-bar { animation: none !important; }
+    .lp-up, .lp-zoom, .lp-float, .lp-fade, .lp-sheet, .lp-marquee, .lp-pulse, .lp-bar { animation: none !important; }
     html { scroll-behavior: auto; }
   }
 `
@@ -323,131 +327,81 @@ function InquiryForm() {
   )
 }
 
-/* ── Services ──
-   Photos are from Unsplash. Swap the `img` links for your own project photos
-   (for example '/images/services/roofing.jpg' in your public folder) whenever you like. */
-const U = id => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=70`
+/* ── Services (text only) ── */
 const SERVICES = [
-  { icon: Hammer,        title: 'New Construction',        img: U('photo-1541888946425-d81bb19240f5'), desc: 'Residential, commercial and industrial builds, from plans to handover.', features: ['Residential buildings', 'Commercial installations', 'Project management'] },
-  { icon: Wrench,        title: 'Renovation & Remodeling', img: U('photo-1600585154340-be6161a56a0c'), desc: 'Transform your space while keeping its structure sound.', features: ['Kitchen renovation', 'Bathroom remodeling', 'Room additions'] },
-  { icon: Shield,        title: 'Repair & Maintenance',    img: U('photo-1581578731548-c64695cc6952'), desc: 'Keep your property in top shape with repairs and inspections.', features: ['Structural repairs', 'Emergency repairs', 'Regular inspections'] },
-  { icon: Zap,           title: 'Electrical Installation', img: U('photo-1621905251189-08b45d6a269e'), desc: 'Safe, efficient and code-compliant electrical systems.', features: ['Panel installation', 'Commercial fitting', 'Safety & compliance'] },
-  { icon: Droplets,      title: 'Plumbing Services',       img: U('photo-1585704032915-c3400ca199e7'), desc: 'Reliable water and drainage, from new pipework to leak repairs.', features: ['Pipe installation', 'Leak detection', 'Water heater service'] },
-  { icon: PaintBucket,   title: 'Painting & Finishing',    img: U('photo-1562259949-e8e7689d7828'), desc: 'Premium paints and clean finishes that protect your property.', features: ['Interior painting', 'Exterior painting', 'Waterproofing'] },
-  { icon: Layers,        title: 'Carpentry',               img: U('photo-1504148455328-c376907d081c'), desc: 'Custom woodwork, from built-ins to structural framing.', features: ['Custom furniture', 'Cabinet installation', 'Wooden flooring'] },
-  { icon: Building2,     title: 'Masonry',                 img: U('photo-1517581177682-a085bb7ffb15'), desc: 'Brickwork, stonework and concrete built to last.', features: ['Brick and block laying', 'Concrete work', 'Retaining walls'] },
-  { icon: HardHat,       title: 'Roofing',                 img: U('photo-1632759145351-1d592919f522'), desc: 'Installation, repair and replacement for lasting protection.', features: ['New installation', 'Roof repair', 'Gutter installation'] },
-  { icon: TreePine,      title: 'Landscaping',             img: U('photo-1558904541-efa843a96f01'), desc: 'Beautiful, functional outdoor spaces designed around you.', features: ['Landscape design', 'Garden installation', 'Irrigation systems'] },
-  { icon: LayoutGrid,    title: 'Interior Design',         img: U('photo-1618221195710-dd6b41faaea6'), desc: 'Spaces that balance looks and function, tailored to your style.', features: ['Space planning', 'Furniture selection', 'Lighting design'] },
-  { icon: ClipboardList, title: 'Project Management',      img: U('photo-1503387762-592deb58ef4e'), desc: 'End-to-end coordination, on time and on budget.', features: ['Planning & scheduling', 'Budget management', 'Quality control'] },
+  { icon: Hammer,        title: 'New Construction',        desc: 'Residential, commercial and industrial builds, from plans to handover.', features: ['Residential buildings', 'Commercial installations', 'Industrial facilities', 'Quality assurance'] },
+  { icon: Wrench,        title: 'Renovation & Remodeling', desc: 'Transform your space while keeping its structure sound.', features: ['Kitchen renovation', 'Bathroom remodeling', 'Room additions', 'Interior upgrades'] },
+  { icon: Shield,        title: 'Repair & Maintenance',    desc: 'Keep your property in top shape with repairs and inspections.', features: ['Structural repairs', 'Preventive maintenance', 'Emergency repairs', 'Regular inspections'] },
+  { icon: Zap,           title: 'Electrical Installation', desc: 'Safe, efficient and code-compliant electrical systems.', features: ['Panel installation', 'Commercial fitting', 'Renovation wiring', 'Safety & compliance'] },
+  { icon: Droplets,      title: 'Plumbing Services',       desc: 'Reliable water and drainage, from new pipework to leak repairs.', features: ['Pipe installation', 'Leak detection', 'Drain cleaning', 'Water heater service'] },
+  { icon: PaintBucket,   title: 'Painting & Finishing',    desc: 'Premium paints and clean finishes that protect your property.', features: ['Interior painting', 'Exterior painting', 'Texture coating', 'Waterproofing'] },
+  { icon: Layers,        title: 'Carpentry',               desc: 'Custom woodwork, from built-ins to structural framing.', features: ['Custom furniture', 'Cabinet installation', 'Door and window frames', 'Wooden flooring'] },
+  { icon: Building2,     title: 'Masonry',                 desc: 'Brickwork, stonework and concrete built to last.', features: ['Brick and block laying', 'Concrete work', 'Stone masonry', 'Retaining walls'] },
+  { icon: HardHat,       title: 'Roofing',                 desc: 'Installation, repair and replacement for lasting protection.', features: ['New installation', 'Roof repair', 'Gutter installation', 'Roof inspection'] },
+  { icon: TreePine,      title: 'Landscaping',             desc: 'Beautiful, functional outdoor spaces designed around you.', features: ['Landscape design', 'Garden installation', 'Hardscaping', 'Irrigation systems'] },
+  { icon: LayoutGrid,    title: 'Interior Design',         desc: 'Spaces that balance looks and function, tailored to your style.', features: ['Space planning', 'Furniture selection', 'Color consultation', 'Lighting design'] },
+  { icon: ClipboardList, title: 'Project Management',      desc: 'End-to-end coordination, on time and on budget.', features: ['Planning & scheduling', 'Budget management', 'Quality control', 'Progress reporting'] },
 ]
 
-/* ── Service card: photo, gentle zoom on hover, details slide up ── */
-function ServiceCard({ s, index, open, onToggle }) {
-  const [imgFailed, setImgFailed] = useState(false)
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="group relative block w-full h-full aspect-[4/5] sm:aspect-[4/3] lg:aspect-[4/5] xl:aspect-[4/3] overflow-hidden rounded-2xl text-left bg-emerald-800 ring-1 ring-slate-900/5 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-    >
-      {!imgFailed ? (
-        <img
-          src={s.img}
-          alt=""
-          loading="lazy"
-          onError={() => setImgFailed(true)}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 to-emerald-900 flex items-center justify-center">
-          <s.icon size={64} strokeWidth={1.25} className="text-white/20" />
-        </div>
-      )}
-      <div className={`absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-transparent transition-opacity duration-500 ${open ? 'opacity-100' : 'opacity-90 group-hover:opacity-100'}`} />
+/* Pick a service → its details animate in below the grid (one panel, so no extra scrolling) */
+function ServicesSection({ onInquire }) {
+  const [active, setActive] = useState(0)
+  const [panelKey, setPanelKey] = useState(0)
+  const s = SERVICES[active]
 
-      <span className="absolute top-3 left-3 text-[11px] font-semibold text-white/80 tabular-nums bg-black/20 backdrop-blur-sm rounded-md px-1.5 py-0.5">{String(index + 1).padStart(2, '0')}</span>
-
-      <div className="absolute inset-x-0 bottom-0 p-4">
-        <div className="flex items-center gap-2.5">
-          <span className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors duration-300 ${open ? 'bg-emerald-500 text-white' : 'bg-white/15 backdrop-blur text-white group-hover:bg-emerald-500'}`}>
-            <s.icon size={18} {...ICON} />
-          </span>
-          <h3 className="flex-1 text-[15px] font-semibold text-white leading-snug">{s.title}</h3>
-          <ChevronDown size={16} {...ICON} className={`text-white/70 transition-transform duration-300 lg:hidden ${open ? 'rotate-180' : ''}`} />
-        </div>
-
-        <div className={`grid transition-[grid-template-rows] duration-500 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] lg:group-hover:grid-rows-[1fr]'}`}>
-          <div className="overflow-hidden">
-            <p className="mt-3 text-xs text-white/80 leading-relaxed">{s.desc}</p>
-            <ul className="mt-2.5 space-y-1">
-              {s.features.map(f => (
-                <li key={f} className="flex items-center gap-1.5 text-xs text-white/90">
-                  <CheckCircle2 size={12} {...ICON} className="text-emerald-400 flex-shrink-0" />{f}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </div>
-    </button>
-  )
-}
-
-function ServicesShowcase({ onInquire }) {
-  const railRef = useRef(null)
-  const [open, setOpen] = useState(null)
-  const [atStart, setAtStart] = useState(true)
-  const [atEnd, setAtEnd] = useState(false)
-
-  const updateEdges = () => {
-    const el = railRef.current
-    if (!el) return
-    setAtStart(el.scrollLeft < 8)
-    setAtEnd(el.scrollLeft + el.clientWidth > el.scrollWidth - 8)
-  }
-  useEffect(() => { updateEdges() }, [])
-
-  const scrollBy = dir => {
-    const el = railRef.current
-    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: prefersReduced() ? 'auto' : 'smooth' })
-  }
+  const pick = i => { if (i !== active) { setActive(i); setPanelKey(k => k + 1) } }
 
   return (
-    <section id="services" className="py-20 bg-white">
+    <section id="services" className="py-16 sm:py-20 bg-white">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
-          <SectionHeading align="left" eyebrow="Products & services" title="Every trade your project needs" text="Twelve specialties delivered by licensed professionals." />
-          <div className="flex items-center gap-2 lg:hidden">
-            <button onClick={() => scrollBy(-1)} disabled={atStart} aria-label="Previous services"
-              className="w-10 h-10 rounded-full border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-50 disabled:opacity-30 transition">
-              <ChevronLeft size={18} {...ICON} />
-            </button>
-            <button onClick={() => scrollBy(1)} disabled={atEnd} aria-label="Next services"
-              className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-700 disabled:opacity-30 transition">
-              <ChevronRight size={18} {...ICON} />
-            </button>
+        <SectionHeading eyebrow="Products & services" title="Every trade your project needs" text="Twelve specialties, delivered by licensed professionals. Pick one to see what’s included." />
+
+        <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+          {SERVICES.map((svc, i) => {
+            const on = i === active
+            return (
+              <Reveal key={svc.title} delay={(i % 6) * 60}>
+                <button
+                  type="button"
+                  onClick={() => pick(i)}
+                  aria-pressed={on}
+                  className={`group relative w-full h-full flex flex-col items-start gap-3 rounded-xl p-3.5 sm:p-4 text-left ring-1 transition-all duration-300
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
+                    ${on ? 'bg-emerald-600 ring-emerald-600 shadow-lg shadow-emerald-600/25 -translate-y-0.5'
+                         : 'bg-white ring-slate-200 hover:ring-emerald-300 hover:-translate-y-0.5 hover:shadow-md'}`}
+                >
+                  <span className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-300
+                    ${on ? 'bg-white/15 text-white' : 'bg-emerald-50 text-emerald-600 group-hover:scale-110'}`}>
+                    <svc.icon size={18} {...ICON} />
+                  </span>
+                  <span className={`text-[13px] sm:text-sm font-semibold leading-snug ${on ? 'text-white' : 'text-slate-800'}`}>{svc.title}</span>
+                </button>
+              </Reveal>
+            )
+          })}
+        </div>
+
+        {/* Details panel */}
+        <div key={panelKey} className="lp-up mt-4 rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-5 sm:p-6 grid sm:grid-cols-[1fr_auto] gap-5 sm:items-center">
+          <div className="flex items-start gap-4 min-w-0">
+            <span className="hidden sm:flex w-12 h-12 rounded-xl bg-emerald-600 text-white items-center justify-center flex-shrink-0">
+              <s.icon size={22} {...ICON} />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-slate-900">{s.title}</h3>
+              <p className="mt-1 text-sm text-slate-600 leading-relaxed">{s.desc}</p>
+              <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                {s.features.map((f, i) => (
+                  <li key={f} className="lp-up flex items-center gap-2 text-sm text-slate-700" style={{ animationDelay: `${120 + i * 60}ms` }}>
+                    <CheckCircle2 size={15} {...ICON} className="text-emerald-500 flex-shrink-0" />{f}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        </div>
-
-        {/* Mobile/tablet: swipeable row · Desktop: grid */}
-        <div
-          ref={railRef}
-          onScroll={updateEdges}
-          className="lp-noscroll mt-10 -mx-5 px-5 sm:-mx-8 sm:px-8 lg:mx-0 lg:px-0 flex gap-4 overflow-x-auto snap-x snap-mandatory lg:grid lg:grid-cols-4 lg:overflow-visible"
-        >
-          {SERVICES.map((s, i) => (
-            <Reveal key={s.title} delay={(i % 4) * 80} className="snap-start shrink-0 w-[75%] sm:w-[46%] lg:w-auto">
-              <ServiceCard s={s} index={i} open={open === s.title} onToggle={() => setOpen(o => (o === s.title ? null : s.title))} />
-            </Reveal>
-          ))}
-        </div>
-
-        <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-sm text-slate-500"><span className="lg:hidden">Swipe to see all 12 services. Tap one for details.</span><span className="hidden lg:inline">Hover over a service to see what’s included.</span></p>
-          <button onClick={onInquire} className="group inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-            Ask about a service <ArrowRight size={15} {...ICON} className="transition-transform group-hover:translate-x-1" />
+          <button onClick={() => onInquire(s.title)}
+            className="group inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
+            Inquire about this <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
           </button>
         </div>
       </div>
@@ -455,11 +409,53 @@ function ServicesShowcase({ onInquire }) {
   )
 }
 
+/* ── Inquiry popup: bottom sheet on phones, centered on desktop ── */
+function InquiryModal({ onClose }) {
+  useEffect(() => {
+    const onKey = e => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4">
+      <div className="lp-fade absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-label="Submit an inquiry"
+        className="lp-sheet relative w-full sm:max-w-2xl max-h-[92vh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="sm:hidden mx-auto mt-2.5 w-10 h-1.5 rounded-full bg-slate-200" />
+        <div className="flex items-start justify-between gap-3 px-5 sm:px-8 pt-4 sm:pt-7 pb-4 border-b border-slate-100">
+          <div className="flex items-start gap-3.5">
+            <span className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0"><Send size={18} {...ICON} /></span>
+            <div>
+              <h3 className="text-lg sm:text-xl font-semibold text-slate-900">Submit an inquiry</h3>
+              <p className="text-sm text-slate-500 mt-0.5">Tell us about your project. We reply within one business day.</p>
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="p-2 -mr-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+            <X size={20} {...ICON} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6">
+          <InquiryForm />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const NAV_LINKS = [
   { id: 'about',    label: 'About us' },
   { id: 'services', label: 'Services' },
-  { id: 'process',  label: 'How it works' },
   { id: 'contact',  label: 'Contact' },
+]
+
+const CONTACTS = [
+  { icon: Mail,   title: 'Email',         lines: ['info@emeraldbuilders.com', 'support@emeraldbuilders.com'], href: 'mailto:info@emeraldbuilders.com' },
+  { icon: Phone,  title: 'Phone',         lines: ['+63 123 456 7890', '+63 456 654 3210'],                    href: 'tel:+631234567890' },
+  { icon: MapPin, title: 'Office',        lines: ['123 Batikan John Avenue, Quezon City, Metro Manila 1010'] },
+  { icon: Clock,  title: 'Working hours', lines: ['Monday – Sunday, 8:00 AM – 6:00 PM'] },
 ]
 
 /* ── Main page ── */
@@ -469,6 +465,7 @@ export default function LandingPage() {
   const [activeSection, setActiveSection] = useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [quoteOpen, setQuoteOpen] = useState(false)
 
   const projects = useCountUp(500, 1800, statsVisible)
   const workers  = useCountUp(120, 1800, statsVisible)
@@ -497,6 +494,8 @@ export default function LandingPage() {
     const el = document.getElementById(id)
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: prefersReduced() ? 'auto' : 'smooth' })
   }
+  const openQuote = () => { setMobileMenuOpen(false); setQuoteOpen(true) }
+  const closeQuote = useCallback(() => setQuoteOpen(false), [])
 
   const solidNav = scrolled || mobileMenuOpen
 
@@ -535,7 +534,7 @@ export default function LandingPage() {
               className={`hidden sm:inline-flex items-center h-9 px-4 rounded-lg text-sm font-medium transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
               Sign in
             </button>
-            <button onClick={() => scrollTo('contact')}
+            <button onClick={openQuote}
               className="inline-flex items-center h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-sm transition-colors">
               Get a quote
             </button>
@@ -562,14 +561,14 @@ export default function LandingPage() {
       </nav>
 
       {/* ══════════════ HERO ══════════════ */}
-      <section id="home" className="relative min-h-[88vh] flex items-center overflow-hidden bg-slate-900">
+      <section id="home" className="relative min-h-[86vh] flex items-center overflow-hidden bg-slate-900">
         <img src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1800&q=75" alt="" aria-hidden="true"
           className="lp-zoom absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-emerald-900/50" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent" />
         <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '56px 56px' }} />
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 pt-28 pb-16 grid lg:grid-cols-[1.15fr_0.85fr] gap-12 items-center">
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 pt-28 pb-14 grid lg:grid-cols-[1.15fr_0.85fr] gap-12 items-center">
           <div>
             <p className="lp-up inline-flex items-center gap-2 h-8 pl-2 pr-3.5 rounded-full bg-white/10 ring-1 ring-white/20 backdrop-blur text-xs font-medium text-white" style={{ animationDelay: '100ms' }}>
               <span className="lp-pulse w-2 h-2 rounded-full bg-emerald-400 ml-1" />
@@ -583,7 +582,7 @@ export default function LandingPage() {
               Book skilled construction professionals, manage job orders and follow every site visit in one place, from your first inquiry to project handover.
             </p>
             <div className="lp-up mt-8 flex flex-wrap gap-3" style={{ animationDelay: '440ms' }}>
-              <button onClick={() => scrollTo('contact')}
+              <button onClick={openQuote}
                 className="group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all">
                 Request a free quote <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
               </button>
@@ -592,11 +591,11 @@ export default function LandingPage() {
                 Explore services
               </button>
             </div>
-            <div className="lp-up mt-12 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 max-w-xl" style={{ animationDelay: '560ms' }}>
-              {[[`${projects}+`, 'Projects completed'], [`${workers}+`, 'Skilled workers'], [`${clients}+`, 'Happy clients'], [`${years}`, 'Years experience']].map(([v, l]) => (
+            <div className="lp-up mt-10 grid grid-cols-4 gap-3 sm:gap-6 max-w-xl" style={{ animationDelay: '560ms' }}>
+              {[[`${projects}+`, 'Projects'], [`${workers}+`, 'Workers'], [`${clients}+`, 'Clients'], [`${years}`, 'Years']].map(([v, l]) => (
                 <div key={l}>
-                  <p className="text-2xl font-semibold text-white tabular-nums">{v}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{l}</p>
+                  <p className="text-xl sm:text-2xl font-semibold text-white tabular-nums">{v}</p>
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">{l}</p>
                 </div>
               ))}
             </div>
@@ -653,15 +652,15 @@ export default function LandingPage() {
       </section>
 
       {/* ══════════════ ABOUT ══════════════ */}
-      <section id="about" className="py-20 bg-slate-50 overflow-hidden">
+      <section id="about" className="py-16 sm:py-20 bg-slate-50 overflow-hidden">
         <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          <Reveal className="relative">
+          <Reveal className="relative hidden lg:block">
             <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/10 ring-1 ring-slate-900/5">
               <img src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1000&q=75" alt="Construction worker on site"
-                loading="lazy" className="w-full h-[280px] sm:h-[360px] object-cover transition-transform duration-700 hover:scale-105" />
+                loading="lazy" className="w-full h-[380px] object-cover transition-transform duration-700 hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent" />
             </div>
-            <div className="lp-float absolute -bottom-5 right-4 sm:right-8 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 p-4 flex items-center gap-3">
+            <div className="lp-float absolute -bottom-5 right-8 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 p-4 flex items-center gap-3">
               <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center"><Award size={20} {...ICON} /></span>
               <div>
                 <p className="text-xl font-semibold text-slate-900 tabular-nums">500+</p>
@@ -673,22 +672,22 @@ export default function LandingPage() {
           <div>
             <SectionHeading align="left" eyebrow="Why Emerald Builders" title="Quality work, from people you can trust"
               text="We connect you with verified professionals and stay accountable from the first inquiry to the final inspection." />
-            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="mt-8 grid grid-cols-2 gap-2.5 sm:gap-3">
               {[
-                { icon: UserCheck, title: 'Verified workers',     desc: 'Licensed and insured' },
-                { icon: Star,      title: 'Quality materials',    desc: 'Premium and tested' },
-                { icon: Clock,     title: 'On-time delivery',     desc: 'Agreed timelines, kept' },
-                { icon: Award,     title: 'Fair pricing',         desc: 'No hidden charges' },
-                { icon: LineChart, title: 'Real-time tracking',   desc: 'Follow every step online' },
-                { icon: Users,     title: 'Dedicated support',    desc: 'A real person to talk to' },
+                { icon: UserCheck, title: 'Verified workers',   desc: 'Licensed and insured' },
+                { icon: Star,      title: 'Quality materials',  desc: 'Premium and tested' },
+                { icon: Clock,     title: 'On-time delivery',   desc: 'Timelines we keep' },
+                { icon: Award,     title: 'Fair pricing',       desc: 'No hidden charges' },
+                { icon: LineChart, title: 'Live tracking',      desc: 'Follow every step' },
+                { icon: Users,     title: 'Dedicated support',  desc: 'A real person to talk to' },
               ].map((item, i) => (
                 <Reveal key={item.title} delay={i * 60}>
-                  <div className="group flex items-center gap-3 rounded-xl bg-white ring-1 ring-slate-200 p-3 transition-all duration-300 hover:ring-emerald-300 hover:shadow-md hover:-translate-y-0.5">
-                    <span className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 transition-colors group-hover:bg-emerald-600 group-hover:text-white">
+                  <div className="group h-full flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 rounded-xl bg-white ring-1 ring-slate-200 p-3 transition-all duration-300 hover:ring-emerald-300 hover:shadow-md hover:-translate-y-0.5">
+                    <span className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 transition-colors group-hover:bg-emerald-600 group-hover:text-white">
                       <item.icon size={18} {...ICON} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-900">{item.title}</span>
+                      <span className="block text-[13px] sm:text-sm font-semibold text-slate-900">{item.title}</span>
                       <span className="block text-xs text-slate-500">{item.desc}</span>
                     </span>
                   </div>
@@ -700,99 +699,76 @@ export default function LandingPage() {
       </section>
 
       {/* ══════════════ SERVICES ══════════════ */}
-      <ServicesShowcase onInquire={() => scrollTo('contact')} />
-
-      {/* ══════════════ HOW IT WORKS ══════════════ */}
-      <section id="process" className="py-20 bg-slate-50">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <SectionHeading eyebrow="How it works" title="From inquiry to handover in four steps" />
-          <div className="relative mt-12 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10">
-            <div className="hidden md:block absolute top-7 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-emerald-200 via-emerald-400 to-emerald-200" />
-            {[
-              { icon: MessageSquareText, title: 'Send an inquiry',     desc: 'Tell us what you need and where.' },
-              { icon: UserCheck,         title: 'We match a pro',      desc: 'The right specialist for the job.' },
-              { icon: CalendarDays,      title: 'Schedule the work',   desc: 'Visit days that suit you.' },
-              { icon: LineChart,         title: 'Track to the finish', desc: 'Follow progress in your account.' },
-            ].map((s, i) => (
-              <Reveal key={s.title} delay={i * 120} className="relative text-center">
-                <span className="relative z-10 mx-auto w-14 h-14 rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm text-emerald-600 flex items-center justify-center transition-transform duration-300 hover:-translate-y-1">
-                  <s.icon size={22} {...ICON} />
-                  <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-semibold flex items-center justify-center ring-4 ring-slate-50">{i + 1}</span>
-                </span>
-                <h3 className="mt-5 text-sm sm:text-base font-semibold text-slate-900">{s.title}</h3>
-                <p className="mt-1.5 text-xs sm:text-sm text-slate-600 leading-relaxed max-w-[200px] mx-auto">{s.desc}</p>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+      <ServicesSection onInquire={openQuote} />
 
       {/* ══════════════ CONTACT ══════════════ */}
-      <section id="contact" className="py-20 bg-white">
+      <section id="contact" className="py-16 sm:py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
-          <SectionHeading eyebrow="Contact us" title="Let’s talk about your project" text="Send an inquiry and our team will reach out. You can also call, email or visit us." />
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-stretch">
+            <div className="flex flex-col">
+              <SectionHeading align="left" eyebrow="Contact us" title="Let’s talk about your project" text="Reach us any way you like, or send an inquiry and we’ll get back to you within one business day." />
 
-          <div className="mt-12 grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { icon: Mail,   title: 'Email us',      lines: ['info@emeraldbuilders.com', 'support@emeraldbuilders.com'], href: 'mailto:info@emeraldbuilders.com' },
-                  { icon: Phone,  title: 'Call us',       lines: ['+63 123 456 7890', '+63 456 654 3210'],                    href: 'tel:+631234567890' },
-                  { icon: MapPin, title: 'Visit us',      lines: ['123 Batikan John Avenue', 'Quezon City, Metro Manila 1010'] },
-                  { icon: Clock,  title: 'Working hours', lines: ['Monday – Sunday', '8:00 AM – 6:00 PM'] },
-                ].map((info, i) => {
-                  const Wrap = info.href ? 'a' : 'div'
-                  return (
-                    <Reveal key={info.title} delay={i * 70}>
-                      <Wrap {...(info.href ? { href: info.href } : {})}
-                        className={`flex items-start gap-3 h-full rounded-xl bg-white ring-1 ring-slate-200 p-4 transition-all duration-300 ${info.href ? 'hover:ring-emerald-300 hover:shadow-md hover:-translate-y-0.5' : ''}`}>
-                        <span className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><info.icon size={18} {...ICON} /></span>
-                        <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-slate-900">{info.title}</span>
-                          {info.lines.map(l => <span key={l} className="block text-xs text-slate-600 mt-0.5 break-words">{l}</span>)}
-                        </span>
-                      </Wrap>
-                    </Reveal>
-                  )
-                })}
-              </div>
-              <Reveal delay={200}>
-                <div className="rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-sm bg-white h-[240px] sm:h-[300px]">
-                  <iframe
-                    title="office-location-map"
-                    width="100%"
-                    height="100%"
-                    style={{ border: 'none' }}
-                    srcDoc={`<!DOCTYPE html><html><head>
-                      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-                      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                      <style>html,body,#map{margin:0;padding:0;width:100%;height:100%;}</style>
-                    </head><body><div id="map"></div><script>
-                      var addressBounds = [[14.4829, 120.9991],[14.4929, 121.0091]];
-                      var map = L.map('map', {
-                        center: [14.4879, 121.0041], zoom: 17, minZoom: 17, maxZoom: 19,
-                        maxBounds: addressBounds, maxBoundsViscosity: 1.0,
-                        zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false
-                      });
-                      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
-                      L.marker([14.4879, 121.0041]).addTo(map)
-                        .bindPopup('<b>Emerald Builders</b><br>804 Chaffee St, Moonwalk, Parañaque').openPopup();
-                    </script></body></html>`}
-                  />
-                </div>
+              <Reveal delay={100}>
+                <ul className="mt-8 rounded-2xl bg-white ring-1 ring-slate-200 divide-y divide-slate-100">
+                  {CONTACTS.map(c => {
+                    const Wrap = c.href ? 'a' : 'div'
+                    return (
+                      <li key={c.title}>
+                        <Wrap {...(c.href ? { href: c.href } : {})}
+                          className={`group flex items-start gap-3.5 px-4 py-3.5 transition-colors ${c.href ? 'hover:bg-emerald-50/50' : ''}`}>
+                          <span className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
+                            <c.icon size={17} {...ICON} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs text-slate-500">{c.title}</span>
+                            {c.lines.map(l => <span key={l} className="block text-sm font-medium text-slate-900 break-words">{l}</span>)}
+                          </span>
+                          {c.href && <ArrowRight size={15} {...ICON} className="self-center text-slate-300 transition-all group-hover:text-emerald-600 group-hover:translate-x-0.5" />}
+                        </Wrap>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </Reveal>
+
+              <Reveal delay={180}>
+                <button onClick={openQuote}
+                  className="group mt-5 w-full flex items-center justify-between gap-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-4 text-left shadow-lg shadow-emerald-600/20 transition-colors">
+                  <span className="flex items-center gap-3.5">
+                    <span className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center"><Send size={18} {...ICON} /></span>
+                    <span>
+                      <span className="block text-base font-semibold text-white">Submit an inquiry</span>
+                      <span className="block text-sm text-emerald-100">Takes about two minutes</span>
+                    </span>
+                  </span>
+                  <ArrowRight size={18} {...ICON} className="text-white transition-transform group-hover:translate-x-1" />
+                </button>
               </Reveal>
             </div>
 
-            <Reveal delay={120}>
-              <div className="rounded-3xl bg-white ring-1 ring-slate-200 shadow-xl shadow-slate-900/5 p-5 sm:p-8">
-                <div className="flex items-start gap-4 mb-7">
-                  <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0"><Send size={19} {...ICON} /></span>
-                  <div>
-                    <h3 className="text-xl font-semibold text-slate-900">Submit an inquiry</h3>
-                    <p className="text-sm text-slate-500 mt-0.5">Tell us about your project and we’ll get back to you right away.</p>
-                  </div>
-                </div>
-                <InquiryForm />
+            <Reveal delay={120} className="h-full">
+              <div className="h-[220px] sm:h-[300px] lg:h-full lg:min-h-[420px] rounded-2xl overflow-hidden ring-1 ring-slate-200 shadow-sm bg-white">
+                <iframe
+                  title="office-location-map"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                  srcDoc={`<!DOCTYPE html><html><head>
+                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                    <style>html,body,#map{margin:0;padding:0;width:100%;height:100%;}</style>
+                  </head><body><div id="map"></div><script>
+                    var addressBounds = [[14.4829, 120.9991],[14.4929, 121.0091]];
+                    var map = L.map('map', {
+                      center: [14.4879, 121.0041], zoom: 17, minZoom: 17, maxZoom: 19,
+                      maxBounds: addressBounds, maxBoundsViscosity: 1.0,
+                      zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false
+                    });
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+                    L.marker([14.4879, 121.0041]).addTo(map)
+                      .bindPopup('<b>Emerald Builders</b><br>804 Chaffee St, Moonwalk, Parañaque').openPopup();
+                  </script></body></html>`}
+                />
               </div>
             </Reveal>
           </div>
@@ -801,48 +777,29 @@ export default function LandingPage() {
 
       {/* ══════════════ FOOTER ══════════════ */}
       <footer className="bg-slate-950 text-slate-400">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 pt-14 pb-8">
-          <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr] gap-10">
-            <div className="col-span-2 lg:col-span-1">
-              <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center"><HardHat size={18} strokeWidth={2} className="text-white" /></span>
-                <span>
-                  <span className="block font-semibold text-white text-[15px] leading-tight">SkillConnect</span>
-                  <span className="block text-xs text-slate-500 leading-tight">Emerald Builders & Construction</span>
-                </span>
-              </div>
-              <p className="mt-5 text-sm leading-relaxed max-w-xs">Your trusted partner in construction excellence, connecting clients with skilled professionals.</p>
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center"><HardHat size={18} strokeWidth={2} className="text-white" /></span>
+              <span>
+                <span className="block font-semibold text-white text-[15px] leading-tight">SkillConnect</span>
+                <span className="block text-xs text-slate-500 leading-tight">Emerald Builders & Construction</span>
+              </span>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-white">Company</p>
-              <ul className="mt-4 space-y-2.5 text-sm">
-                {NAV_LINKS.map(l => <li key={l.id}><button onClick={() => scrollTo(l.id)} className="hover:text-emerald-400 transition-colors">{l.label}</button></li>)}
-              </ul>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white">Platform</p>
-              <ul className="mt-4 space-y-2.5 text-sm">
-                <li><button onClick={() => navigate('/login')} className="hover:text-emerald-400 transition-colors">Sign in</button></li>
-                <li><button onClick={() => scrollTo('contact')} className="hover:text-emerald-400 transition-colors">Submit an inquiry</button></li>
-                <li><button onClick={() => scrollTo('process')} className="hover:text-emerald-400 transition-colors">Job orders</button></li>
-                <li><button onClick={() => scrollTo('process')} className="hover:text-emerald-400 transition-colors">Scheduling</button></li>
-              </ul>
-            </div>
-            <div className="col-span-2 lg:col-span-1">
-              <p className="text-sm font-semibold text-white">Contact</p>
-              <ul className="mt-4 space-y-3 text-sm">
-                <li className="flex items-center gap-2.5"><Mail size={15} {...ICON} className="text-emerald-500" /><a href="mailto:info@emeraldbuilders.com" className="hover:text-emerald-400 transition-colors">info@emeraldbuilders.com</a></li>
-                <li className="flex items-center gap-2.5"><Phone size={15} {...ICON} className="text-emerald-500" /><a href="tel:+631234567890" className="hover:text-emerald-400 transition-colors">+63 123 456 7890</a></li>
-                <li className="flex items-center gap-2.5"><Clock size={15} {...ICON} className="text-emerald-500" />Mon–Sun, 8:00 AM – 6:00 PM</li>
-              </ul>
-            </div>
+            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              {NAV_LINKS.map(l => <button key={l.id} onClick={() => scrollTo(l.id)} className="hover:text-emerald-400 transition-colors">{l.label}</button>)}
+              <button onClick={openQuote} className="hover:text-emerald-400 transition-colors">Submit an inquiry</button>
+              <button onClick={() => navigate('/login')} className="hover:text-emerald-400 transition-colors">Sign in</button>
+            </nav>
           </div>
-          <div className="mt-12 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="mt-8 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
             <p>© {new Date().getFullYear()} Emerald Builders & Construction. All rights reserved.</p>
             <button onClick={() => scrollTo('home')} className="hover:text-emerald-400 transition-colors">Back to top ↑</button>
           </div>
         </div>
       </footer>
+
+      {quoteOpen && <InquiryModal onClose={closeQuote} />}
     </div>
   )
 }
