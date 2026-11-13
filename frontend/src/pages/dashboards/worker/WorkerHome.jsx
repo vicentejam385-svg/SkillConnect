@@ -143,13 +143,13 @@ function LicenseBanner({ licenses }) {
 function StatCard({ icon: Icon, label, value, tone, loading, delay, onClick }) {
   return (
     <button onClick={onClick} style={{ animationDelay: `${delay}ms` }}
-      className="sc-rise group text-left bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 hover:border-slate-300 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-      <div className="flex items-center justify-between">
-        <span className={`w-9 h-9 rounded-lg flex items-center justify-center ${tone}`}><Icon size={18} {...ICON} /></span>
-        <ChevronRight size={16} {...ICON} className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
+      className="sc-rise group flex items-center gap-3 text-left bg-white rounded-lg border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] px-3 py-2.5 hover:border-slate-300 hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+      <span className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={16} {...ICON} /></span>
+      <div className="min-w-0 flex-1">
+        {loading ? <Skel className="h-5 w-8" /> : <p className="text-lg font-semibold text-slate-900 tabular-nums leading-none">{value}</p>}
+        <p className="mt-1 text-xs text-slate-500 truncate">{label}</p>
       </div>
-      {loading ? <Skel className="h-7 w-10 mt-3" /> : <p className="mt-3 text-2xl font-semibold text-slate-900 tabular-nums leading-none">{value}</p>}
-      <p className="mt-1.5 text-sm text-slate-500">{label}</p>
+      <ChevronRight size={14} {...ICON} className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
     </button>
   )
 }
@@ -195,20 +195,20 @@ function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect
   const selected = byDay[selectedDay] || []
 
   return (
-    <section className="sc-rise bg-white rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '220ms' }}>
+    <section className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '220ms' }}>
       {/* Header */}
-      <header className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4">
+      <header className="flex items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex items-center gap-3 min-w-0">
-          <h2 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight tabular-nums truncate">{MONTHS[month]} {year}</h2>
-          <button onClick={onToday} className="h-8 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Today</button>
+          <h2 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight tabular-nums truncate">{MONTHS[month]} {year}</h2>
+          <button onClick={onToday} className="h-7 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Today</button>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onViewAll} className="hidden sm:inline-flex items-center gap-1 mr-1 text-sm font-medium text-emerald-700 hover:text-emerald-800">
             View all <ArrowRight size={14} {...ICON} />
           </button>
           <div className="inline-flex rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-200">
-            <button onClick={onPrev} aria-label="Previous month" className="w-9 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronLeft size={16} {...ICON} /></button>
-            <button onClick={onNext} aria-label="Next month"     className="w-9 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronRight size={16} {...ICON} /></button>
+            <button onClick={onPrev} aria-label="Previous month" className="w-8 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronLeft size={16} {...ICON} /></button>
+            <button onClick={onNext} aria-label="Next month"     className="w-8 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronRight size={16} {...ICON} /></button>
           </div>
         </div>
       </header>
@@ -216,7 +216,7 @@ function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect
       {/* Weekday row */}
       <div className="grid grid-cols-7 border-y border-slate-100 bg-slate-50/70">
         {DAYS.map((d, i) => (
-          <div key={d} className={`py-2 text-center text-[11px] sm:text-xs font-medium tracking-wide ${i === 0 || i === 6 ? 'text-slate-400' : 'text-slate-500'}`}>{d}</div>
+          <div key={d} className={`py-1.5 text-center text-[10px] sm:text-[11px] font-medium tracking-wide ${i === 0 || i === 6 ? 'text-slate-400' : 'text-slate-500'}`}>{d}</div>
         ))}
       </div>
 
@@ -228,7 +228,7 @@ function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect
           const lastRow = i >= cells.length - 7
           const base = `border-slate-100 ${lastCol ? '' : 'border-r'} ${lastRow ? '' : 'border-b'}`
 
-          if (!day) return <div key={`e${i}`} className={`min-h-[64px] sm:min-h-[96px] bg-slate-50/60 ${base}`} />
+          if (!day) return <div key={`e${i}`} className={`min-h-[48px] sm:min-h-[68px] bg-slate-50/60 ${base}`} />
 
           const key     = keyOf(year, month, day)
           const events  = byDay[key] || []
@@ -239,24 +239,24 @@ function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect
 
           return (
             <button key={key} onClick={() => onSelect(key)} aria-pressed={isSel}
-              className={`relative flex flex-col items-stretch text-left min-h-[64px] sm:min-h-[96px] p-1 sm:p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500
+              className={`relative flex flex-col items-stretch text-left min-h-[48px] sm:min-h-[68px] p-1 sm:p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500
                 ${base} ${isSel ? 'bg-emerald-50/60' : weekend ? 'bg-slate-50/60 hover:bg-slate-100/70' : 'bg-white hover:bg-slate-50'}`}>
               {isSel && <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-emerald-500/70" />}
 
-              <span className={`inline-flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-full text-xs sm:text-sm tabular-nums self-start
+              <span className={`inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full text-[11px] sm:text-xs tabular-nums self-start
                 ${isToday ? 'bg-emerald-600 text-white font-semibold shadow-sm' : weekend ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>
                 {day}
               </span>
 
               {/* Desktop chips */}
-              <span className="hidden sm:flex flex-col gap-1 mt-1.5">
+              <span className="hidden sm:flex flex-col gap-0.5 mt-1">
                 {shown.map(sc => (
                   <span key={sc.id} title={`${timeShort(sc.start_time)} ${titleOf(sc)}`}
-                    className={`block truncate rounded-[5px] border-l-2 px-1.5 py-[3px] text-[11px] leading-tight font-medium ${KINDS[kindOf(sc.status)].chip}`}>
+                    className={`block truncate rounded-[5px] border-l-2 px-1.5 py-[1px] text-[10px] leading-tight font-medium ${KINDS[kindOf(sc.status)].chip}`}>
                     {timeShort(sc.start_time)} {titleOf(sc)}
                   </span>
                 ))}
-                {extra > 0 && <span className="px-1 text-[11px] font-medium text-slate-500">+{extra} more</span>}
+                {extra > 0 && <span className="px-1 text-[10px] font-medium text-slate-500">+{extra} more</span>}
               </span>
 
               {/* Mobile dots */}
@@ -271,19 +271,19 @@ function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect
       </div>
 
       {/* Legend */}
-      <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 sm:px-5 py-3 border-t border-slate-100">
+      <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5 px-4 py-2 border-t border-slate-100">
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           {Object.values(KINDS).map(k => (
-            <li key={k.label} className="flex items-center gap-1.5 text-xs text-slate-600">
+            <li key={k.label} className="flex items-center gap-1.5 text-[11px] text-slate-600">
               <span className={`w-2.5 h-2.5 rounded-[3px] ${k.dot}`} />{k.label}
             </li>
           ))}
         </ul>
-        <p className="text-xs text-slate-500">Select a day to see its visits</p>
+        <p className="text-[11px] text-slate-500">Select a day to see its visits</p>
       </footer>
 
       {/* Selected day details */}
-      <div className="px-4 sm:px-5 py-4 border-t border-slate-100 bg-slate-50/40">
+      <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
         <p className="text-sm font-semibold text-slate-900">{fmtDate(selectedDay, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
         {selected.length === 0 ? (
           <div className="flex items-center gap-2 mt-2 text-sm text-slate-400"><CalendarX2 size={16} {...ICON} /> No visits on this day</div>
@@ -292,7 +292,7 @@ function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect
             {selected.map((sc, i) => {
               const k = KINDS[kindOf(sc.status)]
               return (
-                <li key={sc.id} className="sc-rise flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" style={{ animationDelay: `${i * 50}ms` }}>
+                <li key={sc.id} className="sc-rise flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" style={{ animationDelay: `${i * 50}ms` }}>
                   <span className={`w-1 self-stretch rounded-full ${k.dot}`} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900 truncate">{sc.description || sc.schedule_code || 'Site visit'}</p>
@@ -393,30 +393,30 @@ export default function WorkerHome() {
   const goToday   = () => { setCalYear(now.getFullYear()); setCalMonth(now.getMonth()); setSelectedDay(today) }
 
   return (
-    <div className="sc-page max-w-7xl space-y-5">
+    <div className="sc-page max-w-6xl space-y-4">
       <style>{styles}</style>
 
       {/* Header */}
       <div className="sc-rise">
-        <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 tracking-tight">
           {greeting()}{firstName ? `, ${firstName}` : ''}
         </h1>
-        <p className="text-sm text-slate-500 mt-1">Here’s your work at a glance.</p>
+        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Here’s your work at a glance.</p>
       </div>
 
       <LicenseBanner licenses={licenses} />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <StatCard icon={Briefcase}      label="Projects"        value={totalProjects} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={0}   onClick={() => navigate('/worker/job-orders')} />
         <StatCard icon={CalendarDays}   label="Scheduled tasks" value={totalTasks}    tone="bg-sky-50 text-sky-600"         loading={loading} delay={60}  onClick={() => navigate('/worker/schedules')} />
         <StatCard icon={CalendarCheck2} label="Today"           value={todayCount}    tone="bg-amber-50 text-amber-600"     loading={loading} delay={120} onClick={goToday} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 items-start">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 items-start">
         {/* Active projects */}
         <section className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '150ms' }}>
-          <header className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
+          <header className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
             <div>
               <h2 className="text-[15px] font-semibold text-slate-900">Active projects</h2>
               <p className="text-xs text-slate-500 mt-0.5">Your current job orders</p>
@@ -429,15 +429,15 @@ export default function WorkerHome() {
           {loading ? (
             <div className="divide-y divide-slate-100">
               {[0, 1, 2].map(i => (
-                <div key={i} className="px-5 py-4 space-y-3">
+                <div key={i} className="px-4 py-3 space-y-2">
                   <div className="flex justify-between"><Skel className="h-4 w-48" /><Skel className="h-5 w-20 rounded-md" /></div>
                   <Skel className="h-3 w-64" /><Skel className="h-1.5 w-full rounded-full" />
                 </div>
               ))}
             </div>
           ) : activeJobs.length === 0 ? (
-            <div className="py-12 flex flex-col items-center text-center px-6">
-              <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
+            <div className="py-8 flex flex-col items-center text-center px-6">
+              <div className="w-10 h-10 rounded-lg bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
               <p className="mt-3 text-sm font-semibold text-slate-800">No active projects</p>
               <p className="text-sm text-slate-500 mt-1">New job orders assigned to you will show up here.</p>
             </div>
@@ -446,7 +446,7 @@ export default function WorkerHome() {
               {activeJobs.map((jo, i) => {
                 const pct = progressPercent(jo.status, jo.start_date, jo.end_date, jobPhotos[jo.id] || [])
                 return (
-                  <li key={jo.id} className="sc-rise px-5 py-4 hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${200 + i * 60}ms` }}>
+                  <li key={jo.id} className="sc-rise px-4 py-3 hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${200 + i * 60}ms` }}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">
