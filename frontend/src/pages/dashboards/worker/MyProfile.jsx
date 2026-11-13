@@ -157,7 +157,7 @@ function ProfileSkeleton() {
 
 // ── MY PROFILE ─────────────────────────────────────────────────
 export default function MyProfile() {
-  const { user }   = useAuth()
+  const { user, updateUser } = useAuth()
   const [profile,  setProfile]   = useState(null)
   const [licenses, setLicenses]  = useState([])
   const [loading,  setLoading]   = useState(true)
@@ -254,6 +254,7 @@ export default function MyProfile() {
         )
         if (!worker) { setLoading(false); return }
         setProfile(worker)
+        updateUser?.({ profile_photo: worker.profile_photo ?? null }) // keep the header avatar in sync
 
         const [lData, sData] = await Promise.all([
           apiGet('/api/licenses/list.php', { per_page: 50 }).catch(() => ({ licenses: [] })),
@@ -306,7 +307,7 @@ export default function MyProfile() {
       const data = await res.json()
       if (!data.success) throw new Error(data.error || 'Upload failed')
       const path = data.photo_path || data.photo_url || data.file_path || data.path
-      if (path) setProfile(p => ({ ...p, photo_path: path }))
+      if (path) { setProfile(p => ({ ...p, profile_photo: path })); updateUser?.({ profile_photo: path }) }
       showToast('Profile photo updated')
     } catch (err) {
       console.error('Photo upload error:', err)

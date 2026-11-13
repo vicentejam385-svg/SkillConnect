@@ -104,7 +104,7 @@ try {
             u.user_code AS worker_code,
             TRIM(CONCAT(u.first_name, ' ', u.last_name, ' ', COALESCE(u.suffix, ''))) AS full_name,
             u.first_name, u.last_name, u.suffix, u.username, u.email,
-            u.mobile, u.phone, u.address,
+            u.mobile, u.phone, u.address, u.profile_photo,
             u.specialization_id, sp.name AS specialization,
             u.status_id, s.label AS status,
             u.created_at, u.updated_at

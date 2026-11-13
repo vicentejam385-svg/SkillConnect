@@ -41,6 +41,7 @@ try {
             u.mobile,
             u.phone,
             u.address,
+            u.profile_photo,
             u.specialization_id,
             sp.name  AS specialization,
             u.status_id,

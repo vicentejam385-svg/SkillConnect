@@ -16,6 +16,20 @@ const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Admin', worker: 'Worker
 const MANAGEMENT_KEYS = ['contacts', 'workers', 'licenses', 'inquiries', 'config']
 
 const ICON = { strokeWidth: 1.75 }
+const HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
+
+// Shows the profile photo, or the initials if there is no photo (or it fails to load)
+function Avatar({ photo, initials, bg, size }) {
+  const [broken, setBroken] = useState(false)
+  const src = photo ? (/^https?:/.test(photo) ? photo : `${HOST}/${photo}`) : null
+  return (
+    <div className={`${size} ${bg} rounded-full overflow-hidden flex items-center justify-center text-white font-semibold shadow-sm flex-shrink-0`}>
+      {src && !broken
+        ? <img src={src} alt="" onError={() => setBroken(true)} className="w-full h-full object-cover" />
+        : initials}
+    </div>
+  )
+}
 
 const styles = `
   .lc-root, .lc-root h1, .lc-root h2, .lc-root h3 {
@@ -191,9 +205,7 @@ export default function DashboardLayout({ navItems, adminNavItems = [], children
               className={`flex items-center gap-2.5 h-10 pl-1 pr-2.5 rounded-full border bg-white transition-all duration-200 active:scale-[.98]
                 ${userOpen ? 'border-slate-300 shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
             >
-              <div className={`w-8 h-8 ${colors.bg} rounded-full flex items-center justify-center text-white text-xs font-semibold shadow-sm`}>
-                {initials}
-              </div>
+              <Avatar photo={role === 'worker' ? user?.profile_photo : null} initials={initials} bg={colors.bg} size="w-8 h-8 text-xs" />
               <div className="hidden lg:block text-left leading-none">
                 <div className="text-[13px] font-semibold text-slate-900">{displayName}</div>
                 <div className={`mt-1 text-[10px] font-semibold tracking-wider uppercase ${colors.accent}`}>{roleText}</div>
@@ -205,7 +217,7 @@ export default function DashboardLayout({ navItems, adminNavItems = [], children
               <div role="menu" style={{ transformOrigin: 'top right' }}
                 className="lc-menu absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-[0_12px_32px_-8px_rgba(16,24,40,0.18)] overflow-hidden z-50">
                 <div className="px-4 py-3.5 bg-slate-50/80 border-b border-slate-100 flex items-center gap-3">
-                  <div className={`w-10 h-10 ${colors.bg} rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0`}>{initials}</div>
+                  <Avatar photo={role === 'worker' ? user?.profile_photo : null} initials={initials} bg={colors.bg} size="w-10 h-10 text-sm" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{displayName}</p>
                     {user?.username && <p className="text-xs text-slate-500 truncate">@{user.username}</p>}

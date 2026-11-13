@@ -1,6 +1,6 @@
 // src/context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from 'react'
-import { apiPost, BASE_URL } from '../utils/api'
+import { apiGet, apiPost, BASE_URL } from '../utils/api'
 
 const AuthContext = createContext(null)
 
@@ -28,6 +28,27 @@ export function AuthProvider({ children }) {
    *   credential is a username → super_admin / admin (users table)
    *   credential is a username → worker (workers table)  ← checked last
    */
+
+    /** Merge changes into the current user and keep localStorage in sync (e.g. a new profile photo). */
+  const updateUser = (patch) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const next = { ...prev, ...patch }
+      localStorage.setItem('sc_user', JSON.stringify(next))
+      return next
+    })
+  }
+
+  // Workers: load their profile photo once per session if the login response did not include it
+  useEffect(() => {
+    if (!user || user.loginRole !== 'worker' || user.profile_photo !== undefined) return
+    apiGet('/api/workers/list.php', { search: user.username || '', per_page: 20 })
+      .then(d => {
+        const me = (d.workers || []).find(w => String(w.id) === String(user.id))
+        updateUser({ profile_photo: me?.profile_photo ?? null })
+      })
+      .catch(() => {})
+  }, [user?.id, user?.loginRole, user?.profile_photo])
   const login = async (credential, password) => {
     // Single unified endpoint — replaces both login.php and worker-login.php
     const data = await apiPost('/api/auth/login.php', {
@@ -124,7 +145,7 @@ export function AuthProvider({ children }) {
   }
 
      return (
-    <AuthContext.Provider value={{ user, login, logout, adminAccess, backToWorker, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, adminAccess, backToWorker, updateUser, loading }}>
       {children}
     </AuthContext.Provider>
   )
