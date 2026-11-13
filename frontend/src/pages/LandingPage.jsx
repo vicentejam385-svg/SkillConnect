@@ -536,7 +536,7 @@ export default function LandingPage() {
             </button>
             <button onClick={openQuote}
               className="inline-flex items-center h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-sm transition-colors">
-              Get a quote
+              Submit inquiry
             </button>
             <button onClick={() => setMobileMenuOpen(o => !o)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}
               className={`md:hidden p-2 rounded-lg transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
@@ -584,7 +584,7 @@ export default function LandingPage() {
             <div className="lp-up mt-8 flex flex-wrap gap-3" style={{ animationDelay: '440ms' }}>
               <button onClick={openQuote}
                 className="group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all">
-                Request a free quote <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
+                Submit inquiry <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
               </button>
               <button onClick={() => scrollTo('services')}
                 className="inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-white/10 hover:bg-white/15 ring-1 ring-white/25 backdrop-blur text-white text-sm font-semibold transition-colors">
