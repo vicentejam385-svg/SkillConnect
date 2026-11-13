@@ -2,14 +2,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertCircle, AlertTriangle, ClipboardList, Briefcase, ChevronRight, ChevronLeft,
-  MapPin, Clock, X, CalendarDays, CalendarCheck2, ArrowRight, Camera, Eye, ShieldCheck,
+  MapPin, Clock, X, CalendarDays, CalendarCheck2, CalendarX2, ArrowRight, Camera, Eye, ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { apiGet, BASE_URL } from '../../../utils/api'
 
 const ICON = { strokeWidth: 1.75 }
 
-// ── Local styles (same as the admin pages) ─────────────────────
+// ── Local styles ───────────────────────────────────────────────
 const styles = `
   .sc-page, .sc-page h1, .sc-page h2, .sc-page h3 {
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -22,7 +22,7 @@ const styles = `
     animation: sc-shimmer 1.4s infinite;
   }
   @keyframes sc-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes sc-pop  { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes sc-pop  { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
   .sc-rise { animation: sc-rise .45s cubic-bezier(.2,.7,.2,1) both; }
   .sc-pop  { animation: sc-pop .25s cubic-bezier(.2,.7,.2,1) both; }
   .sc-bar  { transition: width 1s cubic-bezier(.2,.7,.2,1); }
@@ -72,15 +72,18 @@ const fmtDate = (s, opts = { month: 'short', day: 'numeric', year: 'numeric' }) 
   const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
   return isNaN(d) ? s : d.toLocaleDateString('en-PH', opts)
 }
-const fmtTime = s => {
-  if (!s) return '—'
-  const [h, m] = String(s).slice(11, 16).split(':').map(Number)
-  if (isNaN(h)) return '—'
-  const d = new Date(); d.setHours(h, m || 0)
-  return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
-}
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
 const toKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// "2026-11-10 10:00:00" → "10 AM" / "10:30 AM"
+const timeShort = s => {
+  if (!s) return ''
+  const [h, m] = String(s).slice(11, 16).split(':').map(Number)
+  if (isNaN(h)) return ''
+  const ap  = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return m ? `${h12}:${String(m).padStart(2, '0')} ${ap}` : `${h12} ${ap}`
+}
 
 // ── License notice (same rules as before) ──────────────────────
 function LicenseBanner({ licenses }) {
@@ -151,6 +154,164 @@ function StatCard({ icon: Icon, label, value, tone, loading, delay, onClick }) {
   )
 }
 
+// ── SCHEDULE CALENDAR (month grid) ─────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const MAX_CHIPS = 2
+
+const KINDS = {
+  planned:   { label: 'Planned',     chip: 'bg-emerald-50 text-emerald-800 border-emerald-500', dot: 'bg-emerald-500' },
+  progress:  { label: 'In progress', chip: 'bg-amber-50 text-amber-800 border-amber-500',       dot: 'bg-amber-400'   },
+  complete:  { label: 'Complete',    chip: 'bg-blue-50 text-blue-800 border-blue-500',          dot: 'bg-blue-500'    },
+  cancelled: { label: 'Cancelled',   chip: 'bg-red-50 text-red-800 border-red-500',             dot: 'bg-red-500'     },
+}
+const kindOf = (status = '') => {
+  const s = String(status).toLowerCase()
+  if (s.includes('cancel'))   return 'cancelled'
+  if (s.includes('complete')) return 'complete'
+  if (s.includes('progress')) return 'progress'
+  return 'planned'
+}
+const keyOf   = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+const titleOf = sc => sc.client_name || sc.description || sc.schedule_code || 'Site visit'
+
+function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect, onPrev, onNext, onToday, onViewAll }) {
+  const byDay = useMemo(() => {
+    const map = {}
+    schedules.forEach(sc => {
+      const k = sc.start_time?.slice(0, 10)
+      if (!k) return
+      ;(map[k] ||= []).push(sc)
+    })
+    Object.values(map).forEach(list => list.sort((a, b) => String(a.start_time).localeCompare(String(b.start_time))))
+    return map
+  }, [schedules])
+
+  const firstDay    = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const selected = byDay[selectedDay] || []
+
+  return (
+    <section className="sc-rise bg-white rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '220ms' }}>
+      {/* Header */}
+      <header className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight tabular-nums truncate">{MONTHS[month]} {year}</h2>
+          <button onClick={onToday} className="h-8 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Today</button>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onViewAll} className="hidden sm:inline-flex items-center gap-1 mr-1 text-sm font-medium text-emerald-700 hover:text-emerald-800">
+            View all <ArrowRight size={14} {...ICON} />
+          </button>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-200">
+            <button onClick={onPrev} aria-label="Previous month" className="w-9 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronLeft size={16} {...ICON} /></button>
+            <button onClick={onNext} aria-label="Next month"     className="w-9 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronRight size={16} {...ICON} /></button>
+          </div>
+        </div>
+      </header>
+
+      {/* Weekday row */}
+      <div className="grid grid-cols-7 border-y border-slate-100 bg-slate-50/70">
+        {DAYS.map((d, i) => (
+          <div key={d} className={`py-2 text-center text-[11px] sm:text-xs font-medium tracking-wide ${i === 0 || i === 6 ? 'text-slate-400' : 'text-slate-500'}`}>{d}</div>
+        ))}
+      </div>
+
+      {/* Month grid */}
+      <div key={`${year}-${month}`} className="sc-pop grid grid-cols-7">
+        {cells.map((day, i) => {
+          const weekend = i % 7 === 0 || i % 7 === 6
+          const lastCol = i % 7 === 6
+          const lastRow = i >= cells.length - 7
+          const base = `border-slate-100 ${lastCol ? '' : 'border-r'} ${lastRow ? '' : 'border-b'}`
+
+          if (!day) return <div key={`e${i}`} className={`min-h-[64px] sm:min-h-[96px] bg-slate-50/60 ${base}`} />
+
+          const key     = keyOf(year, month, day)
+          const events  = byDay[key] || []
+          const isToday = key === today
+          const isSel   = key === selectedDay
+          const shown   = events.slice(0, MAX_CHIPS)
+          const extra   = events.length - shown.length
+
+          return (
+            <button key={key} onClick={() => onSelect(key)} aria-pressed={isSel}
+              className={`relative flex flex-col items-stretch text-left min-h-[64px] sm:min-h-[96px] p-1 sm:p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500
+                ${base} ${isSel ? 'bg-emerald-50/60' : weekend ? 'bg-slate-50/60 hover:bg-slate-100/70' : 'bg-white hover:bg-slate-50'}`}>
+              {isSel && <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-emerald-500/70" />}
+
+              <span className={`inline-flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-full text-xs sm:text-sm tabular-nums self-start
+                ${isToday ? 'bg-emerald-600 text-white font-semibold shadow-sm' : weekend ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>
+                {day}
+              </span>
+
+              {/* Desktop chips */}
+              <span className="hidden sm:flex flex-col gap-1 mt-1.5">
+                {shown.map(sc => (
+                  <span key={sc.id} title={`${timeShort(sc.start_time)} ${titleOf(sc)}`}
+                    className={`block truncate rounded-[5px] border-l-2 px-1.5 py-[3px] text-[11px] leading-tight font-medium ${KINDS[kindOf(sc.status)].chip}`}>
+                    {timeShort(sc.start_time)} {titleOf(sc)}
+                  </span>
+                ))}
+                {extra > 0 && <span className="px-1 text-[11px] font-medium text-slate-500">+{extra} more</span>}
+              </span>
+
+              {/* Mobile dots */}
+              {events.length > 0 && (
+                <span className="sm:hidden flex items-center justify-center gap-0.5 mt-1">
+                  {events.slice(0, 3).map(sc => <span key={sc.id} className={`w-1.5 h-1.5 rounded-full ${KINDS[kindOf(sc.status)].dot}`} />)}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Legend */}
+      <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 sm:px-5 py-3 border-t border-slate-100">
+        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {Object.values(KINDS).map(k => (
+            <li key={k.label} className="flex items-center gap-1.5 text-xs text-slate-600">
+              <span className={`w-2.5 h-2.5 rounded-[3px] ${k.dot}`} />{k.label}
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-slate-500">Select a day to see its visits</p>
+      </footer>
+
+      {/* Selected day details */}
+      <div className="px-4 sm:px-5 py-4 border-t border-slate-100 bg-slate-50/40">
+        <p className="text-sm font-semibold text-slate-900">{fmtDate(selectedDay, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+        {selected.length === 0 ? (
+          <div className="flex items-center gap-2 mt-2 text-sm text-slate-400"><CalendarX2 size={16} {...ICON} /> No visits on this day</div>
+        ) : (
+          <ul key={selectedDay} className="mt-3 grid gap-2 sm:grid-cols-2">
+            {selected.map((sc, i) => {
+              const k = KINDS[kindOf(sc.status)]
+              return (
+                <li key={sc.id} className="sc-rise flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]" style={{ animationDelay: `${i * 50}ms` }}>
+                  <span className={`w-1 self-stretch rounded-full ${k.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">{sc.description || sc.schedule_code || 'Site visit'}</p>
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                      <Clock size={12} {...ICON} />{timeShort(sc.start_time)}{sc.end_time ? ` – ${timeShort(sc.end_time)}` : ''}
+                    </p>
+                    {sc.client_name && <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><MapPin size={12} {...ICON} />{sc.client_name}</p>}
+                  </div>
+                  <span className="text-[11px] font-medium text-slate-600 whitespace-nowrap">{k.label}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
 // ── DASHBOARD HOME ─────────────────────────────────────────────
 export default function WorkerHome() {
   const { user }  = useAuth()
@@ -188,7 +349,6 @@ export default function WorkerHome() {
         setJobs(myJobs)
         setSchedules(mySchedules)
 
-        // Photos for progress bars
         const token = JSON.parse(localStorage.getItem('sc_user'))?.token
         const photoResults = await Promise.all(
           myJobs.map(jo =>
@@ -202,7 +362,6 @@ export default function WorkerHome() {
         photoResults.forEach(r => { photoMap[r.id] = r.photos })
         setJobPhotos(photoMap)
 
-        // Licenses for the notice
         try {
           const lData = await apiGet('/api/licenses/list.php', { per_page: 50 })
           setLicenses((lData.licenses || []).filter(l => String(l.contact_id) === String(worker?.contact_id)))
@@ -222,23 +381,13 @@ export default function WorkerHome() {
   const [calMonth,    setCalMonth]    = useState(now.getMonth())
   const [selectedDay, setSelectedDay] = useState(today)
 
-  const totalProjects  = jobs.length
-  const totalTasks     = schedules.length
-  const todayCount     = schedules.filter(sc => sc.start_time?.slice(0, 10) === today).length
-  const activeJobs     = jobs.filter(jo => jo.status !== 'Cancelled').slice(0, 3)
-  const scheduleDates  = useMemo(() => new Set(schedules.map(sc => sc.start_time?.slice(0, 10)).filter(Boolean)), [schedules])
-  const daySchedules   = schedules
-    .filter(sc => sc.start_time?.slice(0, 10) === selectedDay)
-    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
+  const totalProjects = jobs.length
+  const totalTasks    = schedules.length
+  const todayCount    = schedules.filter(sc => sc.start_time?.slice(0, 10) === today).length
+  const activeJobs    = jobs.filter(jo => jo.status !== 'Cancelled').slice(0, 3)
 
   const firstName = (user?.name || user?.full_name || '').split(' ')[0]
 
-  // Calendar
-  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-  const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-  const firstDay    = new Date(calYear, calMonth, 1).getDay()
-  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
-  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
   const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else setCalMonth(m => m - 1) }
   const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }
   const goToday   = () => { setCalYear(now.getFullYear()); setCalMonth(now.getMonth()); setSelectedDay(today) }
@@ -264,7 +413,7 @@ export default function WorkerHome() {
         <StatCard icon={CalendarCheck2} label="Today"           value={todayCount}    tone="bg-amber-50 text-amber-600"     loading={loading} delay={120} onClick={goToday} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4 sm:gap-5 items-start">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 items-start">
         {/* Active projects */}
         <section className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '150ms' }}>
           <header className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
@@ -287,7 +436,7 @@ export default function WorkerHome() {
               ))}
             </div>
           ) : activeJobs.length === 0 ? (
-            <div className="py-14 flex flex-col items-center text-center px-6">
+            <div className="py-12 flex flex-col items-center text-center px-6">
               <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
               <p className="mt-3 text-sm font-semibold text-slate-800">No active projects</p>
               <p className="text-sm text-slate-500 mt-1">New job orders assigned to you will show up here.</p>
@@ -341,73 +490,19 @@ export default function WorkerHome() {
           )}
         </section>
 
-        {/* Calendar */}
-        <section className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '220ms' }}>
-          <header className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-[15px] font-semibold text-slate-900">Schedule</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Tap a day to see its visits</p>
-            </div>
-            <button onClick={() => navigate('/worker/schedules')} className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800">
-              View all <ArrowRight size={14} {...ICON} />
-            </button>
-          </header>
-
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-slate-900 tabular-nums">{MONTHS[calMonth]} {calYear}</p>
-                <button onClick={goToday} className="h-7 px-2.5 rounded-md border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50">Today</button>
-              </div>
-              <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden divide-x divide-slate-200">
-                <button onClick={prevMonth} aria-label="Previous month" className="w-8 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-50"><ChevronLeft size={15} {...ICON} /></button>
-                <button onClick={nextMonth} aria-label="Next month" className="w-8 h-7 flex items-center justify-center text-slate-500 hover:bg-slate-50"><ChevronRight size={15} {...ICON} /></button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-7 mb-1">
-              {DAYS.map((d, i) => <div key={d} className={`text-center text-[11px] font-medium py-1 ${i === 0 || i === 6 ? 'text-slate-300' : 'text-slate-400'}`}>{d}</div>)}
-            </div>
-            <div key={`${calYear}-${calMonth}`} className="sc-pop grid grid-cols-7 gap-y-1">
-              {cells.map((day, i) => {
-                if (!day) return <div key={`e${i}`} />
-                const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-                const isToday = key === today, isSel = key === selectedDay, has = scheduleDates.has(key)
-                return (
-                  <button key={key} onClick={() => setSelectedDay(key)} aria-pressed={isSel}
-                    className={`relative mx-auto w-9 h-9 flex items-center justify-center rounded-full text-sm tabular-nums transition-all duration-200
-                      ${isSel ? 'bg-emerald-600 text-white font-semibold shadow-sm scale-105'
-                        : isToday ? 'bg-emerald-50 text-emerald-700 font-semibold ring-1 ring-emerald-300'
-                        : 'text-slate-700 hover:bg-slate-100'}`}>
-                    {day}
-                    {has && <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isSel ? 'bg-white' : 'bg-emerald-500'}`} />}
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <p className="text-xs font-medium text-slate-500 mb-2">{fmtDate(selectedDay, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-              {daySchedules.length === 0 ? (
-                <p className="text-sm text-slate-400 py-3 text-center">No visits on this day</p>
-              ) : (
-                <ul key={selectedDay} className="space-y-2">
-                  {daySchedules.map((sc, i) => (
-                    <li key={sc.id} className="sc-rise flex items-start gap-3 rounded-lg border border-slate-200 p-3" style={{ animationDelay: `${i * 50}ms` }}>
-                      <span className="w-1 self-stretch rounded-full bg-emerald-500 flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-900 truncate">{sc.description || sc.schedule_code || 'Site visit'}</p>
-                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><Clock size={12} {...ICON} />{fmtTime(sc.start_time)} – {fmtTime(sc.end_time)}</p>
-                        {sc.client_name && <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><MapPin size={12} {...ICON} />{sc.client_name}</p>}
-                      </div>
-                      {sc.status && <StatusBadge status={sc.status} />}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </section>
+        {/* Schedule calendar */}
+        <ScheduleCalendar
+          schedules={schedules}
+          year={calYear}
+          month={calMonth}
+          selectedDay={selectedDay}
+          today={today}
+          onSelect={setSelectedDay}
+          onPrev={prevMonth}
+          onNext={nextMonth}
+          onToday={goToday}
+          onViewAll={() => navigate('/worker/schedules')}
+        />
       </div>
     </div>
   )
