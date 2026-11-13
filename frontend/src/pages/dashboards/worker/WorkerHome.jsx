@@ -9,7 +9,7 @@ import { apiGet, BASE_URL } from '../../../utils/api'
 
 const ICON = { strokeWidth: 1.75 }
 
-// ── Local styles (same as the admin pages) ─────────────────────
+// ── Local styles ───────────────────────────────────────────────
 const styles = `
   .sc-page, .sc-page h1, .sc-page h2, .sc-page h3 {
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -21,13 +21,11 @@ const styles = `
     background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
     animation: sc-shimmer 1.4s infinite;
   }
-  @keyframes sc-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes sc-pop  { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-  .sc-rise { animation: sc-rise .45s cubic-bezier(.2,.7,.2,1) both; }
-  .sc-pop  { animation: sc-pop .25s cubic-bezier(.2,.7,.2,1) both; }
-  .sc-bar  { transition: width 1s cubic-bezier(.2,.7,.2,1); }
+  @keyframes sc-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .sc-fade { animation: sc-fade .3s ease-out both; }
+  .sc-bar  { transition: width .8s cubic-bezier(.2,.7,.2,1); }
   @media (prefers-reduced-motion: reduce) {
-    .sc-skel::after, .sc-rise, .sc-pop { animation: none; }
+    .sc-skel::after, .sc-fade { animation: none; }
     .sc-bar { transition: none; }
   }
 `
@@ -43,12 +41,13 @@ const STATUS = {
   'On Hold':     ['bg-orange-50 text-orange-700 ring-orange-200',    'bg-orange-500'],
   'In Progress': ['bg-amber-50 text-amber-700 ring-amber-200',       'bg-amber-500'],
   'Scheduled':   ['bg-cyan-50 text-cyan-700 ring-cyan-200',          'bg-cyan-500'],
+  'Planned':     ['bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500'],
   'Cancelled':   ['bg-red-50 text-red-700 ring-red-200',             'bg-red-500'],
 }
 function StatusBadge({ status }) {
   const [cls, dot] = STATUS[status] || ['bg-slate-50 text-slate-600 ring-slate-200', 'bg-slate-400']
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{status || '—'}
     </span>
   )
@@ -79,17 +78,26 @@ const fmtTime = s => {
   const d = new Date(); d.setHours(h, m || 0)
   return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
 }
-// "2026-11-10 10:00:00" → "10 AM" / "10:30 AM"  (used by calendar chips)
-const timeShort = s => {
-  if (!s) return ''
-  const [h, m] = String(s).slice(11, 16).split(':').map(Number)
-  if (isNaN(h)) return ''
-  const ap = h >= 12 ? 'PM' : 'AM'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return m ? `${h12}:${String(m).padStart(2, '0')} ${ap}` : `${h12} ${ap}`
-}
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
 const toKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// Shared card + section header
+const CARD = 'bg-white rounded-xl border border-slate-200 overflow-hidden'
+function CardHeader({ title, subtitle, action, onAction }) {
+  return (
+    <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+      </div>
+      {action && (
+        <button onClick={onAction} className="inline-flex items-center gap-1 text-[13px] font-medium text-emerald-700 hover:text-emerald-800 whitespace-nowrap">
+          {action} <ArrowRight size={14} {...ICON} />
+        </button>
+      )}
+    </header>
+  )
+}
 
 // ── License notice (same rules as before) ──────────────────────
 function LicenseBanner({ licenses }) {
@@ -116,29 +124,25 @@ function LicenseBanner({ licenses }) {
   const goLicenses = () => navigate('/worker/profile', { state: { tab: 'licenses' } })
 
   const cfg = hasExpired
-    ? { tone: 'bg-red-50 border-red-200 text-red-800', iconTone: 'bg-red-100 text-red-600', icon: AlertCircle,
+    ? { tone: 'bg-red-50 border-red-200 text-red-800', icon: AlertCircle, iconTone: 'text-red-500',
         title: 'License expired', text: <><span className="font-semibold">{names(expired)}</span> expired on {dates(expired)}.</>, action: 'Review now', dismissible: false }
     : hasExpiring
-    ? { tone: 'bg-amber-50 border-amber-200 text-amber-900', iconTone: 'bg-amber-100 text-amber-600', icon: AlertTriangle,
+    ? { tone: 'bg-amber-50 border-amber-200 text-amber-900', icon: AlertTriangle, iconTone: 'text-amber-500',
         title: 'License expiring soon', text: <><span className="font-semibold">{names(expiring)}</span> expires on {dates(expiring)}.</>, action: 'Renew', dismissible: true }
-    : { tone: 'bg-emerald-50 border-emerald-200 text-emerald-900', iconTone: 'bg-emerald-100 text-emerald-600', icon: ShieldCheck,
+    : { tone: 'bg-emerald-50 border-emerald-200 text-emerald-900', icon: ShieldCheck, iconTone: 'text-emerald-600',
         title: 'License valid', text: <><span className="font-semibold">{names(valid)}</span> is valid until {dates(valid)}.</>, action: null, dismissible: true }
 
   return (
-    <div role="status" className={`sc-rise flex items-start sm:items-center gap-3 rounded-xl border px-4 py-3 ${cfg.tone}`}>
-      <span className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${cfg.iconTone}`}><cfg.icon size={18} {...ICON} /></span>
-      <div className="flex-1 min-w-0 text-sm">
-        <p className="font-semibold">{cfg.title}</p>
-        <p className="opacity-90">{cfg.text}</p>
-        {cfg.action && <button onClick={goLicenses} className="sm:hidden mt-1 inline-flex items-center gap-1 text-sm font-semibold underline underline-offset-2">{cfg.action} <ArrowRight size={13} {...ICON} /></button>}
-      </div>
+    <div role="status" className={`sc-fade flex items-center gap-3 rounded-xl border px-4 py-2.5 ${cfg.tone}`}>
+      <cfg.icon size={18} {...ICON} className={`flex-shrink-0 ${cfg.iconTone}`} />
+      <p className="flex-1 min-w-0 text-sm"><span className="font-semibold">{cfg.title}.</span> <span className="opacity-90">{cfg.text}</span></p>
       {cfg.action && (
-        <button onClick={goLicenses} className="hidden sm:inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-white/70 hover:bg-white text-sm font-medium ring-1 ring-black/5 transition-colors whitespace-nowrap">
-          {cfg.action} <ArrowRight size={14} {...ICON} />
+        <button onClick={goLicenses} className="inline-flex items-center gap-1 text-sm font-semibold underline underline-offset-2 whitespace-nowrap">
+          {cfg.action}
         </button>
       )}
       {cfg.dismissible && (
-        <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="p-1.5 rounded-md opacity-60 hover:opacity-100 hover:bg-black/5 transition">
+        <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="p-1 rounded-md opacity-60 hover:opacity-100 hover:bg-black/5 transition">
           <X size={16} {...ICON} />
         </button>
       )}
@@ -146,175 +150,29 @@ function LicenseBanner({ licenses }) {
   )
 }
 
-function StatCard({ icon: Icon, label, value, tone, loading, delay, onClick }) {
+// One card, three stats separated by dividers
+function Stats({ items, loading }) {
   return (
-    <button onClick={onClick} style={{ animationDelay: `${delay}ms` }}
-      className="sc-rise group text-left bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 hover:border-slate-300 hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-      <div className="flex items-center justify-between">
-        <span className={`w-9 h-9 rounded-lg flex items-center justify-center ${tone}`}><Icon size={18} {...ICON} /></span>
-        <ChevronRight size={16} {...ICON} className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
-      </div>
-      {loading ? <Skel className="h-7 w-10 mt-3" /> : <p className="mt-3 text-2xl font-semibold text-slate-900 tabular-nums leading-none">{value}</p>}
-      <p className="mt-1.5 text-sm text-slate-500">{label}</p>
-    </button>
-  )
-}
-
-// ── SCHEDULE CALENDAR (month grid with event chips) ────────────
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-const MAX_CHIPS = 2
-
-const KINDS = {
-  planned:   { label: 'Planned',     chip: 'bg-emerald-50 text-emerald-900 border-emerald-500', dot: 'bg-emerald-500' },
-  progress:  { label: 'In progress', chip: 'bg-amber-50 text-amber-900 border-amber-400',       dot: 'bg-amber-400'   },
-  complete:  { label: 'Complete',    chip: 'bg-blue-50 text-blue-900 border-blue-500',          dot: 'bg-blue-500'    },
-  cancelled: { label: 'Cancelled',   chip: 'bg-red-50 text-red-900 border-red-500',             dot: 'bg-red-500'     },
-}
-const kindOf = (status = '') => {
-  const s = String(status).toLowerCase()
-  if (s.includes('cancel'))   return 'cancelled'
-  if (s.includes('complete')) return 'complete'
-  if (s.includes('progress')) return 'progress'
-  return 'planned'
-}
-const titleOf = sc => sc.client_name || sc.description || sc.schedule_code || 'Site visit'
-
-function ScheduleCalendar({ schedules, year, month, selectedDay, today, onSelect, onPrev, onNext, onToday, onViewAll }) {
-  const byDay = useMemo(() => {
-    const map = {}
-    schedules.forEach(sc => {
-      const k = sc.start_time?.slice(0, 10)
-      if (!k) return
-      ;(map[k] ||= []).push(sc)
-    })
-    Object.values(map).forEach(l => l.sort((a, b) => String(a.start_time).localeCompare(String(b.start_time))))
-    return map
-  }, [schedules])
-
-  const firstDay    = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
-  while (cells.length % 7 !== 0) cells.push(null)
-
-  const selected = byDay[selectedDay] || []
-
-  return (
-    <section className="sc-rise bg-white rounded-2xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '220ms' }}>
-      {/* Header: month • Today • arrows */}
-      <header className="flex items-center justify-between gap-3 px-5 py-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <h2 className="text-[17px] font-bold text-slate-900 tracking-tight tabular-nums truncate">{MONTHS[month]} {year}</h2>
-          <button onClick={onToday} className="h-8 px-3.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Today</button>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={onViewAll} className="hidden sm:inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800">
-            View all <ArrowRight size={14} {...ICON} />
-          </button>
-          <div className="inline-flex rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-200">
-            <button onClick={onPrev} aria-label="Previous month" className="w-9 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronLeft size={16} {...ICON} /></button>
-            <button onClick={onNext} aria-label="Next month"     className="w-9 h-8 flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"><ChevronRight size={16} {...ICON} /></button>
+    <div className={`${CARD} grid grid-cols-3 divide-x divide-slate-100 sc-fade`}>
+      {items.map(({ icon: Icon, label, value, tone, onClick }) => (
+        <button key={label} onClick={onClick}
+          className="group flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-4 text-left hover:bg-slate-50/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500">
+          <span className={`hidden sm:flex w-10 h-10 rounded-lg items-center justify-center flex-shrink-0 ${tone}`}><Icon size={20} {...ICON} /></span>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
+            {loading ? <Skel className="h-7 w-10 mt-1" /> : <p className="mt-0.5 text-2xl font-semibold text-slate-900 tabular-nums leading-tight">{value}</p>}
           </div>
-        </div>
-      </header>
-
-      {/* Weekday row */}
-      <div className="grid grid-cols-7 border-y border-slate-100 bg-slate-50">
-        {DAYS.map((d, i) => (
-          <div key={d} className={`py-2.5 text-center text-xs font-medium ${i === 0 || i === 6 ? 'text-slate-400' : 'text-slate-600'}`}>{d}</div>
-        ))}
-      </div>
-
-      {/* Month grid */}
-      <div key={`${year}-${month}`} className="sc-pop grid grid-cols-7">
-        {cells.map((day, i) => {
-          const weekend = i % 7 === 0 || i % 7 === 6
-          const lastCol = i % 7 === 6
-          const lastRow = i >= cells.length - 7
-          const border  = `border-slate-100 ${lastCol ? '' : 'border-r'} ${lastRow ? '' : 'border-b'}`
-          const shade   = weekend ? 'bg-slate-50/80' : 'bg-white'
-
-          if (!day) return <div key={`e${i}`} className={`min-h-[56px] sm:min-h-[88px] bg-slate-50/80 ${border}`} />
-
-          const key     = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-          const events  = byDay[key] || []
-          const isToday = key === today
-          const isSel   = key === selectedDay
-          const shown   = events.slice(0, MAX_CHIPS)
-          const extra   = events.length - shown.length
-
-          return (
-            <button key={key} onClick={() => onSelect(key)} aria-pressed={isSel}
-              className={`relative flex flex-col items-stretch text-left min-h-[56px] sm:min-h-[88px] px-1.5 sm:px-2 py-1.5 sm:py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500
-                ${border} ${isSel && !isToday ? 'bg-emerald-50/50' : shade} ${isSel ? '' : 'hover:bg-slate-50'}`}>
-              {isSel && <span className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-emerald-400" />}
-
-              <span className={`inline-flex items-center justify-center self-start tabular-nums text-sm
-                ${isToday ? 'w-6 h-6 -ml-0.5 -mt-0.5 rounded-full bg-emerald-600 text-white font-bold shadow-sm text-xs'
-                  : weekend ? 'text-slate-400 font-medium' : 'text-slate-800 font-medium'}`}>
-                {day}
-              </span>
-
-              {/* Desktop chips */}
-              <span className="hidden sm:flex flex-col gap-[3px] mt-1.5">
-                {shown.map(sc => (
-                  <span key={sc.id} title={`${timeShort(sc.start_time)} ${titleOf(sc)}`}
-                    className={`block truncate rounded-[4px] border-l-2 px-1.5 py-[2px] text-[10.5px] leading-[14px] font-medium ${KINDS[kindOf(sc.status)].chip}`}>
-                    {timeShort(sc.start_time)} {titleOf(sc)}
-                  </span>
-                ))}
-                {extra > 0 && <span className="px-1 text-[10.5px] font-medium text-slate-500">+{extra} more</span>}
-              </span>
-
-              {/* Mobile dots */}
-              {events.length > 0 && (
-                <span className="sm:hidden flex items-center gap-0.5 mt-1">
-                  {events.slice(0, 3).map(sc => <span key={sc.id} className={`w-1.5 h-1.5 rounded-full ${KINDS[kindOf(sc.status)].dot}`} />)}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Legend */}
-      <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3 border-t border-slate-100">
-        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          {Object.values(KINDS).map(k => (
-            <li key={k.label} className="flex items-center gap-1.5 text-xs text-slate-600">
-              <span className={`w-2.5 h-2.5 rounded-[3px] ${k.dot}`} />{k.label}
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs text-slate-500">Select a day to see its visits</p>
-      </footer>
-
-      {/* Selected day's visits */}
-      <div className="px-5 py-4 border-t border-slate-100">
-        <p className="text-xs font-medium text-slate-500 mb-2">{fmtDate(selectedDay, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-        {selected.length === 0 ? (
-          <p className="text-sm text-slate-400 py-2 text-center">No visits on this day</p>
-        ) : (
-          <ul key={selectedDay} className="grid gap-2 sm:grid-cols-2">
-            {selected.map((sc, i) => (
-              <li key={sc.id} className="sc-rise flex items-start gap-3 rounded-lg border border-slate-200 p-3" style={{ animationDelay: `${i * 50}ms` }}>
-                <span className={`w-1 self-stretch rounded-full flex-shrink-0 ${KINDS[kindOf(sc.status)].dot}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900 truncate">{sc.description || sc.schedule_code || 'Site visit'}</p>
-                  <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><Clock size={12} {...ICON} />{fmtTime(sc.start_time)} – {fmtTime(sc.end_time)}</p>
-                  {sc.client_name && <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><MapPin size={12} {...ICON} />{sc.client_name}</p>}
-                </div>
-                {sc.status && <StatusBadge status={sc.status} />}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
+          <ChevronRight size={16} {...ICON} className="ml-auto text-slate-300 group-hover:text-slate-500 transition-colors hidden sm:block" />
+        </button>
+      ))}
+    </div>
   )
 }
 
 // ── DASHBOARD HOME ─────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const DAYS   = ['S','M','T','W','T','F','S']
+
 export default function WorkerHome() {
   const { user }  = useAuth()
   const navigate  = useNavigate()
@@ -385,74 +243,74 @@ export default function WorkerHome() {
   const [calMonth,    setCalMonth]    = useState(now.getMonth())
   const [selectedDay, setSelectedDay] = useState(today)
 
-  const totalProjects  = jobs.length
-  const totalTasks     = schedules.length
-  const todayCount     = schedules.filter(sc => sc.start_time?.slice(0, 10) === today).length
-  const activeJobs     = jobs.filter(jo => jo.status !== 'Cancelled').slice(0, 3)
+  const totalProjects = jobs.length
+  const totalTasks    = schedules.length
+  const todayCount    = schedules.filter(sc => sc.start_time?.slice(0, 10) === today).length
+  const activeJobs    = jobs.filter(jo => jo.status !== 'Cancelled').slice(0, 3)
+  const scheduleDates = useMemo(() => new Set(schedules.map(sc => sc.start_time?.slice(0, 10)).filter(Boolean)), [schedules])
+  const daySchedules  = schedules
+    .filter(sc => sc.start_time?.slice(0, 10) === selectedDay)
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
 
   const firstName = (user?.name || user?.full_name || '').split(' ')[0]
 
+  // Calendar
+  const firstDay    = new Date(calYear, calMonth, 1).getDay()
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
+  const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
   const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else setCalMonth(m => m - 1) }
   const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }
   const goToday   = () => { setCalYear(now.getFullYear()); setCalMonth(now.getMonth()); setSelectedDay(today) }
 
   return (
-    <div className="sc-page max-w-7xl space-y-5">
+    <div className="sc-page max-w-6xl space-y-4">
       <style>{styles}</style>
 
       {/* Header */}
-      <div className="sc-rise">
-        <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">
-          {greeting()}{firstName ? `, ${firstName}` : ''}
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">Here’s your work at a glance.</p>
+      <div className="sc-fade flex items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 tracking-tight">
+            {greeting()}{firstName ? `, ${firstName}` : ''}
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">Here’s your work at a glance.</p>
+        </div>
+        <p className="hidden sm:block text-sm text-slate-500">{fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
       </div>
 
       <LicenseBanner licenses={licenses} />
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <StatCard icon={Briefcase}      label="Projects"        value={totalProjects} tone="bg-emerald-50 text-emerald-600" loading={loading} delay={0}   onClick={() => navigate('/worker/job-orders')} />
-        <StatCard icon={CalendarDays}   label="Scheduled tasks" value={totalTasks}    tone="bg-sky-50 text-sky-600"         loading={loading} delay={60}  onClick={() => navigate('/worker/schedules')} />
-        <StatCard icon={CalendarCheck2} label="Today"           value={todayCount}    tone="bg-amber-50 text-amber-600"     loading={loading} delay={120} onClick={goToday} />
-      </div>
+      <Stats loading={loading} items={[
+        { icon: Briefcase,      label: 'Projects',        value: totalProjects, tone: 'bg-emerald-50 text-emerald-600', onClick: () => navigate('/worker/job-orders') },
+        { icon: CalendarDays,   label: 'Scheduled tasks', value: totalTasks,    tone: 'bg-sky-50 text-sky-600',         onClick: () => navigate('/worker/schedules') },
+        { icon: CalendarCheck2, label: 'Today',           value: todayCount,    tone: 'bg-amber-50 text-amber-600',     onClick: goToday },
+      ]} />
 
-      {/* Single column so the calendar has room for its event chips.
-          To go back to 2 columns use: grid-cols-1 lg:grid-cols-[1.4fr_1fr] */}
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4 items-start">
         {/* Active projects */}
-        <section className="sc-rise bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden" style={{ animationDelay: '150ms' }}>
-          <header className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-[15px] font-semibold text-slate-900">Active projects</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Your current job orders</p>
-            </div>
-            <button onClick={() => navigate('/worker/job-orders')} className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800">
-              View all <ArrowRight size={14} {...ICON} />
-            </button>
-          </header>
+        <section className={`${CARD} sc-fade`}>
+          <CardHeader title="Active projects" subtitle="Your current job orders" action="View all" onAction={() => navigate('/worker/job-orders')} />
 
           {loading ? (
             <div className="divide-y divide-slate-100">
               {[0, 1, 2].map(i => (
                 <div key={i} className="px-5 py-4 space-y-3">
-                  <div className="flex justify-between"><Skel className="h-4 w-48" /><Skel className="h-5 w-20 rounded-md" /></div>
+                  <div className="flex justify-between"><Skel className="h-4 w-48" /><Skel className="h-5 w-20 rounded-full" /></div>
                   <Skel className="h-3 w-64" /><Skel className="h-1.5 w-full rounded-full" />
                 </div>
               ))}
             </div>
           ) : activeJobs.length === 0 ? (
-            <div className="py-14 flex flex-col items-center text-center px-6">
-              <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
+            <div className="py-12 flex flex-col items-center text-center px-6">
+              <div className="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><ClipboardList size={20} {...ICON} /></div>
               <p className="mt-3 text-sm font-semibold text-slate-800">No active projects</p>
               <p className="text-sm text-slate-500 mt-1">New job orders assigned to you will show up here.</p>
             </div>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {activeJobs.map((jo, i) => {
+              {activeJobs.map(jo => {
                 const pct = progressPercent(jo.status, jo.start_date, jo.end_date, jobPhotos[jo.id] || [])
                 return (
-                  <li key={jo.id} className="sc-rise px-5 py-4 hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${200 + i * 60}ms` }}>
+                  <li key={jo.id} className="px-5 py-4 hover:bg-slate-50/60 transition-colors">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">
@@ -478,13 +336,13 @@ export default function WorkerHome() {
                         <CalendarDays size={13} {...ICON} className="text-slate-400" />
                         {fmtDate(jo.start_date, { month: 'short', day: 'numeric' })} – {fmtDate(jo.end_date)}
                       </p>
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-2">
                         <button onClick={() => navigate('/worker/job-orders')}
-                          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                           <Eye size={14} {...ICON} /> View
                         </button>
                         <button onClick={() => navigate('/worker/job-orders')}
-                          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium shadow-sm transition-colors">
+                          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-medium transition-colors">
                           <Camera size={14} {...ICON} /> Update progress
                         </button>
                       </div>
@@ -496,19 +354,63 @@ export default function WorkerHome() {
           )}
         </section>
 
-        {/* Schedule calendar */}
-        <ScheduleCalendar
-          schedules={schedules}
-          year={calYear}
-          month={calMonth}
-          selectedDay={selectedDay}
-          today={today}
-          onSelect={setSelectedDay}
-          onPrev={prevMonth}
-          onNext={nextMonth}
-          onToday={goToday}
-          onViewAll={() => navigate('/worker/schedules')}
-        />
+        {/* Schedule */}
+        <section className={`${CARD} sc-fade`}>
+          <CardHeader title="Schedule" subtitle="Select a day to see its visits" action="View all" onAction={() => navigate('/worker/schedules')} />
+
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-slate-900 tabular-nums">{MONTHS[calMonth]} {calYear}</p>
+                <button onClick={goToday} className="h-6 px-2 rounded-md border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">Today</button>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={prevMonth} aria-label="Previous month" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"><ChevronLeft size={16} {...ICON} /></button>
+                <button onClick={nextMonth} aria-label="Next month" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"><ChevronRight size={16} {...ICON} /></button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7">
+              {DAYS.map((d, i) => <div key={i} className="text-center text-[11px] font-medium text-slate-400 py-1.5">{d}</div>)}
+              {cells.map((day, i) => {
+                if (!day) return <div key={`e${i}`} />
+                const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                const isToday = key === today, isSel = key === selectedDay, has = scheduleDates.has(key)
+                return (
+                  <button key={key} onClick={() => setSelectedDay(key)} aria-pressed={isSel}
+                    className={`relative mx-auto my-0.5 w-8 h-8 flex items-center justify-center rounded-full text-[13px] tabular-nums transition-colors
+                      ${isSel ? 'bg-emerald-600 text-white font-semibold'
+                        : isToday ? 'text-emerald-700 font-semibold ring-1 ring-emerald-300'
+                        : 'text-slate-700 hover:bg-slate-100'}`}>
+                    {day}
+                    {has && <span className={`absolute bottom-[3px] left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isSel ? 'bg-white' : 'bg-emerald-500'}`} />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50">
+            <p className="text-xs font-medium text-slate-500 mb-2.5">{fmtDate(selectedDay, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            {daySchedules.length === 0 ? (
+              <p className="text-sm text-slate-400 py-1">No visits on this day.</p>
+            ) : (
+              <ul key={selectedDay} className="space-y-2">
+                {daySchedules.map(sc => (
+                  <li key={sc.id} className="sc-fade flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                    <span className="mt-0.5 w-1 self-stretch rounded-full bg-emerald-500 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-900 truncate">{sc.description || sc.schedule_code || 'Site visit'}</p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><Clock size={12} {...ICON} />{fmtTime(sc.start_time)} – {fmtTime(sc.end_time)}</p>
+                      {sc.client_name && <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500"><MapPin size={12} {...ICON} /><span className="truncate">{sc.client_name}</span></p>}
+                    </div>
+                    {sc.status && <StatusBadge status={sc.status} />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   )
