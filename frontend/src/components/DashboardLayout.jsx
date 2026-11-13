@@ -249,8 +249,8 @@ export default function DashboardLayout({ navItems, adminNavItems = [], children
         {isDualRole && <div className={`h-0.5 transition-colors duration-300 ${inAdminMode ? 'bg-blue-600' : 'bg-emerald-500'}`} />}
       </header>
 
-      <main className="flex-1 p-4 sm:p-6 overflow-auto">
-        <div key={location.pathname} className="lc-page max-w-7xl mx-auto w-full">{children}</div>
+      <main className="flex-1 overflow-auto">
+        <div key={location.pathname} className="lc-page max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 sm:py-6">{children}</div>
       </main>
     </div>
   )

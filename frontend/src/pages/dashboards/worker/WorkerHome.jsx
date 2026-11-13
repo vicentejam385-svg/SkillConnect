@@ -338,7 +338,7 @@ export default function WorkerHome() {
   const goToday   = () => { setCalYear(now.getFullYear()); setCalMonth(now.getMonth()); setSelectedDay(today) }
 
   return (
-    <div className="sc-page max-w-6xl space-y-6">
+    <div className="sc-page w-full space-y-6">
       <style>{styles}</style>
 
       {/* Header */}
