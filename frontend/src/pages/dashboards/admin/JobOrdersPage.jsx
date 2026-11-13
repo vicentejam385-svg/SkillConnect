@@ -4,7 +4,7 @@ import {
   Briefcase, Plus, Search, Pencil, CheckCircle2, AlertCircle, X, AlertTriangle, Filter,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown,
   ArrowUpDown, Loader2, Clock, CalendarDays, HardHat, User, Mail, Smartphone, MapPin,
-  Link2, Info, Check,
+  Link2, Info, Check, Lock,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 
@@ -155,11 +155,11 @@ function SelectBox({ value, onChange, children, className = '' }) {
   )
 }
 
-function SortHeader({ label, sortKey, sort, onSort }) {
+function SortHeader({ label, sortKey, sort, onSort, className = '' }) {
   const active = sort.key === sortKey
   const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown
   return (
-    <th className="px-5 py-2.5 font-medium whitespace-nowrap">
+    <th className={`px-3 py-2.5 font-medium ${className}`}>
       <button onClick={() => onSort(sortKey)} className={`inline-flex items-center gap-1 rounded hover:text-slate-900 ${active ? 'text-slate-900' : ''}`}>
         {label}<Icon size={12} {...ICON} className={active ? 'text-emerald-600' : 'text-slate-300'} />
       </button>
@@ -274,8 +274,8 @@ function PeriodCell({ jo, today }) {
   if (!jo.start_date || !jo.end_date) return <span className="text-slate-400">No dates</span>
   const info = ['Complete', 'Completed', 'Cancelled'].includes(jo.status) ? null : periodInfo(jo, today)
   return (
-    <div className="min-w-[160px]">
-      <p className="text-slate-700 tabular-nums whitespace-nowrap">{fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – {fmtDay(jo.end_date)}</p>
+    <div className="min-w-0">
+      <p className="text-slate-700 tabular-nums text-[13px] leading-tight">{fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – {fmtDay(jo.end_date)}</p>
       {info && (
         <div className="mt-1.5 flex items-center gap-2">
           <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden"><div className={`sc-bar h-full rounded-full ${info.bar}`} style={{ width: `${info.pct}%` }} /></div>
@@ -665,7 +665,7 @@ export default function JobOrdersPage() {
         ) : (
           <>
             {/* Mobile list */}
-            <ul className="sm:hidden divide-y divide-slate-100">
+            <ul className="lg:hidden divide-y divide-slate-100">
               {pageItems.map((jo, i) => (
                 <li key={jo.id}>
                   <button onClick={() => openEdit(jo)} className="sc-rise w-full text-left px-4 py-3.5 flex items-start gap-3 active:bg-slate-50" style={{ animationDelay: `${i * 30}ms` }}>
@@ -684,59 +684,72 @@ export default function JobOrdersPage() {
               ))}
             </ul>
 
-            {/* Desktop table */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-sm">
+                        {/* Desktop table — fits the screen, no side scrolling */}
+            <div className="hidden lg:block">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[25%] xl:w-[22%]" />
+                  <col className="w-[17%] xl:w-[15%]" />
+                  <col className="w-[17%] xl:w-[15%]" />
+                  <col className="hidden xl:table-column xl:w-[9%]" />
+                  <col className="w-[19%] xl:w-[17%]" />
+                  <col />
+                  <col className="w-[56px] xl:w-[104px]" />
+                </colgroup>
                 <thead>
                   <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
-                    <SortHeader label="Job order" sortKey="job_order_code" sort={sort} onSort={onSort} />
+                    <SortHeader label="Job order" sortKey="job_order_code" sort={sort} onSort={onSort} className="pl-5" />
                     <SortHeader label="Client"    sortKey="client_name"    sort={sort} onSort={onSort} />
                     <SortHeader label="Worker"    sortKey="worker_name"    sort={sort} onSort={onSort} />
-                    <SortHeader label="Contract"  sortKey="contract_type"  sort={sort} onSort={onSort} />
+                    <SortHeader label="Contract"  sortKey="contract_type"  sort={sort} onSort={onSort} className="hidden xl:table-cell" />
                     <SortHeader label="Period"    sortKey="start_date"     sort={sort} onSort={onSort} />
                     <SortHeader label="Status"    sortKey="status"         sort={sort} onSort={onSort} />
-                    <th className="px-5 py-2.5 font-medium text-right">Actions</th>
+                    <th className="px-3 py-2.5 pr-4 font-medium text-right"><span className="sr-only xl:not-sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pageItems.map((jo, i) => (
                     <tr key={jo.id} className="sc-rise group hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
-                      <td className="px-5 py-3">
-                        <button onClick={() => openEdit(jo)} className="flex items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                      <td className="pl-5 pr-3 py-3">
+                        <button onClick={() => openEdit(jo)} className="flex w-full min-w-0 items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                           <span className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 flex items-center justify-center flex-shrink-0"><Briefcase size={16} {...ICON} /></span>
-                          <span className="min-w-0">
-                            <span className="block font-medium text-slate-900 group-hover:text-emerald-700 transition-colors tabular-nums">{jo.job_order_code}</span>
-                            <span className="block text-xs text-slate-500 truncate max-w-[190px]">{jo.description || 'No description'}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium text-slate-900 group-hover:text-emerald-700 transition-colors tabular-nums truncate">{jo.job_order_code}</span>
+                            <span className="block text-xs text-slate-500 truncate" title={jo.description}>{jo.description || 'No description'}</span>
+                            {jo.contract_type && <span className="block text-xs text-slate-400 truncate xl:hidden">{jo.contract_type}</span>}
                           </span>
                         </button>
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="px-3 py-3">
                         {jo.client_name ? (
-                          <span className="flex items-center gap-2.5">
-                            <Avatar name={jo.client_name} size="w-8 h-8" text="text-[11px]" />
-                            <span className="text-slate-900 font-medium whitespace-nowrap">{jo.client_name}</span>
+                          <span className="flex items-center gap-2.5 min-w-0" title={jo.client_name}>
+                            <span className="hidden xl:block flex-shrink-0"><Avatar name={jo.client_name} size="w-8 h-8" text="text-[11px]" /></span>
+                            <span className="text-slate-900 font-medium truncate">{jo.client_name}</span>
                           </span>
                         ) : <span className="text-slate-400">—</span>}
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="px-3 py-3">
                         {jo.worker_name ? (
-                          <span className="flex items-center gap-2.5">
-                            <Avatar name={jo.worker_name} size="w-8 h-8" text="text-[11px]" />
-                            <span className="text-slate-700 whitespace-nowrap">{jo.worker_name}</span>
+                          <span className="flex items-center gap-2.5 min-w-0" title={jo.worker_name}>
+                            <span className="hidden xl:block flex-shrink-0"><Avatar name={jo.worker_name} size="w-8 h-8" text="text-[11px]" /></span>
+                            <span className="text-slate-700 truncate">{jo.worker_name}</span>
                           </span>
                         ) : (
-                          <button onClick={() => openEdit(jo)} className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-dashed border-slate-300 text-xs font-medium text-slate-500 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/50 transition-colors whitespace-nowrap">
-                            <Plus size={13} {...ICON} /> Assign worker
+                          <button onClick={() => openEdit(jo)} className="inline-flex max-w-full items-center gap-1.5 h-7 px-2.5 rounded-md border border-dashed border-slate-300 text-xs font-medium text-slate-500 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/50 transition-colors">
+                            <Plus size={13} {...ICON} className="flex-shrink-0" /> <span className="truncate">Assign worker</span>
                           </button>
                         )}
                       </td>
-                      <td className="px-5 py-3 whitespace-nowrap">{jo.contract_type ? <span className="text-slate-700">{jo.contract_type}</span> : <span className="text-slate-400">—</span>}</td>
-                      <td className="px-5 py-3">{jo.start_date && jo.end_date ? <PeriodCell jo={jo} today={today} /> : <span className="text-slate-400 whitespace-nowrap">Not scheduled</span>}</td>
-                      <td className="px-5 py-3"><StatusBadge status={jo.status} /></td>
-                      <td className="px-5 py-3">
+                      <td className="hidden xl:table-cell px-3 py-3">
+                        {jo.contract_type ? <span className="block truncate text-slate-700" title={jo.contract_type}>{jo.contract_type}</span> : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-3 py-3">{jo.start_date && jo.end_date ? <PeriodCell jo={jo} today={today} /> : <span className="text-slate-400">Not scheduled</span>}</td>
+                      <td className="px-3 py-3"><StatusBadge status={jo.status} /></td>
+                      <td className="px-3 pr-4 py-3">
                         <div className="flex items-center justify-end">
-                          <button onClick={() => openEdit(jo)} aria-label={`Edit ${jo.job_order_code}`} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-                            <Pencil size={14} {...ICON} /> Edit
+                          <button onClick={() => openEdit(jo)} aria-label={`Edit ${jo.job_order_code}`} title="Edit"
+                            className="inline-flex items-center justify-center gap-1.5 h-8 w-8 xl:w-auto xl:px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                            <Pencil size={14} {...ICON} /> <span className="hidden xl:inline">Edit</span>
                           </button>
                         </div>
                       </td>
@@ -786,7 +799,14 @@ function JobOrderModal({
   )
   const inquiryReason = linked?.reason === 'Other' ? (linked?.description || 'Other') : (linked?.reason || '')
   const allWorkers = contacts.filter(c => c.type === 'worker')
-  const matched = inquiryReason ? allWorkers.filter(w => w.specialization === inquiryReason) : []
+  // When editing, only workers with the same specialization can be picked.
+  const currentWorker = editTarget
+    ? allWorkers.find(w => w.full_name === editTarget.worker_name || w.contact_code === editTarget.worker_contact_code)
+    : null
+  const requiredSpec = inquiryReason || (editTarget ? currentWorker?.specialization : '') || ''
+  const matched = requiredSpec
+    ? allWorkers.filter(w => w.specialization === requiredSpec || (currentWorker && w.id === currentWorker.id))
+    : []
   const hasDates = !!(form.start_date && form.end_date)
   const renderOption = (w) => {
     const available = !hasDates || isWorkerAvailable(w.id, form.start_date, form.end_date, editTarget?.id)
@@ -844,15 +864,26 @@ function JobOrderModal({
           <fieldset>
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><User size={16} {...ICON} className="text-slate-400" />Client</legend>
             <label className={labelCls}>Client or subcontractor</label>
-            <div className="relative">
-              <select className={selectCls} value={form.client_contact_id} onChange={e => handleClientChange(e.target.value)}>
-                <option value="">Select a client</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </select>
-              <Chev />
-            </div>
+            {editTarget ? (
+              <>
+                <div className="flex items-center gap-3 h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 cursor-not-allowed">
+                  <Avatar name={editTarget.client_name} size="w-7 h-7" />
+                  <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-900">{editTarget.client_name || '—'}</span>
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-500"><Lock size={12} {...ICON} />Fixed</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1.5">The client can’t be changed after the job order is created.</p>
+              </>
+            ) : (
+              <div className="relative">
+                <select className={selectCls} value={form.client_contact_id} onChange={e => handleClientChange(e.target.value)}>
+                  <option value="">Select a client</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                </select>
+                <Chev />
+              </div>
+            )}
 
-            {form.client_contact_id && (
+            {(form.client_contact_id || editTarget) && (
               <div className="sc-pop mt-3 grid grid-cols-1 sm:grid-cols-3 gap-px rounded-lg border border-slate-200 bg-slate-200 overflow-hidden text-sm">
                 {[{ icon: Smartphone, label: 'Mobile', value: form._client_mobile }, { icon: Mail, label: 'Email', value: form._client_email }, { icon: MapPin, label: 'Address', value: form._client_address }].map(({ icon: Icon, label, value }) => (
                   <div key={label} className="bg-slate-50/80 px-3 py-2.5 min-w-0">
@@ -883,15 +914,15 @@ function JobOrderModal({
             <div className="relative">
               <select className={selectCls} value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}>
                 <option value="">Select a worker</option>
-                {inquiryReason ? matched.map(renderOption) : allWorkers.map(renderOption)}
+                {requiredSpec ? matched.map(renderOption) : allWorkers.map(renderOption)}
               </select>
               <Chev />
             </div>
-            {inquiryReason && (
+            {requiredSpec && (
               <p className="text-xs text-slate-500 mt-1.5">
                 {matched.length
-                  ? <>Showing workers who specialise in <span className="font-medium text-slate-700">{inquiryReason}</span>.</>
-                  : <span className="text-amber-700">No workers specialise in “{inquiryReason}” yet. Add one in Workers first.</span>}
+                  ? <>Showing workers who specialise in <span className="font-medium text-slate-700">{requiredSpec}</span>.</>
+                  : <span className="text-amber-700">No workers specialise in “{requiredSpec}” yet. Add one in Workers first.</span>}
                 {hasDates && ' Busy workers are greyed out.'}
               </p>
             )}
