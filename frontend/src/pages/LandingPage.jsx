@@ -42,9 +42,11 @@ const styles = `
   .lp-ring { animation: lp-ring 2.2s cubic-bezier(.2,.7,.2,1) infinite; }
   @keyframes lp-wiggle { 0%, 88%, 100% { transform: rotate(0); } 91% { transform: rotate(-12deg); } 94% { transform: rotate(10deg); } 97% { transform: rotate(-6deg); } }
   .lp-wiggle { animation: lp-wiggle 4s ease-in-out infinite; transform-origin: 50% 60%; }
+  .lp-flip { transition: transform .6s cubic-bezier(.2,.8,.2,1); }
   .lp-noscroll::-webkit-scrollbar { display: none; }
   .lp-noscroll { scrollbar-width: none; }
   @media (prefers-reduced-motion: reduce) {
+    .lp-flip { transition: none; }
     .lp-up, .lp-zoom, .lp-float, .lp-fade, .lp-sheet, .lp-word, .lp-ring, .lp-wiggle, .lp-shine::after, .lp-marquee, .lp-pulse, .lp-bar { animation: none !important; }
     html { scroll-behavior: auto; }
   }
@@ -365,66 +367,65 @@ const SERVICES = [
   { icon: ClipboardList, title: 'Project Management',      desc: 'End-to-end coordination, on time and on budget.', features: ['Planning & scheduling', 'Budget management', 'Quality control', 'Progress reporting'] },
 ]
 
-/* Pick a service → its details animate in below the grid (one panel, so no extra scrolling) */
+/* Tap a service → the card flips over and shows its description (no extra space) */
 function ServicesSection({ onInquire }) {
-  const [active, setActive] = useState(0)
-  const [panelKey, setPanelKey] = useState(0)
-  const s = SERVICES[active]
-
-  const pick = i => { if (i !== active) { setActive(i); setPanelKey(k => k + 1) } }
+  const [flipped, setFlipped] = useState(null)
+  const toggle = i => setFlipped(f => (f === i ? null : i))
 
   return (
     <section id="services" className="py-16 sm:py-20 bg-white">
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
-        <SectionHeading eyebrow="Products & services" title="Every trade your project needs" text="Twelve specialties, delivered by licensed professionals. Pick one to see what’s included." />
+        <SectionHeading eyebrow="Products & services" title="Every trade your project needs" text="Twelve specialties, delivered by licensed professionals. Tap a service to see what it covers." />
 
         <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
           {SERVICES.map((svc, i) => {
-            const on = i === active
+            const on = flipped === i
             return (
-              <Reveal key={svc.title} delay={(i % 6) * 60}>
-                <button
-                  type="button"
-                  onClick={() => pick(i)}
+              <Reveal key={svc.title} delay={(i % 6) * 60} className="[perspective:1200px]">
+                <div
+                  role="button"
+                  tabIndex={0}
                   aria-pressed={on}
-                  className={`group relative w-full h-full flex flex-col items-start gap-3 rounded-xl p-3.5 sm:p-4 text-left ring-1 transition-all duration-300
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
-                    ${on ? 'bg-emerald-600 ring-emerald-600 shadow-lg shadow-emerald-600/25 -translate-y-0.5'
-                         : 'bg-white ring-slate-200 hover:ring-emerald-300 hover:-translate-y-0.5 hover:shadow-md'}`}
+                  aria-label={`${svc.title}. ${on ? svc.desc : 'Show details'}`}
+                  onClick={() => toggle(i)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(i) } }}
+                  className="group relative h-[150px] sm:h-[156px] cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                 >
-                  <span className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-300
-                    ${on ? 'bg-white/15 text-white' : 'bg-emerald-50 text-emerald-600 group-hover:scale-110'}`}>
-                    <svc.icon size={18} {...ICON} />
-                  </span>
-                  <span className={`text-[13px] sm:text-sm font-semibold leading-snug ${on ? 'text-white' : 'text-slate-800'}`}>{svc.title}</span>
-                </button>
+                  <div className={`lp-flip relative h-full w-full [transform-style:preserve-3d] ${on ? '[transform:rotateY(180deg)]' : ''}`}>
+                    {/* Front */}
+                    <div className="absolute inset-0 [backface-visibility:hidden] flex flex-col justify-between rounded-xl bg-white ring-1 ring-slate-200 p-4 transition-all duration-300 group-hover:ring-emerald-300 group-hover:shadow-md group-hover:-translate-y-0.5">
+                      <span className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+                        <svc.icon size={19} {...ICON} />
+                      </span>
+                      <span>
+                        <span className="block text-[13px] sm:text-sm font-semibold text-slate-800 leading-snug">{svc.title}</span>
+                        <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 group-hover:text-emerald-600 transition-colors">
+                          Tap for details <ArrowRight size={11} {...ICON} className="transition-transform group-hover:translate-x-0.5" />
+                        </span>
+                      </span>
+                    </div>
+
+                    {/* Back */}
+                    <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] flex flex-col rounded-xl bg-emerald-600 p-4 shadow-lg shadow-emerald-600/25">
+                      <span className="flex items-center gap-2 text-white">
+                        <svc.icon size={15} {...ICON} className="flex-shrink-0 opacity-80" />
+                        <span className="text-[13px] font-semibold leading-tight truncate">{svc.title}</span>
+                      </span>
+                      <span className="mt-2 text-xs text-emerald-50 leading-relaxed line-clamp-3">{svc.desc}</span>
+                      <button
+                        type="button"
+                        tabIndex={on ? 0 : -1}
+                        onClick={e => { e.stopPropagation(); onInquire(svc.title) }}
+                        className="mt-auto self-start inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-white text-emerald-700 text-xs font-semibold hover:bg-emerald-50 transition-colors"
+                      >
+                        Inquire <ArrowRight size={12} {...ICON} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </Reveal>
             )
           })}
-        </div>
-
-        {/* Details panel */}
-        <div key={panelKey} className="lp-up mt-4 rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-5 sm:p-6 grid sm:grid-cols-[1fr_auto] gap-5 sm:items-center">
-          <div className="flex items-start gap-4 min-w-0">
-            <span className="hidden sm:flex w-12 h-12 rounded-xl bg-emerald-600 text-white items-center justify-center flex-shrink-0">
-              <s.icon size={22} {...ICON} />
-            </span>
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold text-slate-900">{s.title}</h3>
-              <p className="mt-1 text-sm text-slate-600 leading-relaxed">{s.desc}</p>
-              <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
-                {s.features.map((f, i) => (
-                  <li key={f} className="lp-up flex items-center gap-2 text-sm text-slate-700" style={{ animationDelay: `${120 + i * 60}ms` }}>
-                    <CheckCircle2 size={15} {...ICON} className="text-emerald-500 flex-shrink-0" />{f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <button onClick={() => onInquire(s.title)}
-            className="lp-shine group inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
-            Inquire about this <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
-          </button>
         </div>
       </div>
     </section>
