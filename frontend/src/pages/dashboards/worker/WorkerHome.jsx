@@ -2,40 +2,47 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertCircle, AlertTriangle, ClipboardList, Briefcase, ChevronRight, ChevronLeft,
-  MapPin, Clock, X, CalendarDays, CalendarCheck2, CalendarX2, ArrowRight, Camera, Eye, ShieldCheck,
+  MapPin, X, CalendarDays, CalendarCheck2, CalendarX2, ArrowRight, Camera, Eye, ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { apiGet, BASE_URL } from '../../../utils/api'
 
 const ICON = { strokeWidth: 1.75 }
 
+// Skeleton stays visible at least this long (ms) so the loading state is never just a flash.
+// Set to 0 to show content as soon as the data arrives.
+const MIN_SKELETON_MS = 1200
+
 // ── Local styles ───────────────────────────────────────────────
 const styles = `
   .sc-page, .sc-page h1, .sc-page h2, .sc-page h3 {
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
-  /* skeleton shimmer */
+
+  /* Skeleton shimmer */
   @keyframes sc-shimmer { 100% { transform: translateX(100%); } }
-  .sc-skel { position: relative; overflow: hidden; background: #e9eef3; border-radius: 6px; }
+  .sc-skel { position: relative; overflow: hidden; background: #e8edf2; border-radius: 8px; }
   .sc-skel::after {
     content: ''; position: absolute; inset: 0; transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent);
-    animation: sc-shimmer 1.4s infinite;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent);
+    animation: sc-shimmer 1.2s infinite;
   }
-  .sc-skel.sc-dark { background: rgba(255,255,255,.18); }
-  .sc-skel.sc-dark::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent); }
 
-  /* entrance + micro animations */
-  @keyframes sc-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  @keyframes sc-pop  { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
-  @keyframes sc-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-  .sc-rise  { animation: sc-rise .5s cubic-bezier(.2,.7,.2,1) both; }
-  .sc-pop   { animation: sc-pop .28s cubic-bezier(.2,.7,.2,1) both; }
-  .sc-float { animation: sc-float 7s ease-in-out infinite; }
-  .sc-bar   { transition: width 1.1s cubic-bezier(.2,.7,.2,1); }
+  /* Entrance animations */
+  @keyframes sc-in     { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes sc-slide  { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+  @keyframes sc-fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sc-cell   { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+  @keyframes sc-select { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.14); opacity: 1; } 100% { transform: scale(1); } }
+  .sc-rise   { animation: sc-in .7s cubic-bezier(.16,1,.3,1) both; }
+  .sc-slide  { animation: sc-slide .55s cubic-bezier(.16,1,.3,1) both; }
+  .sc-fadein { animation: sc-fadein .6s ease both; }
+  .sc-cell   { animation: sc-cell .5s cubic-bezier(.34,1.56,.64,1) both; }
+  .sc-select { animation: sc-select .38s ease both; }
+  .sc-bar    { transition: width 1.3s cubic-bezier(.16,1,.3,1); }
 
   @media (prefers-reduced-motion: reduce) {
-    .sc-skel::after, .sc-rise, .sc-pop, .sc-float { animation: none; }
+    .sc-skel::after, .sc-rise, .sc-slide, .sc-fadein, .sc-cell, .sc-select { animation: none; }
     .sc-bar { transition: none; }
   }
 `
@@ -57,7 +64,7 @@ const STATUS = {
 function StatusBadge({ status }) {
   const [cls, dot] = STATUS[status] || ['bg-slate-50 text-slate-600 ring-slate-200', 'bg-slate-400']
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{status || '—'}
     </span>
   )
@@ -91,49 +98,45 @@ const fmtTime = s => {
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
 const toKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-// ── Small animated pieces ──────────────────────────────────────
-function CountUp({ value }) {
+// ── Animated pieces ────────────────────────────────────────────
+function CountUp({ value, duration = 1100 }) {
   const [n, setN] = useState(0)
   useEffect(() => {
     if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setN(value); return }
     let raf, start = null
-    const dur = 750
     const tick = t => {
       if (start === null) start = t
-      const p = Math.min(1, (t - start) / dur)
-      setN(Math.round(value * (1 - Math.pow(1 - p, 3))))
+      const p = Math.min(1, (t - start) / duration)
+      setN(Math.round(value * (1 - Math.pow(1 - p, 4))))
       if (p < 1) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [value])
+  }, [value, duration])
   return <>{n}</>
 }
 
-function ProgressBar({ pct }) {
+function ProgressBar({ pct, delay = 0 }) {
   const [w, setW] = useState(0)
-  useEffect(() => { const id = setTimeout(() => setW(pct), 80); return () => clearTimeout(id) }, [pct])
+  useEffect(() => { const id = setTimeout(() => setW(pct), 250 + delay); return () => clearTimeout(id) }, [pct, delay])
   return (
-    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-      <div className={`sc-bar h-full rounded-full ${pct >= 100 ? 'bg-gradient-to-r from-blue-400 to-blue-600' : 'bg-gradient-to-r from-emerald-400 to-emerald-600'}`} style={{ width: `${w}%` }} />
+    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+      <div className={`sc-bar h-full rounded-full ${pct >= 100 ? 'bg-blue-500' : 'bg-emerald-500'}`} style={{ width: `${w}%` }} />
     </div>
   )
 }
 
-const CARD = 'bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden'
+const CARD = 'bg-white rounded-xl border border-slate-200 shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden'
 
-function CardHeader({ icon: Icon, title, subtitle, action, onAction }) {
+function CardHeader({ title, subtitle, action, onAction }) {
   return (
     <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="w-9 h-9 rounded-lg bg-slate-50 ring-1 ring-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0"><Icon size={17} {...ICON} /></span>
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-          <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>
-        </div>
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-semibold text-slate-900 tracking-tight">{title}</h2>
+        <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>
       </div>
-      <button onClick={onAction} className="group inline-flex items-center gap-1 text-[13px] font-medium text-emerald-700 hover:text-emerald-800 whitespace-nowrap">
-        {action} <ArrowRight size={14} {...ICON} className="transition-transform group-hover:translate-x-0.5" />
+      <button onClick={onAction} className="group inline-flex items-center gap-1 h-8 px-2.5 -mr-2.5 rounded-lg text-[13px] font-medium text-emerald-700 hover:bg-emerald-50 transition-colors whitespace-nowrap">
+        {action} <ArrowRight size={14} {...ICON} className="transition-transform duration-200 group-hover:translate-x-0.5" />
       </button>
     </header>
   )
@@ -164,17 +167,17 @@ function LicenseBanner({ licenses }) {
   const goLicenses = () => navigate('/worker/profile', { state: { tab: 'licenses' } })
 
   const cfg = hasExpired
-    ? { tone: 'bg-red-50 border-red-200 text-red-800', iconTone: 'bg-red-100 text-red-600', icon: AlertCircle,
+    ? { tone: 'bg-red-50 border-red-200 text-red-800', iconTone: 'text-red-500', icon: AlertCircle,
         title: 'License expired', text: <><span className="font-semibold">{names(expired)}</span> expired on {dates(expired)}.</>, action: 'Review now', dismissible: false }
     : hasExpiring
-    ? { tone: 'bg-amber-50 border-amber-200 text-amber-900', iconTone: 'bg-amber-100 text-amber-600', icon: AlertTriangle,
+    ? { tone: 'bg-amber-50 border-amber-200 text-amber-900', iconTone: 'text-amber-500', icon: AlertTriangle,
         title: 'License expiring soon', text: <><span className="font-semibold">{names(expiring)}</span> expires on {dates(expiring)}.</>, action: 'Renew', dismissible: true }
-    : { tone: 'bg-emerald-50 border-emerald-200 text-emerald-900', iconTone: 'bg-emerald-100 text-emerald-600', icon: ShieldCheck,
+    : { tone: 'bg-emerald-50 border-emerald-200 text-emerald-900', iconTone: 'text-emerald-600', icon: ShieldCheck,
         title: 'License valid', text: <><span className="font-semibold">{names(valid)}</span> is valid until {dates(valid)}.</>, action: null, dismissible: true }
 
   return (
-    <div role="status" className={`sc-rise flex items-center gap-3 rounded-xl border px-4 py-3 ${cfg.tone}`} style={{ animationDelay: '60ms' }}>
-      <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${cfg.iconTone}`}><cfg.icon size={17} {...ICON} /></span>
+    <div role="status" className={`sc-rise flex items-center gap-3 rounded-xl border px-4 py-2.5 ${cfg.tone}`} style={{ animationDelay: '100ms' }}>
+      <cfg.icon size={18} {...ICON} className={`flex-shrink-0 ${cfg.iconTone}`} />
       <p className="flex-1 min-w-0 text-sm"><span className="font-semibold">{cfg.title}.</span> <span className="opacity-90">{cfg.text}</span></p>
       {cfg.action && <button onClick={goLicenses} className="text-sm font-semibold underline underline-offset-2 whitespace-nowrap">{cfg.action}</button>}
       {cfg.dismissible && (
@@ -185,23 +188,22 @@ function LicenseBanner({ licenses }) {
 }
 
 // ── Stat card ──────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, hint, tone, loading, delay, onClick }) {
+function StatCard({ icon: Icon, label, value, hint, dot, tone, loading, delay, onClick }) {
   return (
     <button onClick={onClick} style={{ animationDelay: `${delay}ms` }}
-      className="sc-rise group text-left bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04)] p-4 sm:p-5 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs sm:text-[13px] font-medium text-slate-500 truncate">{label}</p>
-          {loading
-            ? <Skel className="h-8 w-12 mt-2" />
-            : <p className="mt-1.5 text-3xl font-semibold text-slate-900 tabular-nums leading-none tracking-tight"><CountUp value={value} /></p>}
-        </div>
-        <span className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${tone}`}><Icon size={20} {...ICON} /></span>
+      className="sc-rise group text-left bg-white rounded-xl border border-slate-200 p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:-translate-y-1 hover:shadow-[0_12px_24px_-12px_rgba(16,24,40,0.18)] hover:border-slate-300 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] font-medium text-slate-500">{label}</p>
+        <span className={`w-8 h-8 rounded-lg flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[-6deg] ${tone}`}><Icon size={16} {...ICON} /></span>
       </div>
-      <p className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-1 text-xs text-slate-500">
-        <span className="truncate">{hint}</span>
-        <ArrowRight size={12} {...ICON} className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-emerald-600 flex-shrink-0" />
-      </p>
+      {loading ? <Skel className="h-9 w-14 mt-3" /> : (
+        <p className="mt-3 text-[34px] leading-none font-semibold text-slate-900 tabular-nums tracking-tight"><CountUp value={value} /></p>
+      )}
+      {loading ? <Skel className="h-3 w-28 mt-3.5" /> : (
+        <p className="sc-fadein mt-3.5 flex items-center gap-1.5 text-xs text-slate-500" style={{ animationDelay: '500ms' }}>
+          <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{hint}
+        </p>
+      )}
     </button>
   )
 }
@@ -211,14 +213,11 @@ function ProjectsSkeleton() {
   return (
     <div className="divide-y divide-slate-100">
       {[0, 1, 2].map(i => (
-        <div key={i} className="px-5 py-4 flex gap-4">
-          <Skel className="w-10 h-10 rounded-xl flex-shrink-0" />
-          <div className="flex-1 space-y-3">
-            <div className="flex justify-between gap-4"><Skel className="h-4 w-44" /><Skel className="h-5 w-20 rounded-full" /></div>
-            <Skel className="h-3 w-56" />
-            <Skel className="h-2 w-full rounded-full" />
-            <div className="flex justify-between"><Skel className="h-3 w-32" /><div className="flex gap-2"><Skel className="h-8 w-16 rounded-lg" /><Skel className="h-8 w-32 rounded-lg" /></div></div>
-          </div>
+        <div key={i} className="px-5 py-5 space-y-3.5">
+          <div className="flex justify-between gap-4"><div className="space-y-2"><Skel className="h-4 w-40" /><Skel className="h-3 w-28" /></div><Skel className="h-5 w-20" /></div>
+          <Skel className="h-3 w-64 max-w-full" />
+          <div className="space-y-2"><div className="flex justify-between"><Skel className="h-3 w-16" /><Skel className="h-3 w-8" /></div><Skel className="h-2 w-full rounded-full" /></div>
+          <div className="flex justify-between items-center"><Skel className="h-3 w-36" /><div className="flex gap-2"><Skel className="h-8 w-16 rounded-lg" /><Skel className="h-8 w-32 rounded-lg" /></div></div>
         </div>
       ))}
     </div>
@@ -228,10 +227,10 @@ function CalendarSkeleton() {
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2"><Skel className="h-4 w-28" /><Skel className="h-6 w-12 rounded-md" /></div>
-        <div className="flex gap-1"><Skel className="w-7 h-7 rounded-md" /><Skel className="w-7 h-7 rounded-md" /></div>
+        <div className="flex items-center gap-2"><Skel className="h-4 w-28" /><Skel className="h-6 w-12" /></div>
+        <div className="flex gap-1"><Skel className="w-7 h-7" /><Skel className="w-7 h-7" /></div>
       </div>
-      <div className="grid grid-cols-7 gap-y-2.5 place-items-center">
+      <div className="grid grid-cols-7 gap-y-2 place-items-center">
         {Array.from({ length: 7 }).map((_, i) => <Skel key={`h${i}`} className="h-3 w-3" />)}
         {Array.from({ length: 35 }).map((_, i) => <Skel key={i} className="w-8 h-8 rounded-full" />)}
       </div>
@@ -252,8 +251,9 @@ export default function WorkerHome() {
   const [jobPhotos, setJobPhotos] = useState({})
   const [loading,   setLoading]   = useState(true)
 
-  // ── Data loading (unchanged)
+  // ── Data loading (unchanged, except the minimum skeleton time)
   useEffect(() => {
+    const t0 = Date.now()
     const load = async () => {
       try {
         const wData = await apiGet('/api/workers/list.php', { per_page: 100 })
@@ -301,7 +301,7 @@ export default function WorkerHome() {
       } catch (err) {
         console.error('WorkerHome load error:', err)
       } finally {
-        setLoading(false)
+        setTimeout(() => setLoading(false), Math.max(0, MIN_SKELETON_MS - (Date.now() - t0)))
       }
     }
     load()
@@ -315,7 +315,12 @@ export default function WorkerHome() {
 
   const totalProjects = jobs.length
   const totalTasks    = schedules.length
-  const todayCount    = schedules.filter(sc => sc.start_time?.slice(0, 10) === today).length
+  const todaySchedules = schedules
+    .filter(sc => sc.start_time?.slice(0, 10) === today)
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
+  const todayCount    = todaySchedules.length
+  const upcomingCount = schedules.filter(sc => (sc.start_time?.slice(0, 10) || '') >= today).length
+  const inProgressCount = jobs.filter(jo => !['Cancelled', 'Complete', 'Completed'].includes(jo.status)).length
   const activeJobs    = jobs.filter(jo => jo.status !== 'Cancelled').slice(0, 3)
   const scheduleDates = useMemo(() => new Set(schedules.map(sc => sc.start_time?.slice(0, 10)).filter(Boolean)), [schedules])
   const daySchedules  = schedules
@@ -332,54 +337,48 @@ export default function WorkerHome() {
   const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }
   const goToday   = () => { setCalYear(now.getFullYear()); setCalMonth(now.getMonth()); setSelectedDay(today) }
 
-  const summary = todayCount > 0
-    ? `You have ${todayCount} visit${todayCount > 1 ? 's' : ''} scheduled today.`
-    : 'No visits scheduled today.'
-
   return (
-    <div className="sc-page max-w-6xl space-y-5">
+    <div className="sc-page max-w-6xl space-y-6">
       <style>{styles}</style>
 
-      {/* Hero */}
-      <section className="sc-rise relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700 px-6 py-6 sm:px-8 sm:py-7 text-white shadow-[0_8px_24px_-12px_rgba(5,150,105,0.5)]">
-        <div className="sc-float pointer-events-none absolute -right-12 -top-20 w-64 h-64 rounded-full bg-white/10" />
-        <div className="sc-float pointer-events-none absolute right-28 -bottom-24 w-52 h-52 rounded-full bg-white/[0.06]" style={{ animationDelay: '-3s' }} />
-        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-5">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-emerald-100/90">{fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-            <h1 className="mt-1.5 text-2xl sm:text-[30px] font-semibold tracking-tight leading-tight">
-              {greeting()}{firstName ? `, ${firstName}` : ''}
-            </h1>
-            {loading
-              ? <Skel className="sc-dark h-4 w-56 mt-3" />
-              : <p className="mt-2 text-sm text-emerald-50/90">{summary}</p>}
-          </div>
-          <button onClick={() => navigate('/worker/schedules')}
-            className="group inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white text-emerald-700 text-sm font-semibold shadow-sm hover:bg-emerald-50 transition-colors self-start sm:self-auto">
-            <CalendarDays size={16} {...ICON} /> View schedule
-            <ArrowRight size={14} {...ICON} className="transition-transform group-hover:translate-x-0.5" />
-          </button>
+      {/* Header */}
+      <div className="sc-rise flex items-start sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-[30px] leading-tight font-semibold text-slate-900 tracking-tight">
+            {greeting()}{firstName ? `, ${firstName}` : ''}
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Here’s your work at a glance.</p>
         </div>
-      </section>
+        <div className="hidden sm:inline-flex items-center gap-2.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <span className="relative flex w-2 h-2">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping motion-reduce:animate-none" />
+            <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+          </span>
+          {fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })}
+        </div>
+      </div>
 
       <LicenseBanner licenses={licenses} />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <StatCard icon={Briefcase}      label="Projects"        value={totalProjects} hint="View job orders"   tone="bg-emerald-50 text-emerald-600" loading={loading} delay={80}  onClick={() => navigate('/worker/job-orders')} />
-        <StatCard icon={CalendarDays}   label="Scheduled tasks" value={totalTasks}    hint="View all visits"   tone="bg-sky-50 text-sky-600"         loading={loading} delay={140} onClick={() => navigate('/worker/schedules')} />
-        <StatCard icon={CalendarCheck2} label="Today"           value={todayCount}    hint="Jump to today"     tone="bg-amber-50 text-amber-600"     loading={loading} delay={200} onClick={goToday} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard icon={Briefcase}      label="Projects"        value={totalProjects} dot="bg-emerald-500" tone="bg-emerald-50 text-emerald-600" loading={loading} delay={120}
+          hint={`${inProgressCount} in progress`} onClick={() => navigate('/worker/job-orders')} />
+        <StatCard icon={CalendarDays}   label="Scheduled tasks" value={totalTasks}    dot="bg-sky-500"     tone="bg-sky-50 text-sky-600"         loading={loading} delay={220}
+          hint={`${upcomingCount} upcoming`} onClick={() => navigate('/worker/schedules')} />
+        <StatCard icon={CalendarCheck2} label="Today"           value={todayCount}    dot="bg-amber-500"   tone="bg-amber-50 text-amber-600"     loading={loading} delay={320}
+          hint={todayCount > 0 ? `First visit at ${fmtTime(todaySchedules[0].start_time)}` : 'No visits today'} onClick={goToday} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4 sm:gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-5 items-start">
         {/* Active projects */}
-        <section className={`${CARD} sc-rise`} style={{ animationDelay: '240ms' }}>
-          <CardHeader icon={Briefcase} title="Active projects" subtitle="Your current job orders" action="View all" onAction={() => navigate('/worker/job-orders')} />
+        <section className={`${CARD} sc-rise`} style={{ animationDelay: '420ms' }}>
+          <CardHeader title="Active projects" subtitle="Your current job orders" action="View all" onAction={() => navigate('/worker/job-orders')} />
 
           {loading ? <ProjectsSkeleton /> : activeJobs.length === 0 ? (
-            <div className="py-14 flex flex-col items-center text-center px-6">
-              <div className="w-12 h-12 rounded-2xl bg-slate-50 ring-1 ring-slate-100 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
-              <p className="mt-3 text-sm font-semibold text-slate-800">No active projects</p>
+            <div className="sc-fadein py-16 flex flex-col items-center text-center px-6">
+              <div className="w-12 h-12 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-slate-400 flex items-center justify-center"><ClipboardList size={22} {...ICON} /></div>
+              <p className="mt-4 text-sm font-semibold text-slate-900">No active projects</p>
               <p className="text-sm text-slate-500 mt-1">New job orders assigned to you will show up here.</p>
             </div>
           ) : (
@@ -387,42 +386,42 @@ export default function WorkerHome() {
               {activeJobs.map((jo, i) => {
                 const pct = progressPercent(jo.status, jo.start_date, jo.end_date, jobPhotos[jo.id] || [])
                 return (
-                  <li key={jo.id} className="sc-rise group/row px-5 py-4 flex gap-4 hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${300 + i * 80}ms` }}>
-                    <span className="hidden sm:flex w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 items-center justify-center flex-shrink-0 transition-transform group-hover/row:scale-105"><Briefcase size={18} {...ICON} /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{jo.job_order_code}</p>
-                          <p className="text-xs text-slate-500 mt-0.5 truncate">{jo.contract_type || 'Construction project'}</p>
-                        </div>
-                        <StatusBadge status={jo.status} />
+                  <li key={jo.id} className="sc-rise px-5 py-5 hover:bg-slate-50/60 transition-colors" style={{ animationDelay: `${i * 150}ms` }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{jo.job_order_code}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">{jo.contract_type || 'Construction project'}</p>
                       </div>
+                      <StatusBadge status={jo.status} />
+                    </div>
 
-                      <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
-                        <MapPin size={13} {...ICON} className="flex-shrink-0 text-slate-400" />
-                        <span className="truncate">{jo.client_address || jo.location || 'No address'}</span>
+                    <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+                      <MapPin size={13} {...ICON} className="flex-shrink-0 text-slate-400" />
+                      <span className="truncate">{jo.client_address || jo.location || 'No address'}</span>
+                    </p>
+
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-medium text-slate-500">Progress</span>
+                        <span className="text-xs font-semibold text-slate-900 tabular-nums">{pct}%</span>
+                      </div>
+                      <ProgressBar pct={pct} delay={i * 150} />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <CalendarDays size={13} {...ICON} className="text-slate-400" />
+                        {fmtDate(jo.start_date, { month: 'short', day: 'numeric' })} – {fmtDate(jo.end_date)}
                       </p>
-
-                      <div className="mt-3.5 flex items-center gap-3">
-                        <ProgressBar pct={pct} />
-                        <span className="text-xs font-semibold text-slate-700 tabular-nums w-9 text-right">{pct}%</span>
-                      </div>
-
-                      <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
-                        <p className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <CalendarDays size={13} {...ICON} className="text-slate-400" />
-                          {fmtDate(jo.start_date, { month: 'short', day: 'numeric' })} – {fmtDate(jo.end_date)}
-                        </p>
-                        <div className="flex gap-2">
-                          <button onClick={() => navigate('/worker/job-orders')}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors">
-                            <Eye size={14} {...ICON} /> View
-                          </button>
-                          <button onClick={() => navigate('/worker/job-orders')}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-medium shadow-sm active:scale-[.98] transition-all">
-                            <Camera size={14} {...ICON} /> Update progress
-                          </button>
-                        </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => navigate('/worker/job-orders')}
+                          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-[.97] transition-all">
+                          <Eye size={14} {...ICON} /> View
+                        </button>
+                        <button onClick={() => navigate('/worker/job-orders')}
+                          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-medium shadow-sm active:scale-[.97] transition-all">
+                          <Camera size={14} {...ICON} /> Update progress
+                        </button>
                       </div>
                     </div>
                   </li>
@@ -433,37 +432,37 @@ export default function WorkerHome() {
         </section>
 
         {/* Schedule */}
-        <section className={`${CARD} sc-rise`} style={{ animationDelay: '300ms' }}>
-          <CardHeader icon={CalendarDays} title="Schedule" subtitle="Select a day to see its visits" action="View all" onAction={() => navigate('/worker/schedules')} />
+        <section className={`${CARD} sc-rise`} style={{ animationDelay: '520ms' }}>
+          <CardHeader title="Schedule" subtitle="Select a day to see its visits" action="View all" onAction={() => navigate('/worker/schedules')} />
 
           {loading ? <CalendarSkeleton /> : (
-            <div className="p-4">
+            <div className="p-4 sc-fadein">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-slate-900 tabular-nums">{MONTHS[calMonth]} {calYear}</p>
-                  <button onClick={goToday} className="h-6 px-2 rounded-md border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">Today</button>
+                  <button onClick={goToday} className="h-6 px-2 rounded-md border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 active:scale-95 transition">Today</button>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={prevMonth} aria-label="Previous month" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 active:scale-95 transition"><ChevronLeft size={16} {...ICON} /></button>
-                  <button onClick={nextMonth} aria-label="Next month" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 active:scale-95 transition"><ChevronRight size={16} {...ICON} /></button>
+                  <button onClick={prevMonth} aria-label="Previous month" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 active:scale-90 transition"><ChevronLeft size={16} {...ICON} /></button>
+                  <button onClick={nextMonth} aria-label="Next month" className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 active:scale-90 transition"><ChevronRight size={16} {...ICON} /></button>
                 </div>
               </div>
 
               <div className="grid grid-cols-7">
                 {DAYS.map((d, i) => <div key={i} className="text-center text-[11px] font-medium text-slate-400 py-1.5">{d}</div>)}
               </div>
-              <div key={`${calYear}-${calMonth}`} className="sc-pop grid grid-cols-7">
+              <div key={`${calYear}-${calMonth}`} className="grid grid-cols-7">
                 {cells.map((day, i) => {
                   if (!day) return <div key={`e${i}`} />
                   const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
                   const isToday = key === today, isSel = key === selectedDay, has = scheduleDates.has(key)
                   return (
                     <button key={key} onClick={() => setSelectedDay(key)} aria-pressed={isSel}
-                      className={`relative mx-auto my-0.5 w-8 h-8 flex items-center justify-center rounded-full text-[13px] tabular-nums transition-all duration-150 active:scale-90
-                        ${isSel ? 'bg-emerald-600 text-white font-semibold shadow-sm shadow-emerald-600/30'
-                          : isToday ? 'text-emerald-700 font-semibold bg-emerald-50 ring-1 ring-emerald-300'
-                          : 'text-slate-700 hover:bg-slate-100'}`}>
-                      {day}
+                      style={{ animationDelay: `${i * 14}ms` }}
+                      className={`sc-cell relative mx-auto my-0.5 w-8 h-8 flex items-center justify-center rounded-full text-[13px] tabular-nums transition-colors duration-150
+                        ${isSel ? 'text-white font-semibold' : isToday ? 'text-emerald-700 font-semibold ring-1 ring-emerald-300 bg-emerald-50' : 'text-slate-700 hover:bg-slate-100'}`}>
+                      {isSel && <span className="sc-select absolute inset-0 rounded-full bg-emerald-600 shadow-sm shadow-emerald-600/30" />}
+                      <span className="relative">{day}</span>
                       {has && <span className={`absolute bottom-[3px] left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isSel ? 'bg-white' : 'bg-emerald-500'}`} />}
                     </button>
                   )
@@ -480,18 +479,18 @@ export default function WorkerHome() {
                 {[0, 1].map(i => <div key={i} className="flex gap-3"><Skel className="w-14 h-9" /><Skel className="h-14 flex-1 rounded-lg" /></div>)}
               </div>
             ) : daySchedules.length === 0 ? (
-              <div className="flex items-center gap-2.5 text-sm text-slate-400 py-1">
+              <div className="sc-fadein flex items-center gap-2.5 text-sm text-slate-400 py-1">
                 <CalendarX2 size={16} {...ICON} /> No visits on this day.
               </div>
             ) : (
               <ul key={selectedDay} className="space-y-2.5">
                 {daySchedules.map((sc, i) => (
-                  <li key={sc.id} className="sc-rise flex gap-3" style={{ animationDelay: `${i * 60}ms` }}>
+                  <li key={sc.id} className="sc-slide flex gap-3" style={{ animationDelay: `${i * 90}ms` }}>
                     <div className="w-14 flex-shrink-0 pt-2.5 text-right">
                       <p className="text-xs font-semibold text-slate-800 tabular-nums">{fmtTime(sc.start_time)}</p>
                       <p className="text-[11px] text-slate-400 tabular-nums">{fmtTime(sc.end_time)}</p>
                     </div>
-                    <div className="relative flex-1 min-w-0 rounded-xl border border-slate-200 bg-white pl-4 pr-3 py-2.5 hover:border-slate-300 transition-colors">
+                    <div className="relative flex-1 min-w-0 rounded-lg border border-slate-200 bg-white pl-4 pr-3 py-2.5 hover:border-slate-300 hover:shadow-sm transition-all">
                       <span className="absolute left-1.5 top-2.5 bottom-2.5 w-1 rounded-full bg-emerald-500" />
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-slate-900 truncate">{sc.description || sc.schedule_code || 'Site visit'}</p>
