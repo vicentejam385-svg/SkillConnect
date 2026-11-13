@@ -256,7 +256,9 @@ export default function LoginPage() {
       </aside>
 
       {/* ── RIGHT PANEL ── */}
-      <main className="flex-1 flex flex-col min-h-screen bg-slate-50 lg:bg-white">
+      <main className="relative flex-1 flex flex-col min-h-screen bg-slate-50 overflow-hidden">
+        <div aria-hidden="true" className="hidden lg:block pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full bg-emerald-200/40 blur-3xl" />
+        <div aria-hidden="true" className="hidden lg:block pointer-events-none absolute -bottom-40 -left-24 w-96 h-96 rounded-full bg-teal-100/60 blur-3xl" />
         {/* Mobile brand bar */}
         <div className="lg:hidden relative overflow-hidden bg-slate-900 px-5 pt-6 pb-16">
           <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900/80" />
@@ -279,12 +281,12 @@ export default function LoginPage() {
           <p className="lg-up relative mt-1 text-sm text-slate-300" style={{ animationDelay: '100ms' }}>Sign in to continue to your account.</p>
         </div>
 
-        <div className="flex-1 flex items-start lg:items-center justify-center px-5 sm:px-10 -mt-10 lg:mt-0 pb-10 lg:py-10">
-          <div className="lg-up w-full max-w-[400px] rounded-2xl lg:rounded-none bg-white lg:bg-transparent ring-1 ring-slate-200 lg:ring-0 shadow-xl shadow-slate-900/5 lg:shadow-none p-6 sm:p-8 lg:p-0" style={{ animationDelay: '150ms' }}>
+        <div className="relative flex-1 flex items-start lg:items-center justify-center px-5 sm:px-10 -mt-10 lg:mt-0 pb-10 lg:py-10">
+          <div className="lg-up w-full max-w-[420px] rounded-2xl bg-white ring-1 ring-slate-200/80 shadow-[0_24px_60px_-12px_rgba(15,23,42,0.18)] p-6 sm:p-9 transition-shadow duration-300 hover:shadow-[0_32px_70px_-12px_rgba(15,23,42,0.22)]" style={{ animationDelay: '150ms' }}>
 
             <button
               onClick={() => navigate('/')}
-              className="hidden lg:inline-flex group items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-700 transition-colors mb-10"
+              className="hidden lg:inline-flex group items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-700 transition-colors mb-7"
             >
               <ArrowLeft size={16} {...ICON} className="transition-transform group-hover:-translate-x-0.5" />
               Back to home
@@ -349,16 +351,7 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password</label>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/forgot-password')}
-                    className="text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:underline underline-offset-2"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
                 <div className="relative">
                   <Lock size={17} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
@@ -380,6 +373,16 @@ export default function LoginPage() {
                     {showPass ? <EyeOff size={17} {...ICON} /> : <Eye size={17} {...ICON} />}
                   </button>
                 </div>
+              </div>
+
+              <div className="flex justify-end -mt-1">
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
+                  className="text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline underline-offset-2"
+                >
+                  Forgot password?
+                </button>
               </div>
 
               <button
