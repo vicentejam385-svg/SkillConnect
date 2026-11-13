@@ -349,13 +349,6 @@ export default function WorkerHome() {
           </h1>
           <p className="text-sm text-slate-500 mt-1">Here’s your work at a glance.</p>
         </div>
-        <div className="hidden sm:inline-flex items-center gap-2.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-          <span className="relative flex w-2 h-2">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping motion-reduce:animate-none" />
-            <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
-          </span>
-          {fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })}
-        </div>
       </div>
 
       <LicenseBanner licenses={licenses} />
