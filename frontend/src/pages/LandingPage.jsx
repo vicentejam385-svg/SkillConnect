@@ -31,10 +31,21 @@ const styles = `
   @keyframes lp-sheet { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
   .lp-fade  { animation: lp-fade .25s ease both; }
   .lp-sheet { animation: lp-sheet .4s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes lp-shine { 0% { transform: translateX(-120%) skewX(-20deg); } 60%, 100% { transform: translateX(260%) skewX(-20deg); } }
+  .lp-shine { position: relative; overflow: hidden; isolation: isolate; }
+  .lp-shine::after { content: ''; position: absolute; inset: 0; width: 40%; z-index: -1;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+    animation: lp-shine 3.6s ease-in-out infinite; pointer-events: none; }
+  @keyframes lp-word { from { opacity: 0; transform: translateY(60%); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+  .lp-word { display: inline-block; animation: lp-word .55s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes lp-ring { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(1.6); opacity: 0; } }
+  .lp-ring { animation: lp-ring 2.2s cubic-bezier(.2,.7,.2,1) infinite; }
+  @keyframes lp-wiggle { 0%, 88%, 100% { transform: rotate(0); } 91% { transform: rotate(-12deg); } 94% { transform: rotate(10deg); } 97% { transform: rotate(-6deg); } }
+  .lp-wiggle { animation: lp-wiggle 4s ease-in-out infinite; transform-origin: 50% 60%; }
   .lp-noscroll::-webkit-scrollbar { display: none; }
   .lp-noscroll { scrollbar-width: none; }
   @media (prefers-reduced-motion: reduce) {
-    .lp-up, .lp-zoom, .lp-float, .lp-fade, .lp-sheet, .lp-marquee, .lp-pulse, .lp-bar { animation: none !important; }
+    .lp-up, .lp-zoom, .lp-float, .lp-fade, .lp-sheet, .lp-word, .lp-ring, .lp-wiggle, .lp-shine::after, .lp-marquee, .lp-pulse, .lp-bar { animation: none !important; }
     html { scroll-behavior: auto; }
   }
 `
@@ -98,6 +109,17 @@ function SectionHeading({ eyebrow, title, text, align = 'center', dark = false }
   )
 }
 
+/* ── Rotating word (hero) ── */
+function RotatingWord({ words, interval = 2200 }) {
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    if (prefersReduced()) return
+    const t = setInterval(() => setI(n => (n + 1) % words.length), interval)
+    return () => clearInterval(t)
+  }, [words.length, interval])
+  return <span key={i} className="lp-word">{words[i]}</span>
+}
+
 /* ── Inquiry form (same fields, rules and API as before) ── */
 const REASONS = [
   'New Construction', 'Renovation & Remodeling', 'Repair & Maintenance', 'Electrical Installation',
@@ -105,12 +127,12 @@ const REASONS = [
   'Interior Design', 'Project Management', 'Other',
 ]
 
-function InquiryForm() {
+function InquiryForm({ initialReason = '' }) {
   const [form, setForm] = useState({
     first_name: '', middle_initial: '', last_name: '', suffix: '',
     email: '', mobile: '+63',
     province: '', city: '', barangay: '', house_street: '',
-    description: '', reason: '',
+    description: '', reason: REASONS.includes(initialReason) ? initialReason : '',
   })
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
@@ -400,7 +422,7 @@ function ServicesSection({ onInquire }) {
             </div>
           </div>
           <button onClick={() => onInquire(s.title)}
-            className="group inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
+            className="lp-shine group inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
             Inquire about this <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
           </button>
         </div>
@@ -410,7 +432,7 @@ function ServicesSection({ onInquire }) {
 }
 
 /* ── Inquiry popup: bottom sheet on phones, centered on desktop ── */
-function InquiryModal({ onClose }) {
+function InquiryModal({ onClose, service }) {
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
@@ -430,7 +452,7 @@ function InquiryModal({ onClose }) {
             <span className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0"><Send size={18} {...ICON} /></span>
             <div>
               <h3 className="text-lg sm:text-xl font-semibold text-slate-900">Submit an inquiry</h3>
-              <p className="text-sm text-slate-500 mt-0.5">Tell us about your project. We reply within one business day.</p>
+              <p className="text-sm text-slate-500 mt-0.5">{service ? <>About <span className="font-medium text-emerald-700">{service}</span>. We reply within one business day.</> : 'Tell us about your project. We reply within one business day.'}</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Close" className="p-2 -mr-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
@@ -438,7 +460,7 @@ function InquiryModal({ onClose }) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6">
-          <InquiryForm />
+          <InquiryForm initialReason={service} />
         </div>
       </div>
     </div>
@@ -466,6 +488,8 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [quoteOpen, setQuoteOpen] = useState(false)
+  const [quoteService, setQuoteService] = useState('')
+  const [pastHero, setPastHero] = useState(false)
 
   const projects = useCountUp(500, 1800, statsVisible)
   const workers  = useCountUp(120, 1800, statsVisible)
@@ -475,7 +499,7 @@ export default function LandingPage() {
   useEffect(() => { const t = setTimeout(() => setStatsVisible(true), 600); return () => clearTimeout(t) }, [])
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24)
+    const onScroll = () => { setScrolled(window.scrollY > 24); setPastHero(window.scrollY > window.innerHeight * 0.7) }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -494,10 +518,11 @@ export default function LandingPage() {
     const el = document.getElementById(id)
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: prefersReduced() ? 'auto' : 'smooth' })
   }
-  const openQuote = () => { setMobileMenuOpen(false); setQuoteOpen(true) }
+  const openQuote = (service = '') => { setMobileMenuOpen(false); setQuoteService(typeof service === 'string' ? service : ''); setQuoteOpen(true) }
   const closeQuote = useCallback(() => setQuoteOpen(false), [])
 
   const solidNav = scrolled || mobileMenuOpen
+  const showSticky = pastHero && !quoteOpen && activeSection !== 'contact'
 
   return (
     <div className="lp min-h-screen bg-white text-slate-800 antialiased">
@@ -534,8 +559,8 @@ export default function LandingPage() {
               className={`hidden sm:inline-flex items-center h-9 px-4 rounded-lg text-sm font-medium transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
               Sign in
             </button>
-            <button onClick={openQuote}
-              className="inline-flex items-center h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-sm transition-colors">
+            <button onClick={() => openQuote()}
+              className="lp-shine inline-flex items-center h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-sm transition-colors">
               Submit inquiry
             </button>
             <button onClick={() => setMobileMenuOpen(o => !o)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}
@@ -581,9 +606,16 @@ export default function LandingPage() {
             <p className="lp-up mt-6 text-base sm:text-lg text-slate-300 leading-relaxed max-w-xl" style={{ animationDelay: '320ms' }}>
               Book skilled construction professionals, manage job orders and follow every site visit in one place, from your first inquiry to project handover.
             </p>
-            <div className="lp-up mt-8 flex flex-wrap gap-3" style={{ animationDelay: '440ms' }}>
-              <button onClick={openQuote}
-                className="group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all">
+            <p className="lp-up mt-5 text-base sm:text-lg text-white font-medium" style={{ animationDelay: '380ms' }}>
+              Need help with{' '}
+              <span className="inline-block min-w-[9ch] text-emerald-300 overflow-hidden align-bottom">
+                <RotatingWord words={['roofing', 'plumbing', 'renovation', 'electrical work', 'painting', 'carpentry', 'a new build']} />
+              </span>
+              ?
+            </p>
+            <div className="lp-up mt-6 flex flex-wrap gap-3" style={{ animationDelay: '440ms' }}>
+              <button onClick={() => openQuote()}
+                className="lp-shine group inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all">
                 Submit inquiry <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
               </button>
               <button onClick={() => scrollTo('services')}
@@ -653,26 +685,18 @@ export default function LandingPage() {
 
       {/* ══════════════ ABOUT ══════════════ */}
       <section id="about" className="py-16 sm:py-20 bg-slate-50 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          <Reveal className="relative hidden lg:block">
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/10 ring-1 ring-slate-900/5">
-              <img src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1000&q=75" alt="Construction worker on site"
-                loading="lazy" className="w-full h-[380px] object-cover transition-transform duration-700 hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent" />
-            </div>
-            <div className="lp-float absolute -bottom-5 right-8 rounded-2xl bg-white shadow-xl ring-1 ring-slate-900/5 p-4 flex items-center gap-3">
-              <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center"><Award size={20} {...ICON} /></span>
-              <div>
-                <p className="text-xl font-semibold text-slate-900 tabular-nums">500+</p>
-                <p className="text-xs text-slate-500">Completed projects</p>
-              </div>
-            </div>
-          </Reveal>
-
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-[0.9fr_1.1fr] gap-8 lg:gap-16 items-center">
           <div>
             <SectionHeading align="left" eyebrow="Why Emerald Builders" title="Quality work, from people you can trust"
               text="We connect you with verified professionals and stay accountable from the first inquiry to the final inspection." />
-            <div className="mt-8 grid grid-cols-2 gap-2.5 sm:gap-3">
+            <Reveal delay={150}>
+              <button onClick={() => openQuote()} className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+                Start your project today <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
+              </button>
+            </Reveal>
+          </div>
+          <div>
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               {[
                 { icon: UserCheck, title: 'Verified workers',   desc: 'Licensed and insured' },
                 { icon: Star,      title: 'Quality materials',  desc: 'Premium and tested' },
@@ -732,8 +756,8 @@ export default function LandingPage() {
               </Reveal>
 
               <Reveal delay={180}>
-                <button onClick={openQuote}
-                  className="group mt-5 w-full flex items-center justify-between gap-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-4 text-left shadow-lg shadow-emerald-600/20 transition-colors">
+                <button onClick={() => openQuote()}
+                  className="lp-shine group mt-5 w-full flex items-center justify-between gap-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-4 text-left shadow-lg shadow-emerald-600/20 transition-colors">
                   <span className="flex items-center gap-3.5">
                     <span className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center"><Send size={18} {...ICON} /></span>
                     <span>
@@ -777,7 +801,7 @@ export default function LandingPage() {
 
       {/* ══════════════ FOOTER ══════════════ */}
       <footer className="bg-slate-950 text-slate-400">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 pt-10 pb-28 sm:pb-10">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div className="flex items-center gap-2.5">
               <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center"><HardHat size={18} strokeWidth={2} className="text-white" /></span>
@@ -788,7 +812,7 @@ export default function LandingPage() {
             </div>
             <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
               {NAV_LINKS.map(l => <button key={l.id} onClick={() => scrollTo(l.id)} className="hover:text-emerald-400 transition-colors">{l.label}</button>)}
-              <button onClick={openQuote} className="hover:text-emerald-400 transition-colors">Submit an inquiry</button>
+              <button onClick={() => openQuote()} className="hover:text-emerald-400 transition-colors">Submit an inquiry</button>
               <button onClick={() => navigate('/login')} className="hover:text-emerald-400 transition-colors">Sign in</button>
             </nav>
           </div>
@@ -799,7 +823,30 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {quoteOpen && <InquiryModal onClose={closeQuote} />}
+      {/* Sticky inquiry prompt */}
+      <div className={`sm:hidden fixed inset-x-0 bottom-0 z-40 px-4 pb-4 pt-3 bg-gradient-to-t from-white via-white/95 to-white/0 transition-all duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${showSticky ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}>
+        <button onClick={() => openQuote()}
+          className="lp-shine w-full flex items-center justify-between gap-3 rounded-2xl bg-emerald-600 active:bg-emerald-700 pl-4 pr-3 py-3 shadow-xl shadow-emerald-900/25">
+          <span className="text-left">
+            <span className="block text-sm font-semibold text-white">Have a project in mind?</span>
+            <span className="block text-xs text-emerald-100">Free inquiry · No commitment</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white text-emerald-700 text-sm font-semibold">
+            Submit inquiry <ArrowRight size={15} {...ICON} />
+          </span>
+        </button>
+      </div>
+
+      <div className={`hidden sm:block fixed right-6 bottom-6 z-40 transition-all duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${showSticky ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-6 opacity-0 scale-95 pointer-events-none'}`}>
+        <span className="lp-ring absolute inset-0 rounded-full bg-emerald-500" aria-hidden="true" />
+        <button onClick={() => openQuote()}
+          className="lp-shine group relative flex items-center gap-2.5 h-14 pl-4 pr-6 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xl shadow-emerald-900/30 transition-colors">
+          <span className="lp-wiggle w-9 h-9 rounded-full bg-white/15 flex items-center justify-center"><Send size={17} {...ICON} /></span>
+          <span className="text-sm font-semibold">Submit inquiry</span>
+        </button>
+      </div>
+
+      {quoteOpen && <InquiryModal onClose={closeQuote} service={quoteService} />}
     </div>
   )
 }
