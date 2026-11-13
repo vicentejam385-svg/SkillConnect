@@ -3,8 +3,8 @@ import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipalit
 import { useNavigate } from 'react-router-dom'
 import {
   HardHat, ClipboardList, ArrowRight, CheckCircle2, Building2, Wrench, Shield, Send,
-  AlertCircle, Mail, Phone, MapPin, Clock, CalendarDays, Zap, Award, Hammer, TreePine,
-  PaintBucket, Layers, Droplets, LayoutGrid, Menu, X, ChevronDown, Loader2, BadgeCheck,
+  AlertCircle, Mail, Phone, MapPin, Clock, Zap, Award, Hammer, TreePine,
+  PaintBucket, Layers, Droplets, LayoutGrid, Menu, X, ChevronDown, Loader2,
   UserCheck, LineChart, Star, Users,
 } from 'lucide-react'
 
@@ -559,10 +559,6 @@ export default function LandingPage() {
               className={`hidden sm:inline-flex items-center h-9 px-4 rounded-lg text-sm font-medium transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
               Sign in
             </button>
-            <button onClick={() => openQuote()}
-              className="lp-shine inline-flex items-center h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-sm transition-colors">
-              Submit inquiry
-            </button>
             <button onClick={() => setMobileMenuOpen(o => !o)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}
               className={`md:hidden p-2 rounded-lg transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
               {mobileMenuOpen ? <X size={22} {...ICON} /> : <Menu size={22} {...ICON} />}
@@ -593,8 +589,8 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent" />
         <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '56px 56px' }} />
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 pt-28 pb-14 grid lg:grid-cols-[1.15fr_0.85fr] gap-12 items-center">
-          <div>
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 pt-28 pb-14">
+          <div className="max-w-2xl">
             <p className="lp-up inline-flex items-center gap-2 h-8 pl-2 pr-3.5 rounded-full bg-white/10 ring-1 ring-white/20 backdrop-blur text-xs font-medium text-white" style={{ animationDelay: '100ms' }}>
               <span className="lp-pulse w-2 h-2 rounded-full bg-emerald-400 ml-1" />
               Trusted construction partner in Metro Manila
@@ -633,53 +629,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Product preview (illustration of the client view) */}
-          <div className="hidden lg:block lp-up" style={{ animationDelay: '500ms' }}>
-            <div className="lp-float relative">
-              <div className="rounded-2xl bg-white/95 backdrop-blur shadow-2xl shadow-black/40 ring-1 ring-white/50 p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-slate-500">Your job order</p>
-                    <p className="text-sm font-semibold text-slate-900">Kitchen renovation</p>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 text-xs font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />In progress
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <div className="flex justify-between text-xs text-slate-500"><span>Progress</span><span className="tabular-nums font-medium text-slate-700">68%</span></div>
-                  <div className="mt-1.5 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="lp-bar h-full w-[68%] rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" /></div>
-                </div>
-                <div className="mt-5 space-y-2.5">
-                  {[
-                    { icon: CheckCircle2, text: 'Site inspection completed', tone: 'text-emerald-600' },
-                    { icon: CheckCircle2, text: 'Cabinets installed',        tone: 'text-emerald-600' },
-                    { icon: Clock,        text: 'Tiling and finishing',      tone: 'text-amber-500' },
-                  ].map(s => (
-                    <div key={s.text} className="flex items-center gap-2.5 text-sm">
-                      <s.icon size={16} {...ICON} className={s.tone} />
-                      <span className="flex-1 text-slate-700">{s.text}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-full bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 flex items-center justify-center"><HardHat size={16} {...ICON} /></span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-slate-900">Assigned worker</p>
-                    <p className="text-xs text-slate-500">Licensed carpenter</p>
-                  </div>
-                  <BadgeCheck size={18} {...ICON} className="text-emerald-600" />
-                </div>
-              </div>
-              <div className="absolute -left-10 -bottom-8 rounded-xl bg-white shadow-xl shadow-black/30 ring-1 ring-slate-900/5 px-4 py-3 flex items-center gap-3">
-                <span className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><CalendarDays size={18} {...ICON} /></span>
-                <div>
-                  <p className="text-xs text-slate-500">Next site visit</p>
-                  <p className="text-sm font-semibold text-slate-900">Tomorrow, 8:00 AM</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -689,11 +638,6 @@ export default function LandingPage() {
           <div>
             <SectionHeading align="left" eyebrow="Why Emerald Builders" title="Quality work, from people you can trust"
               text="We connect you with verified professionals and stay accountable from the first inquiry to the final inspection." />
-            <Reveal delay={150}>
-              <button onClick={() => openQuote()} className="group mt-7 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:text-emerald-800">
-                Start your project today <ArrowRight size={16} {...ICON} className="transition-transform group-hover:translate-x-1" />
-              </button>
-            </Reveal>
           </div>
           <div>
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -812,7 +756,6 @@ export default function LandingPage() {
             </div>
             <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
               {NAV_LINKS.map(l => <button key={l.id} onClick={() => scrollTo(l.id)} className="hover:text-emerald-400 transition-colors">{l.label}</button>)}
-              <button onClick={() => openQuote()} className="hover:text-emerald-400 transition-colors">Submit an inquiry</button>
               <button onClick={() => navigate('/login')} className="hover:text-emerald-400 transition-colors">Sign in</button>
             </nav>
           </div>
