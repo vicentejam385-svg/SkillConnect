@@ -86,9 +86,18 @@ try {
     );
     $dataStmt->execute($params);
 
+    // Suggested contract for every service (used by the New job order form)
+    $serviceDefaults = $pdo->query(
+        "SELECT sp.name AS service, sp.default_contract_type_id, ct.name AS default_contract_type
+         FROM specializations sp
+         LEFT JOIN contract_types ct ON ct.id = sp.default_contract_type_id
+         ORDER BY sp.name"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
     echo json_encode([
-        'success'    => true,
-        'job_orders' => $dataStmt->fetchAll(),
+        'success'          => true,
+        'service_defaults' => $serviceDefaults,
+        'job_orders'       => $dataStmt->fetchAll(),
         'pagination' => [
             'total'    => $total,
             'page'     => $page,

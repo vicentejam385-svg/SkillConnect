@@ -319,7 +319,8 @@ export default function JobOrdersPage() {
   const [contacts,       setContacts]       = useState([])
   const [contracts,      setContracts]      = useState([])
   const [inquiries,      setInquiries]      = useState([])
-  const [search,         setSearch]         = useState('')
+  const [serviceDefaults, setServiceDefaults] = useState([]) // [{ service, default_contract_type_id, default_contract_type }]
+  const [search,        setSearch]         = useState('')
   const [filterStatus,   setFilterStatus]   = useState('')
   const [filterContract, setFilterContract] = useState('')
   const [sort,           setSort]           = useState({ key: 'job_order_code', dir: 'desc' })
@@ -394,6 +395,7 @@ export default function JobOrdersPage() {
         apiGet('/api/inquiries/list.php',  { per_page: 500 }),
       ])
       setJobOrders(joData.job_orders     || [])
+      setServiceDefaults(joData.service_defaults || [])
       setContacts(cData.contacts         || [])
       setContracts(ctData.contract_types || [])
       setInquiries(inqData.inquiries     || [])
@@ -444,6 +446,13 @@ export default function JobOrdersPage() {
   const hasFilters = search || filterStatus || filterContract
   const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterContract('') }
 
+  // ── Suggested contract per service (set in specializations.default_contract_type_id)
+  const suggestedContractId = (service) => {
+    if (!service) return ''
+    const row = serviceDefaults.find(s => String(s.service).toLowerCase() === String(service).toLowerCase())
+    return row?.default_contract_type_id ? String(row.default_contract_type_id) : ''
+  }
+
   // ── Form helpers (unchanged logic)
   const handleClientChange = (clientId) => {
     f('client_contact_id', clientId)
@@ -456,6 +465,16 @@ export default function JobOrdersPage() {
       f('_client_mobile',  client.mobile  || '')
       f('_client_email',   client.email   || '')
       f('_client_address', client.address || '')
+
+      // Pre-select the suggested contract for this service (only if none picked yet)
+      const service   = linked?.reason || ''
+      const suggested = suggestedContractId(service)
+      setForm(p => {
+        if (p.contract_type_id || !suggested) return p
+        const ct  = contracts.find(c => String(c.id) === suggested)
+        const end = ct && p.start_date ? calcEndDate(p.start_date, ct.name) : ''
+        return { ...p, contract_type_id: suggested, _contract_suggested: true, _service: service, ...(end ? { end_date: end } : {}) }
+      })
     }
   }
 
@@ -488,11 +507,16 @@ export default function JobOrdersPage() {
     const contract = contracts.find(ct => ct.name === jo.contract_type)
     const status   = JO_STATUSES.find(s => s.l === jo.status)
     const linkedInquiry = inquiries.find(inq => String(inq.id) === String(jo.inquiry_id))
+    // No contract yet -> pre-select the suggested contract for this service
+    const service   = jo.service || linkedInquiry?.reason || jo.description || ''
+    const suggested = contract?.id ? '' : (jo.default_contract_type_id ? String(jo.default_contract_type_id) : suggestedContractId(service))
     setForm({
       worker_contact_id: worker?.id    || '',
       client_contact_id: client?.id    || '',
       inquiry_id:        jo.inquiry_id  || '',
-      contract_type_id:  contract?.id   || '',
+      contract_type_id:  contract?.id   || suggested || '',
+      _contract_suggested: !contract?.id && !!suggested,
+      _service:          service,
       description: jo.description || (linkedInquiry?.reason === 'Other' ? linkedInquiry?.description : linkedInquiry?.reason) || linkedInquiry?.description || '',
       start_date:        jo.start_date  || '',
       end_date:          jo.end_date    || '',
@@ -962,6 +986,7 @@ function JobOrderModal({
                   <select className={selectCls} value={form.contract_type_id} onChange={e => {
                     const id = e.target.value
                     f('contract_type_id', id)
+                    f('_contract_suggested', false)
                     const ct = contracts.find(c => String(c.id) === String(id))
                     if (ct && form.start_date) { const end = calcEndDate(form.start_date, ct.name); if (end) f('end_date', end) }
                   }}>
@@ -994,6 +1019,12 @@ function JobOrderModal({
                 {endBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
               </div>
             </div>
+            {form._contract_suggested && selectedContract && (
+              <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1.5">
+                <Info size={12} {...ICON} />
+                Suggested contract for {form._service || 'this service'}: <span className="font-medium">{selectedContract.name}</span>. You can change it.
+              </p>
+            )}
             {selectedContract && form.start_date && (
               <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
                 <Clock size={12} {...ICON} />End date is set from the {selectedContract.name} contract. You can still change it.
