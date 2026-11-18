@@ -55,6 +55,10 @@ try {
              LEFT JOIN contract_types ct ON ct.id = jo.contract_type_id
              LEFT JOIN inquiries i ON i.id = jo.inquiry_id
              LEFT JOIN schedules sc ON sc.id = jo.schedule_id
+             -- Service of the job order (from the inquiry, else the description)
+             -- and its suggested contract
+             LEFT JOIN specializations sp ON sp.name = COALESCE(NULLIF(i.reason, ''), jo.description)
+             LEFT JOIN contract_types dct ON dct.id = sp.default_contract_type_id
              WHERE $whereStr";
 
     $countStmt = $pdo->prepare("SELECT COUNT(*) $from");
@@ -73,7 +77,10 @@ try {
                 s.label AS status,
                 ct.name AS contract_type,
                 i.inquiry_code,
-                sc.schedule_code
+                sc.schedule_code,
+                sp.name AS service,
+                sp.default_contract_type_id,
+                dct.name AS default_contract_type
          $from
          ORDER BY jo.id DESC LIMIT $perPage OFFSET $offset"
     );
