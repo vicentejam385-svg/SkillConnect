@@ -123,10 +123,12 @@ function RotatingWord({ words, interval = 2200 }) {
 }
 
 /* ── Inquiry form (same fields, rules and API as before) ── */
+// Only real services: each one must match a worker specialization,
+// so the job order can be assigned to a worker with that specialization.
 const REASONS = [
   'New Construction', 'Renovation & Remodeling', 'Repair & Maintenance', 'Electrical Installation',
   'Plumbing Services', 'Painting & Finishing', 'Carpentry', 'Masonry', 'Roofing', 'Landscaping',
-  'Interior Design', 'Project Management', 'Other',
+  'Interior Design', 'Project Management',
 ]
 
 function InquiryForm({ initialReason = '' }) {
@@ -175,8 +177,8 @@ function InquiryForm({ initialReason = '' }) {
     if (!form.city) e.city = 'City / Municipality is required.'
     if (!form.barangay) e.barangay = 'Barangay is required.'
     if (!form.house_street.trim()) e.house_street = 'House No. & Street is required.'
-    if (!form.reason) e.reason = 'Please select a reason for inquiry.'
-    if (form.reason === 'Other' && !form.description.trim()) e.description = 'Please specify your reason.'
+    if (!form.reason) e.reason = 'Please select a service.'
+    else if (!REASONS.includes(form.reason)) e.reason = 'Please select a service from the list.'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -330,13 +332,6 @@ function InquiryForm({ initialReason = '' }) {
         </div>
         <Err k="reason" />
       </div>
-      {form.reason === 'Other' && (
-        <div className="sm:col-span-2 lp-up">
-          <label className={label}>Tell us more {req}</label>
-          <textarea className={`${input('description')} h-auto py-3 resize-none`} rows={3} value={form.description} onChange={e => f('description', e.target.value)} placeholder="Describe your project or what you need" />
-          <Err k="description" />
-        </div>
-      )}
 
       <div className="sm:col-span-2 pt-1">
         <button onClick={handleSubmit} disabled={submitting}
