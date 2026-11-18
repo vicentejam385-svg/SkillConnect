@@ -1,7 +1,9 @@
 <?php
+// backend/api/job-orders/list.php  (your GET job orders list file)
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
+require_once __DIR__ . '/../../helpers/job-order-status.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -16,6 +18,10 @@ requireAuth();
 
 try {
     $pdo = getDB();
+
+    // Bring Scheduled / In Progress job orders up to date before listing them,
+    // so the status column, the status filter and the counts are all correct.
+    syncJobOrderStatuses($pdo);
 
     $search  = trim($_GET['search'] ?? '');
     $status  = trim($_GET['status'] ?? '');

@@ -28,7 +28,10 @@ const C = {
 }
 
 function getCustomerContactId() {
-  try { return JSON.parse(localStorage.getItem('sc_user') || '{}')?.contact_id || null }
+  try {
+    const u = JSON.parse(localStorage.getItem('sc_user') || '{}')
+    return u?.contact_id || u?.id || null
+  }
   catch { return null }
 }
 
@@ -94,9 +97,10 @@ export default function CustomerJobOrdersPage() {
     try {
       const data = await apiGet('/api/job-orders/list.php', { per_page: 100 })
       const all  = data.job_orders || []
+      // Never fall back to "all" — a client must only see their own job orders
       const mine = contactId
         ? all.filter(jo => String(jo.client_contact_id) === String(contactId))
-        : all
+        : []
       setJobOrders(mine)
     } catch {
       showToast('Failed to load job orders.', 'error')

@@ -120,7 +120,8 @@ const fmtDate = (s) => {
   const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
   return isNaN(d) ? s : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
-const todayStr = () => new Date().toISOString().slice(0, 10)
+// Local date (Philippines), not UTC — toISOString() would give yesterday before 8:00 AM
+const todayStr = () => new Date().toLocaleDateString('en-CA')
 const esc = s => String(s || '').replace(/[\\'"<>&\r\n`$]/g, ' ')
 
 // Counts up to `target` once (respects reduced motion)
@@ -304,31 +305,8 @@ export default function MyJobOrders() {
     })
   }, [jobs])
 
-  // Auto-complete jobs past their end date
-  useEffect(() => {
-    const today = todayStr()
-    jobs.forEach(async jo => {
-      if (
-        jo.end_date &&
-        jo.end_date.slice(0, 10) < today &&
-        jo.status !== 'Complete' &&
-        jo.status !== 'Completed' &&
-        jo.status !== 'Cancelled'
-      ) {
-        try {
-          const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-          await fetch(`${API}/job-orders/update.php?id=${jo.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ status_id: 'Complete' }),
-          })
-          setJobs(prev => prev.map(j => j.id === jo.id ? { ...j, status: 'Complete' } : j))
-        } catch (err) {
-          console.error('Auto-complete failed for job', jo.id, err)
-        }
-      }
-    })
-  }, [jobs])
+  // Status (Scheduled -> In Progress -> Complete) is now updated automatically
+  // by the backend (helpers/job-order-status.php) whenever list.php is loaded.
 
   // Esc closes modals · toast auto-hides
   useEffect(() => {
@@ -381,7 +359,7 @@ export default function MyJobOrders() {
     } catch (err) { console.error('Failed to load photos:', err) }
   }
 
-  const MAX_SIZE_MB = 50
+  const MAX_SIZE_MB = 1 // must match $maxFileSize in backend/api/job-orders/upload-progress.php
   const pickPhoto = (f) => {
     if (!f) return false
     if (!f.type.startsWith('image/')) { setPhotoError('Only image files (JPG, PNG) are allowed.'); return false }
@@ -390,7 +368,7 @@ export default function MyJobOrders() {
       return false
     }
     setPhotoError(null)
-    setProgressJob(prev => ({ ...prev, _photo: f, _photoDate: todayStr(), status: 'In Progress' }))
+    setProgressJob(prev => ({ ...prev, _photo: f, _photoDate: todayStr() }))
     return true
   }
 
@@ -411,15 +389,19 @@ export default function MyJobOrders() {
         formData.append('photo', progressJob._photo)
         formData.append('job_order_id', progressJob.id)
         formData.append('upload_date', todayStr())
-        await fetch(`${API}/job-orders/upload-progress.php`, {
+        const upRes  = await fetch(`${API}/job-orders/upload-progress.php`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
         })
+        const upData = await upRes.json().catch(() => ({}))
+        if (!upRes.ok || !upData.success) {
+          // e.g. "File size exceeds the limit of 1MB." or "already uploaded today"
+          setPhotoError(upData.error || 'Upload failed. Please try again.')
+          setSaving(false)
+          return
+        }
       }
-
-      // Refresh jobs list
-      setJobs(prev => prev.map(j => j.id === progressJob.id ? { ...j, status: progressJob.status } : j))
 
       // Refresh photos for this job so progress updates immediately
       const photoRes = await fetch(`${API}/job-orders/get-progress.php?job_order_id=${progressJob.id}`, { headers: { Authorization: `Bearer ${token}` } })
