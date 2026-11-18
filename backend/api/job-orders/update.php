@@ -1,5 +1,5 @@
 <?php
-// backend/api/job-orders/create.php
+// backend/api/job-orders/update.php
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
@@ -9,181 +9,175 @@ require_once __DIR__ . '/../../helpers/job-order-status.php';
 handleCors();
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER['REQUEST_METHOD'] !== 'PUT') {
     http_response_code(405);
     echo json_encode(['success' => false, 'error' => 'Method not allowed.']);
     exit;
 }
 
 $auth = requireAdminAccess();
-$pdo  = getDB();
-$data = json_decode(file_get_contents('php://input'), true) ?? [];
+$pdo = getDB();
 
-// Use given status only if it is a real status for this entity, else use the default
-function resolveStatus(PDO $pdo, $given, string $entity, int $default): int {
-    if (empty($given)) return $default;
-    $s = $pdo->prepare('SELECT id FROM statuses WHERE id = ? AND entity = ?');
-    $s->execute([(int)$given, $entity]);
-    return $s->fetchColumn() ? (int)$given : $default;
+$data = json_decode(file_get_contents('php://input'), true);
+$id   = isset($_GET['id']) ? (int)$_GET['id'] : (int)($data['id'] ?? 0);
+
+if (!$id) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Job order ID is required.']);
+    exit;
 }
 
-// Accept both the new (user) and old (contact) field names from the frontend
-$clientId = !empty($data['client_user_id']) ? (int)$data['client_user_id']
-          : (!empty($data['client_contact_id']) ? (int)$data['client_contact_id'] : null);
-$workerId = !empty($data['worker_user_id']) ? (int)$data['worker_user_id']
-          : (!empty($data['worker_contact_id']) ? (int)$data['worker_contact_id'] : null);
-$inquiryId = !empty($data['inquiry_id']) ? (int)$data['inquiry_id'] : null;
-
-// Fallback: if no client was sent, take it from the inquiry's linked user
-if (!$clientId && $inquiryId) {
-    $q = $pdo->prepare('SELECT user_id FROM inquiries WHERE id = ?');
-    $q->execute([$inquiryId]);
-    $uid = $q->fetchColumn();
-    if ($uid) $clientId = (int)$uid;
-}
-
-// Auto-created from Won inquiry (minimal payload, no worker/dates required)
-$isAutoCreated = $inquiryId && !$workerId;
-
-if (!$isAutoCreated) {
-    $required = [
-        'contract_type_id' => 'Contract type',
-        'start_date'       => 'Start date',
-        'end_date'         => 'End date',
-        'description'      => 'Description',
-    ];
-    if (!$workerId) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'error' => 'Worker is required.']);
-        exit;
-    }
-    foreach ($required as $field => $label) {
-        if (empty(trim((string)($data[$field] ?? '')))) {
+// Resolve status: accept both numeric ID and label string
+if (isset($data['status_id'])) {
+    if (!is_numeric($data['status_id'])) {
+        $statusRow = $pdo->prepare("SELECT id FROM statuses WHERE label = ? AND entity = 'job_order' LIMIT 1");
+        $statusRow->execute([$data['status_id']]);
+        $found = $statusRow->fetchColumn();
+        if ($found) {
+            $data['status_id'] = (int)$found;
+        } else {
             http_response_code(422);
-            echo json_encode(['success' => false, 'error' => "$label is required."]);
+            echo json_encode(['success' => false, 'error' => "Invalid status: {$data['status_id']}"]);
             exit;
         }
-    }
-    if ($data['start_date'] >= $data['end_date']) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'error' => 'End date must be after start date.']);
-        exit;
+        } else {
+        $data['status_id'] = (int)$data['status_id'];
+        $chk = $pdo->prepare("SELECT 1 FROM statuses WHERE id = ? AND entity = 'job_order'");
+        $chk->execute([$data['status_id']]);
+        if (!$chk->fetchColumn()) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'error' => "Invalid job order status id: {$data['status_id']}"]);
+            exit;
+        }
     }
 }
 
-try {
-    // Duplicate guard: one job order per inquiry
-    if ($inquiryId) {
-            $dupCheck = $pdo->prepare("SELECT id FROM job_orders WHERE inquiry_id = ? LIMIT 1");
-        $dupCheck->execute([$inquiryId]);
-        $existingId = $dupCheck->fetchColumn();
-        if ($existingId) {
-            echo json_encode([
-                'success'        => true,
-                'already_exists' => true,
-                'message'        => 'Job order already exists for this inquiry.',
-                'job_order'      => ['id' => (int)$existingId],
-            ]);
-            exit;
-        }
+if (array_key_exists('description', $data) && empty(trim($data['description'] ?? ''))) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'error' => 'Description is required.']);
+    exit;
+}
+
+if (!empty($data['start_date']) && !empty($data['end_date']) && $data['start_date'] >= $data['end_date']) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'error' => 'End date must be after start date.']);
+    exit;
+}
+
+// Accept both old (contact) and new (user) field names from the frontend
+if (array_key_exists('worker_contact_id', $data) && !array_key_exists('worker_user_id', $data)) {
+    $data['worker_user_id'] = $data['worker_contact_id'];
+}
+if (array_key_exists('client_contact_id', $data) && !array_key_exists('client_user_id', $data)) {
+    $data['client_user_id'] = $data['client_contact_id'];
+}
+
+$fields     = ['worker_user_id','client_user_id','inquiry_id','schedule_id','contract_type_id','description','start_date','end_date','status_id'];
+$setClauses = [];
+$params     = [];
+
+foreach ($fields as $f) {
+    if (array_key_exists($f, $data)) {
+        $setClauses[]  = "`$f` = :$f";
+        $params[":$f"] = ($data[$f] === '' || $data[$f] === null) ? null : $data[$f];
     }
+}
 
-    // Client is always required
-    if (!$clientId) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'error' => 'Client is required.']);
-        exit;
+if (empty($setClauses)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'No fields provided to update.']);
+    exit;
+}
+
+$beforeStmt = $pdo->prepare(
+    "SELECT jo.*, s.label AS status_label,
+            CONCAT(w.first_name,' ',w.last_name) AS worker_name,
+            CONCAT(c.first_name,' ',c.last_name) AS client_name
+     FROM job_orders jo
+     LEFT JOIN statuses s ON s.id = jo.status_id
+     LEFT JOIN users w ON w.id = jo.worker_user_id
+     LEFT JOIN users c ON c.id = jo.client_user_id
+     WHERE jo.id = ?"
+);
+$beforeStmt->execute([$id]);
+$before = $beforeStmt->fetch(PDO::FETCH_ASSOC);
+if (!$before) {
+    http_response_code(404);
+    echo json_encode(['success' => false, 'error' => 'Job order not found.']);
+    exit;
+}
+
+$params[':id'] = $id;
+$pdo->prepare("UPDATE job_orders SET " . implode(', ', $setClauses) . " WHERE id = :id")->execute($params);
+
+$rowStmt = $pdo->prepare(
+    "SELECT jo.*,
+            jo.worker_user_id AS worker_contact_id,
+            jo.client_user_id AS client_contact_id,
+            CONCAT(w.first_name,' ',w.last_name) AS worker_name,
+            CONCAT(c.first_name,' ',c.last_name) AS client_name,
+            s.label AS status,
+            ct.name AS contract_type
+     FROM job_orders jo
+     LEFT JOIN users w ON w.id = jo.worker_user_id
+     LEFT JOIN users c ON c.id = jo.client_user_id
+     LEFT JOIN statuses s ON s.id = jo.status_id
+     LEFT JOIN contract_types ct ON ct.id = jo.contract_type_id
+     WHERE jo.id = ?"
+);
+$rowStmt->execute([$id]);
+$row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+
+// Work out which fields really changed
+$chgOld = []; $chgNew = [];
+foreach ($fields as $f) {
+    if (!array_key_exists($f, $data)) continue;
+    $new = ($data[$f] === '' || $data[$f] === null) ? null : $data[$f];
+    if ((string)($before[$f] ?? '') !== (string)($new ?? '')) {
+        $chgOld[$f] = $before[$f] ?? null;
+        $chgNew[$f] = $new;
     }
-    $clientCheck = $pdo->prepare("SELECT id FROM users WHERE id = ? AND type = 'client'");
-    $clientCheck->execute([$clientId]);
-    if (!$clientCheck->fetch()) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'error' => 'Client not found.']);
-        exit;
-    }
+}
+// Show readable labels and names instead of ids
+if (isset($chgNew['status_id'])) {
+    $chgOld['status'] = $before['status_label'] ?? null;
+    $chgNew['status'] = $row['status'] ?? null;
+    unset($chgOld['status_id'], $chgNew['status_id']);
+}
+if (isset($chgNew['worker_user_id'])) {
+    $chgOld['worker'] = trim($before['worker_name'] ?? '') ?: null;
+    $chgNew['worker'] = trim($row['worker_name'] ?? '') ?: null;
+    unset($chgOld['worker_user_id'], $chgNew['worker_user_id']);
+}
+if (isset($chgNew['client_user_id'])) {
+    $chgOld['client'] = trim($before['client_name'] ?? '') ?: null;
+    $chgNew['client'] = trim($row['client_name'] ?? '') ?: null;
+    unset($chgOld['client_user_id'], $chgNew['client_user_id']);
+}
 
-    // Verify worker if provided
-    if ($workerId) {
-        $workerCheck = $pdo->prepare("SELECT id FROM users WHERE id = ? AND type = 'worker'");
-        $workerCheck->execute([$workerId]);
-        if (!$workerCheck->fetch()) {
-            http_response_code(422);
-            echo json_encode(['success' => false, 'error' => 'Worker not found.']);
-            exit;
-        }
-    }
-
-    // Insert (job_order_code is set automatically by the database trigger)
-    $pdo->prepare("
-        INSERT INTO job_orders
-            (worker_user_id, client_user_id, inquiry_id, schedule_id,
-             contract_type_id, description, start_date, end_date, status_id)
-        VALUES
-            (:worker, :client, :inquiry, :schedule,
-             :contract, :description, :start, :end, :status)
-    ")->execute([
-        ':worker'      => $workerId,
-        ':client'      => $clientId,
-        ':inquiry'     => $inquiryId,
-        ':schedule'    => !empty($data['schedule_id'])      ? (int)$data['schedule_id']      : null,
-        ':contract'    => !empty($data['contract_type_id']) ? (int)$data['contract_type_id'] : null,
-        ':description' => !empty($data['description'])      ? trim($data['description'])     : null,
-        ':start'       => !empty($data['start_date'])       ? $data['start_date']            : null,
-        ':end'         => !empty($data['end_date'])         ? $data['end_date']              : null,
-        ':status'      => resolveStatus($pdo, $data['status_id'] ?? null, 'job_order', 16), // 16 = Pending
-    ]);
-
-    $joId = (int)$pdo->lastInsertId();
-
-    // If created as Scheduled with dates already started/ended, advance it right away
-    syncJobOrderStatuses($pdo, $joId);
-
-    $rowStmt = $pdo->prepare(
-        "SELECT jo.*,
-                jo.worker_user_id AS worker_contact_id,
-                jo.client_user_id AS client_contact_id,
-                CONCAT(w.first_name,' ',w.last_name) AS worker_name,
-                CONCAT(c.first_name,' ',c.last_name) AS client_name,
-                s.label AS status,
-                ct.name AS contract_type
-         FROM job_orders jo
-         LEFT JOIN users w ON w.id = jo.worker_user_id
-         LEFT JOIN users c ON c.id = jo.client_user_id
-         LEFT JOIN statuses s ON s.id = jo.status_id
-         LEFT JOIN contract_types ct ON ct.id = jo.contract_type_id
-         WHERE jo.id = ?"
-    );
-    $rowStmt->execute([$joId]);
-
-    $jo = $rowStmt->fetch();
-
+if ($chgNew) {
+    $statusChanged = isset($chgNew['status']);
+    $code = $before['job_order_code'] ?? ('#' . $id);
     auditLog(array_merge(auditActor($auth), [
-        'action'         => 'CREATE',
+        'action'         => $statusChanged ? 'STATUS_CHANGE' : 'UPDATE',
         'module'         => 'Job Orders',
-        'description'    => ($isAutoCreated ? 'Auto-created job order ' : 'Created job order ')
-                            . ($jo['job_order_code'] ?? ('#' . $joId))
-                            . ' for client "' . trim($jo['client_name'] ?? '') . '"',
-        'target_user_id' => $clientId,
+        'description'    => $statusChanged
+            ? 'Changed job order ' . $code . ' status from "' . ($chgOld['status'] ?? '—') . '" to "' . ($chgNew['status'] ?? '—') . '"'
+            : 'Updated job order ' . $code . ' (' . implode(', ', array_keys($chgNew)) . ')',
+        'target_user_id' => $before['client_user_id'] ?? null,
         'target_type'    => 'job_order',
-        'target_id'      => $joId,
-        'target_label'   => ($jo['job_order_code'] ?? ('#' . $joId)) . ' — ' . trim($jo['client_name'] ?? ''),
-        'new_values'     => [
-            'worker'        => trim($jo['worker_name'] ?? '') ?: null,
-            'client'        => trim($jo['client_name'] ?? ''),
-            'contract_type' => $jo['contract_type'] ?? null,
-            'start_date'    => $jo['start_date'] ?? null,
-            'end_date'      => $jo['end_date'] ?? null,
-            'status'        => $jo['status'] ?? null,
-        ],
+        'target_id'      => $id,
+        'target_label'   => $code . ' — ' . trim($before['client_name'] ?? ''),
+        'old_values'     => $chgOld,
+        'new_values'     => $chgNew,
     ]));
-
-    http_response_code(201);
-    echo json_encode([
-        'success'   => true,
-        'message'   => $isAutoCreated ? 'Job order auto-created from Won inquiry.' : 'Job order created.',
-        'job_order' => $jo,
-    ]);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);
 }
+
+// Auto-advance status from the contract dates
+// (e.g. marked Scheduled but the start date has already arrived / end date already passed)
+if (syncJobOrderStatuses($pdo, $id)) {
+    $rowStmt->execute([$id]);
+    $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+}
+
+echo json_encode(['success' => true, 'message' => 'Job order updated.', 'job_order' => $row]);
