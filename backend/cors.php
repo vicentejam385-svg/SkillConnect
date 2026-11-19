@@ -4,6 +4,8 @@ function handleCors(): void {
     'http://localhost:5173',
     'http://localhost:5174',
     'https://skillconnect-ph.vercel.app',
+    'https://www.emerald-skillconnect.com',
+    'https://emerald-skillconnect.com',
 ];
 $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowed)) {
