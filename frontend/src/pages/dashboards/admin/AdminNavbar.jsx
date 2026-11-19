@@ -271,7 +271,7 @@ export function TopBar({ onMenuToggle }) {
   const CurrentIcon = current.icon
 
   return (
-    <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-3 px-4 lg:px-6 flex-shrink-0 relative z-30">
+    <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-3 px-4 lg:px-6 flex-shrink-0 relative">
       <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuToggle}
