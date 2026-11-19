@@ -7,6 +7,7 @@ import {
   Mail, Phone, Smartphone, MapPin, Copy, Check, Clock, ExternalLink, Wrench,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+import { createPortal } from 'react-dom'
 
 const ICON = { strokeWidth: 1.75 }
 
@@ -184,7 +185,7 @@ function Toast({ toast }) {
   if (!toast) return null
   const ok = toast.type === 'success'
   return (
-    <div className="sc-pop fixed top-6 right-6 z-[80] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700 max-w-sm">
+    <div className="sc-pop fixed top-6 right-6 z-[1000] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700 max-w-sm">
       <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${ok ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
         {ok ? <CheckCircle2 size={16} {...ICON} /> : <AlertCircle size={16} {...ICON} />}
       </span>
@@ -372,8 +373,8 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
     { id: 'license',   label: 'License' },
   ]
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-lg h-[85vh] max-h-[720px] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
@@ -538,7 +539,8 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
           <button onClick={onClose} className={btnSecondary}>Close</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -886,8 +888,8 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
     <p className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><Icon size={16} {...ICON} className="text-slate-400" />{children}</p>
   )
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden">
         <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5 border-b border-slate-100">
@@ -1007,6 +1009,7 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

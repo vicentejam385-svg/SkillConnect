@@ -7,6 +7,7 @@ import {
   RotateCcw, Link2, Info, Filter,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
+import { createPortal } from 'react-dom'
 
 const ICON = { strokeWidth: 1.75 }
 
@@ -134,7 +135,7 @@ function Toast({ toast }) {
   if (!toast) return null
   const ok = toast.type === 'success'
   return (
-    <div className="sc-pop fixed top-6 right-6 z-[80] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700 max-w-sm">
+    <div className="sc-pop fixed top-6 right-6 z-[1100] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700 max-w-sm">
       <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${ok ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
         {ok ? <CheckCircle2 size={16} {...ICON} /> : <AlertCircle size={16} {...ICON} />}
       </span>
@@ -206,15 +207,16 @@ function Pagination({ page, total, perPage, onPage, onPerPage }) {
 }
 
 // ── Modal & drawer shells ──────────────────────────────────────
-function Modal({ onClose, active = true, width = 'max-w-lg', z = 'z-50', children }) {
+function Modal({ onClose, active = true, width = 'max-w-lg', z = 'z-[999]', children }) {
   useEscapeAndLock(onClose, active)
-  return (
+  return createPortal(
     <div className={`fixed inset-0 ${z} flex items-center justify-center p-4`}>
       <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className={`sc-pop relative w-full ${width} bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden`}>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -262,8 +264,8 @@ function ScheduleDrawer({ schedule, onClose, onToggleStatus, toggling }) {
     { icon: User,         label: 'Client',    value: schedule.client_name },
   ].filter(r => r.value)
 
-  return (
-    <div className="fixed inset-0 z-[60]">
+  return createPortal(
+    <div className="fixed inset-0 z-[1000]">
       <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <aside role="dialog" aria-modal="true" className="sc-drawer absolute right-0 top-0 h-full w-full max-w-[440px] bg-white shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
@@ -318,7 +320,8 @@ function ScheduleDrawer({ schedule, onClose, onToggleStatus, toggling }) {
           <button onClick={onClose} className={btnSecondary}>Close</button>
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body
   )
 }
 

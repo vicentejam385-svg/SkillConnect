@@ -8,6 +8,7 @@ import {
   HardHat, CalendarDays, User,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+import { createPortal } from 'react-dom'
 
 const ICON = { strokeWidth: 1.75 }
 
@@ -145,7 +146,7 @@ function Toast({ toast }) {
   if (!toast) return null
   const ok = toast.type === 'success'
   return (
-    <div className="sc-pop fixed top-6 right-6 z-[70] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700">
+    <div className="sc-pop fixed top-6 right-6 z-[1000] flex items-center gap-2.5 pl-3 pr-4 py-3 rounded-xl bg-white border border-slate-200 shadow-lg text-sm text-slate-700">
       <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${ok ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
         {ok ? <CheckCircle2 size={16} {...ICON} /> : <AlertCircle size={16} {...ICON} />}
       </span>
@@ -317,8 +318,8 @@ function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
     { icon: MapPin,     label: 'Address', value: contact.address },
   ].filter(r => !(r.hideEmpty && !r.value))
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" aria-label={`${contact.full_name} details`}
         className="sc-pop relative w-full max-w-lg h-[85vh] max-h-[680px] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
@@ -440,7 +441,8 @@ function ContactDrawer({ contact, jobOrders, onClose, onOpenJobOrders }) {
           <button onClick={onClose} className={btnSecondary}>Close</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -467,9 +469,9 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
       err ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'
     }`
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden">
         <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5">
           <div className="flex items-start gap-4">
@@ -565,7 +567,8 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
