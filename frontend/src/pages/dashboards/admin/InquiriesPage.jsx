@@ -305,7 +305,7 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-lg max-h-[90vh] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
           <p className="text-sm font-medium text-slate-500">Inquiry <span className="text-slate-900 tabular-nums">{inquiry.inquiry_code}</span></p>
@@ -859,7 +859,7 @@ function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-10 max-h-[92vh] overflow-y-auto custom-scroll">
         <button
           onClick={onClose}

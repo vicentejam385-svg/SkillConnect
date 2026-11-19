@@ -210,7 +210,7 @@ function Modal({ onClose, active = true, width = 'max-w-lg', z = 'z-50', childre
   useEscapeAndLock(onClose, active)
   return (
     <div className={`fixed inset-0 ${z} flex items-center justify-center p-4`}>
-      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className={`sc-pop relative w-full ${width} bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden`}>
         {children}
       </div>
@@ -264,7 +264,7 @@ function ScheduleDrawer({ schedule, onClose, onToggleStatus, toggling }) {
 
   return (
     <div className="fixed inset-0 z-[60]">
-      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <aside role="dialog" aria-modal="true" className="sc-drawer absolute right-0 top-0 h-full w-full max-w-[440px] bg-white shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
           <p className="text-sm font-medium text-slate-500">Site visit</p>

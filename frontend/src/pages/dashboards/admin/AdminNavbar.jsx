@@ -79,7 +79,7 @@ export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobi
       <style>{styles}</style>
 
       {mobileOpen && (
-        <div className="sc-fade fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-40 lg:hidden" onClick={onMobileClose} />
+        <div className="sc-fade fixed inset-0 bg-slate-900/20 backdrop-blur-[1px] z-40 lg:hidden" onClick={onMobileClose} />
       )}
 
       <aside

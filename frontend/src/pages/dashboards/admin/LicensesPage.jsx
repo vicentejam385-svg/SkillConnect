@@ -265,7 +265,7 @@ function FileViewer({ file, onClose }) {
   useEscapeAndLock(onClose)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="sc-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden max-h-[92vh]">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3 min-w-0">
@@ -309,7 +309,7 @@ function ScanResultModal({ result, license, onClose }) {
   const found = result.data.is_valid
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-md bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 overflow-hidden">
         <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5 border-b border-slate-100">
           <div className="flex items-start gap-4">
