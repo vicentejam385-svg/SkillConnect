@@ -79,7 +79,7 @@ function timeAgo(d) {
 const REASONS = [
   'New Construction', 'Renovation & Remodeling', 'Repair & Maintenance', 'Electrical Installation',
   'Plumbing Services', 'Painting & Finishing', 'Carpentry', 'Masonry', 'Roofing', 'Landscaping',
-  'Interior Design', 'Project Management', 'Other',
+  'Interior Design', 'Project Management',
 ]
 
 // ── Shared bits ────────────────────────────────────────────────
@@ -474,6 +474,7 @@ export default function InquiriesPage() {
   const [form,         setForm]         = useState(EMPTY_FORM)
   const [errors,       setErrors]       = useState({})
   const [saving,       setSaving]       = useState(false)
+  const [services,     setServices]     = useState(REASONS)
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
   const f = (key, val) => { setForm(p => ({ ...p, [key]: val })); setErrors(e => ({ ...e, [key]: undefined })) }
@@ -488,6 +489,16 @@ export default function InquiriesPage() {
   }, [])
 
   useEffect(() => { loadInquiries() }, [loadInquiries])
+
+  // Services = your specializations (falls back to the built-in list)
+  useEffect(() => {
+    apiGet('/api/config/specializations.php')
+      .then(d => {
+        const names = (d.data || d.specializations || []).map(s => s.name).filter(Boolean)
+        if (names.length) setServices(names)
+      })
+      .catch(() => {})
+  }, [])
   useEffect(() => { setPage(1) }, [search, filterStatus, filterReason, perPage])
 
   // ── Derived data
@@ -543,7 +554,7 @@ export default function InquiriesPage() {
     if (!form.barangay) e.barangay = 'Barangay is required.'
     if (!form.house_street.trim()) e.house_street = 'House No. & Street is required.'
     if (!form.reason) e.reason = 'Please select a reason for inquiry.'
-    if (form.reason === 'Other' && !form.description.trim()) e.description = 'Please specify your reason.'
+
     return e
   }
 
@@ -719,7 +730,7 @@ export default function InquiriesPage() {
             </div>
             <SelectBox value={filterReason} onChange={setFilterReason} className="w-44 flex-shrink-0">
               <option value="">All services</option>
-              {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+              {services.map(r => <option key={r} value={r}>{r}</option>)}
             </SelectBox>
           </div>
         </div>
@@ -845,14 +856,14 @@ export default function InquiriesPage() {
       )}
 
       {showForm && (
-        <NewInquiryModal form={form} setForm={setForm} f={f} errors={errors} saving={saving} onClose={closeForm} onSubmit={handleCreate} />
+        <NewInquiryModal form={form} setForm={setForm} f={f} errors={errors} saving={saving} onClose={closeForm} onSubmit={handleCreate} services={services} />
       )}
     </div>
   )
 }
 
 // ── New inquiry modal (original layout) ────────────────────────
-function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit }) {
+function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit, services }) {
   const filteredCities    = form.province ? getMunicipalitiesByProvince(form.province) : []
   const filteredBarangays = form.city ? getBarangaysByMunicipality(form.city) : []
   const inputCls = "w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
@@ -964,18 +975,11 @@ function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit }) {
               <label className={labelCls}>Reason for Inquiry{req}</label>
               <select className={inputCls} value={form.reason} onChange={e => f('reason', e.target.value)}>
                 <option value="">Select a reason...</option>
-                {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                {services.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
 
-            {/* Description only when reason = Other */}
-            {form.reason === 'Other' && (
-              <div>
-                <label className={labelCls}>Please specify{req}</label>
-                <textarea className={`${inputCls} resize-none`} rows={3} value={form.description}
-                  onChange={e => f('description', e.target.value)} placeholder="Please specify your reason..." />
-              </div>
-            )}
+
 
             {/* Submit */}
             <button onClick={onSubmit} disabled={saving}
