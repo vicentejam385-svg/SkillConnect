@@ -545,7 +545,7 @@ function WorkerDrawer({ worker, jobs, license, onClose, onOpenScheduling, showTo
 }
 
 // ── Workers Page ───────────────────────────────────────────────
-const EMPTY_FORM = { first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', username: '', specialization_id: '', status_id: '4' }
+const EMPTY_FORM = { first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', username: '', specialization_id: '', status_id: '1' }
 
 export default function WorkersPage() {
   const navigate = useNavigate()

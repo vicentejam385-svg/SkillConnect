@@ -492,20 +492,27 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
           {/* Name */}
           <fieldset>
             <legend className="text-sm font-semibold text-slate-900 mb-3">Name</legend>
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
-              <div className="sm:col-span-2">
+            <div className="grid grid-cols-6 gap-4">
+              <div className="col-span-6 sm:col-span-3">
                 <Field label="First name" required error={errors.first_name}>
                   <input className={input(errors.first_name)} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Juan" autoFocus />
                 </Field>
               </div>
-              <div className="sm:col-span-2">
+              <div className="col-span-6 sm:col-span-3">
+                <Field label="Middle name" error={errors.middle_name}>
+                  <input className={input(errors.middle_name)} value={form.middle_name} onChange={e => f('middle_name', e.target.value)} placeholder="Santos" />
+                </Field>
+              </div>
+              <div className="col-span-4">
                 <Field label="Last name" required error={errors.last_name}>
                   <input className={input(errors.last_name)} value={form.last_name} onChange={e => f('last_name', e.target.value)} placeholder="Dela Cruz" />
                 </Field>
               </div>
-              <Field label="Suffix">
-                <input className={input()} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." />
-              </Field>
+              <div className="col-span-2">
+                <Field label="Suffix">
+                  <input className={input()} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." />
+                </Field>
+              </div>
             </div>
           </fieldset>
 
@@ -570,7 +577,7 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
 }
 
 // ── Contacts Page ──────────────────────────────────────────────
-const EMPTY_FORM = { first_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', address: '', type: 'client', status_id: '1' }
+const EMPTY_FORM = { first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', address: '', type: 'client', status_id: '1' }
 
 export default function ContactsPage() {
   const navigate = useNavigate()
@@ -661,6 +668,8 @@ export default function ContactsPage() {
 
     if (!form.first_name.trim()) errs.first_name = 'First name is required.'
     else if (!nameOk.test(form.first_name.trim())) errs.first_name = 'First name must contain letters only.'
+
+    if (form.middle_name.trim() && !nameOk.test(form.middle_name.trim())) errs.middle_name = 'Middle name must contain letters only.'
 
     if (!form.last_name.trim()) errs.last_name = 'Last name is required.'
     else if (!nameOk.test(form.last_name.trim())) errs.last_name = 'Last name must contain letters only.'

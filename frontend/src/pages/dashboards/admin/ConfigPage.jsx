@@ -61,44 +61,38 @@ function EmptyState({ icon: Icon, title, text, action }) {
 }
 
 
-// ── Status data (unchanged) ────────────────────────────────────
+// ── Status data (matches the statuses table) ───────────────────
 const STATUSES = [
-  { id: 1,  entity: 'contact',   label: 'Active'       },
-  { id: 2,  entity: 'contact',   label: 'Inactive'     },
-  { id: 3,  entity: 'contact',   label: 'Blacklisted'  },
-  { id: 10, entity: 'contact',   label: 'Pending'      },
-  { id: 11, entity: 'contact',   label: 'Under Review' },
-  { id: 4,  entity: 'worker',    label: 'Active'       },
-  { id: 5,  entity: 'worker',    label: 'Inactive'     },
-  { id: 6,  entity: 'worker',    label: 'On Leave'     },
-  { id: 7,  entity: 'user',      label: 'Active'       },
-  { id: 8,  entity: 'user',      label: 'Inactive'     },
-  { id: 9,  entity: 'user',      label: 'Suspended'    },
-  { id: 28, entity: 'job_order', label: 'Pending'      },
-  { id: 29, entity: 'job_order', label: 'Active'       },
-  { id: 30, entity: 'job_order', label: 'Complete'     },
-  { id: 31, entity: 'job_order', label: 'On Hold'      },
-  { id: 32, entity: 'job_order', label: 'Under Review' },
-  { id: 33, entity: 'job_order', label: 'Scheduled'    },
-  { id: 34, entity: 'job_order', label: 'In Progress'  },
-  { id: 35, entity: 'job_order', label: 'Cancelled'    },
-  { id: 36, entity: 'schedule',  label: 'Pending'      },
-  { id: 37, entity: 'schedule',  label: 'Scheduled'    },
-  { id: 38, entity: 'schedule',  label: 'In Progress'  },
-  { id: 39, entity: 'schedule',  label: 'Complete'     },
-  { id: 40, entity: 'schedule',  label: 'Cancelled'    },
-  { id: 41, entity: 'inquiry',   label: 'New'          },
-  { id: 42, entity: 'inquiry',   label: 'Won'          },
-  { id: 43, entity: 'inquiry',   label: 'Lost'         },
+  { id: 1,  entity: 'user',      label: 'Active'       },
+  { id: 2,  entity: 'user',      label: 'Inactive'     },
+  { id: 3,  entity: 'user',      label: 'Suspended'    },
+  { id: 4,  entity: 'user',      label: 'Pending'      },
+  { id: 5,  entity: 'user',      label: 'Under Review' },
+  { id: 6,  entity: 'user',      label: 'Blacklisted'  },
+  { id: 7,  entity: 'user',      label: 'On Leave'     },
+  { id: 8,  entity: 'inquiry',   label: 'New'          },
+  { id: 9,  entity: 'inquiry',   label: 'Won'          },
+  { id: 10, entity: 'inquiry',   label: 'Lost'         },
+  { id: 11, entity: 'schedule',  label: 'Pending'      },
+  { id: 12, entity: 'schedule',  label: 'Scheduled'    },
+  { id: 13, entity: 'schedule',  label: 'In Progress'  },
+  { id: 14, entity: 'schedule',  label: 'Complete'     },
+  { id: 15, entity: 'schedule',  label: 'Cancelled'    },
+  { id: 16, entity: 'job_order', label: 'Pending'      },
+  { id: 17, entity: 'job_order', label: 'Active'       },
+  { id: 18, entity: 'job_order', label: 'Complete'     },
+  { id: 19, entity: 'job_order', label: 'On Hold'      },
+  { id: 20, entity: 'job_order', label: 'Under Review' },
+  { id: 21, entity: 'job_order', label: 'Scheduled'    },
+  { id: 22, entity: 'job_order', label: 'In Progress'  },
+  { id: 23, entity: 'job_order', label: 'Cancelled'    },
 ]
 
 const ENTITIES = [
-  { key: 'contact',   label: 'Contacts',   icon: Users,         text: 'Clients and organisations' },
-  { key: 'worker',    label: 'Workers',    icon: HardHat,       text: 'Your workforce' },
-  { key: 'user',      label: 'Users',      icon: UserCog,       text: 'People who sign in' },
-  { key: 'job_order', label: 'Job orders', icon: Briefcase,     text: 'From review to completion' },
-  { key: 'schedule',  label: 'Schedules',  icon: CalendarClock, text: 'Site visits' },
+  { key: 'user',      label: 'Accounts',   icon: Users,         text: 'Clients, workers and admins' },
   { key: 'inquiry',   label: 'Inquiries',  icon: Inbox,         text: 'Incoming project requests' },
+  { key: 'schedule',  label: 'Schedules',  icon: CalendarClock, text: 'Site visits' },
+  { key: 'job_order', label: 'Job orders', icon: Briefcase,     text: 'From review to completion' },
 ]
 
 const toneFor = label =>
@@ -114,7 +108,7 @@ const toneFor = label =>
 
 // ── Sections ───────────────────────────────────────────────────
 const SECTIONS = [
-  { key: 'org_types',       label: 'Contract types',  icon: FileSignature, title: 'Contract types',  text: 'How long a job order runs. Used to work out end dates and visit counts.', single: 'contract type',  placeholder: 'Heavy equipment', endpoint: '/api/config/org-types.php' },
+  { key: 'org_types',       label: 'Contract types',  icon: FileSignature, title: 'Contract types',  text: 'How long a job order runs. Used to work out end dates and visit counts.', single: 'contract type',  placeholder: 'e.g. 2 Months', endpoint: '/api/config/contract-types.php' },
   { key: 'specializations', label: 'Specializations', icon: Wrench,        title: 'Specializations', text: 'Trades your workers are skilled in. Used to match workers to job orders.',     single: 'specialization', placeholder: 'Electrician',     endpoint: '/api/config/specializations.php' },
   { key: 'statuses',        label: 'Statuses',        icon: Tags,          title: 'Statuses',        text: 'Stages each record can be in. These are built into the system.' },
 ]
@@ -265,12 +259,12 @@ export default function ConfigPage() {
     try {
       const [sData, oData, wData, joData] = await Promise.all([
         apiGet('/api/config/specializations.php'),
-        apiGet('/api/config/org-types.php'),
+        apiGet('/api/config/contract-types.php'),
         apiGet('/api/workers/list.php', { per_page: 500 }).catch(() => ({})),
         apiGet('/api/job-orders/list.php', { per_page: 500 }).catch(() => ({})),
       ])
       setSpecializations(sData.data || sData.specializations || [])
-      setOrgTypes(oData.data || oData.org_types || [])
+      setOrgTypes(oData.contract_types || oData.data || oData.org_types || [])
       setWorkers(wData.workers || [])
       setJobOrders(joData.job_orders || [])
     } catch { showToast('Failed to load configuration.', 'error') }

@@ -50,13 +50,14 @@ try {
 
     $stmt = $pdo->prepare("
         INSERT INTO users
-            (type, first_name, last_name, suffix, email, mobile, phone, address, status_id)
+            (type, first_name, middle_name, last_name, suffix, email, mobile, phone, address, status_id)
         VALUES
-            (:type, :first, :last, :suffix, :email, :mobile, :phone, :address, :status)
+            (:type, :first, :middle, :last, :suffix, :email, :mobile, :phone, :address, :status)
     ");
     $stmt->execute([
         ':type'    => $type,
         ':first'   => trim($data['first_name']),
+        ':middle'  => trim($data['middle_name'] ?? '') ?: null,
         ':last'    => trim($data['last_name']),
         ':suffix'  => trim($data['suffix']  ?? '') ?: null,
         ':email'   => $email,
