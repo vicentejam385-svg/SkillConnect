@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-offers.php';
+require_once __DIR__ . '/../../helpers/job-order-status.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -142,6 +143,7 @@ try {
             $pdo->prepare("UPDATE job_orders SET accepted_at = ?, assigned_by = 'admin' WHERE id = ?")
                 ->execute([jobOfferNow(), $joId]);
             jobOfferNotifyAssigned($pdo, $joId, $workerId);
+            jobOrderAutoSchedule($pdo, $joId);
         } catch (Throwable $e) {
             error_log('[job-offers] create.php notify failed for job order ' . $joId . ': ' . $e->getMessage());
         }

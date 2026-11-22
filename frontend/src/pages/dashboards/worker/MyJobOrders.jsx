@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   RefreshCw, AlertCircle, ClipboardList, FileText, Upload, X, Eye, Camera, Briefcase,
   ChevronLeft, ChevronRight, MapPin, CalendarDays, CalendarCheck2, CheckCircle2, User, Hammer, Clock,
+  Flag, AlertTriangle, Hourglass,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { apiGet } from '../../../utils/api'
@@ -261,31 +262,19 @@ export default function MyJobOrders() {
   const [saving,         setSaving]         = useState(false)
   const [toast,          setToast]          = useState(null)
   const [dragOver,       setDragOver]       = useState(false)
+  const [finishJob,      setFinishJob]      = useState(null)
 
-  // Load the worker's jobs
+  // Load the worker's own jobs (the server only returns jobs assigned to this worker)
+  const loadJobs = () =>
+    apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 })
+      .then(d => setJobs(d.job_orders || []))
+
   useEffect(() => {
     const t0 = Date.now()
-    apiGet('/api/workers/list.php')
-      .then(wData => {
-        const workers = wData.workers || []
-        const worker  = workers.find(w =>
-          String(w.id)           === String(user?.id)   ||
-          String(w.user_id)      === String(user?.id)   ||
-          String(w.contact_code) === String(user?.contact_code)
-        )
-        if (!worker) return setJobs([])
-        return apiGet('/api/job-orders/list.php', { per_page: 100 }).then(d => {
-          const mine = (d.job_orders || []).filter(jo =>
-            String(jo.worker_contact_id) === String(worker.contact_id) ||
-            String(jo.worker_contact_id) === String(worker.id)         ||
-            String(jo.worker_name)       === String(worker.full_name)
-          )
-          setJobs(mine)
-        })
-      })
+    loadJobs()
       .catch(err => console.error('MyJobOrders error:', err))
       .finally(() => setTimeout(() => setLoading(false), Math.max(0, MIN_SKELETON_MS - (Date.now() - t0))))
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load progress photos for all jobs
   useEffect(() => {
@@ -373,6 +362,7 @@ export default function MyJobOrders() {
   }
 
   const saveProgress = async () => {
+    let startedMsg = ''
     setSaving(true)
     try {
       const token = JSON.parse(localStorage.getItem('sc_user'))?.token
@@ -401,6 +391,7 @@ export default function MyJobOrders() {
           setSaving(false)
           return
         }
+        if (upData.started) startedMsg = 'Photo uploaded. Your job is now In Progress.'
       }
 
       // Refresh photos for this job so progress updates immediately
@@ -412,7 +403,8 @@ export default function MyJobOrders() {
       }
 
       setProgressJob(null)
-      setToast({ type: 'success', msg: 'Progress saved' })
+      setToast({ type: 'success', msg: startedMsg || 'Progress saved' })
+      if (startedMsg) loadJobs().catch(() => {})
     } catch (err) {
       setToast({ type: 'error', msg: 'Could not save progress: ' + err.message })
     } finally {
@@ -420,13 +412,21 @@ export default function MyJobOrders() {
     }
   }
 
-  // Upload rules for the progress modal
+  // Upload rules for the progress modal (the server checks them again with Philippine time)
   const today = todayStr()
   const pStart = progressJob?.start_date?.slice(0, 10)
   const pEnd   = progressJob?.end_date?.slice(0, 10)
-  const withinRange = !!(pStart && pEnd && today >= pStart && today <= pEnd)
-  const alreadyUploaded = progressJob?._photoDate === today && progressJob?._photo
+  const openStatus = ['Scheduled', 'In Progress'].includes(progressJob?.status)
+  const notStarted = !!(pStart && today < pStart)
+  const uploadedToday = (progressPhotos || []).some(p => String(p.upload_date).slice(0, 10) === today)
+  const withinRange = !!(pStart && openStatus && !notStarted && !progressJob?.finished_at)
+  const alreadyUploaded = uploadedToday
   const blocked = !withinRange || alreadyUploaded
+  const blockReason = !openStatus ? 'Photos can only be uploaded while the job is Scheduled or In Progress.'
+    : progressJob?.finished_at ? 'You marked this job as finished. Wait for the customer to confirm.'
+    : notStarted ? `Uploads start on ${fmtDate(pStart)}.`
+    : uploadedToday ? 'You already uploaded today’s photo. Come back tomorrow.'
+    : null
 
   const totalJobPages = Math.ceil(jobs.length / JOB_PER_PAGE)
   const pagedJobs = jobs.slice((jobPage - 1) * JOB_PER_PAGE, jobPage * JOB_PER_PAGE)
@@ -490,6 +490,22 @@ export default function MyJobOrders() {
                 {/* Progress */}
                 <div className="mt-4"><ProgressBar pct={pct} status={jo.status} /></div>
 
+                {jo.finished_at && jo.status === 'In Progress' && (
+                  <p className="mt-3 flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-lg px-3 py-2">
+                    <Hourglass size={13} {...ICON} className="flex-shrink-0" />
+                    You marked this as finished. Waiting for the customer to confirm.
+                  </p>
+                )}
+                {!jo.finished_at && jo.issue_note && jo.status === 'In Progress' && (
+                  <p className="mt-3 flex items-start gap-2 text-xs text-amber-800 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-3 py-2">
+                    <AlertTriangle size={13} {...ICON} className="flex-shrink-0 mt-0.5" />
+                    <span><span className="font-semibold">Not finished yet:</span> {jo.issue_note}</span>
+                  </p>
+                )}
+                {jo.status === 'Scheduled' && jo.start_date && todayStr() < jo.start_date.slice(0, 10) && (
+                  <p className="mt-3 text-xs text-slate-500">Starts on {fmtDate(jo.start_date)}. Upload your first photo that day to start the job.</p>
+                )}
+
                 {/* Actions */}
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
                   <button onClick={e => { e.stopPropagation(); openView(jo) }}
@@ -500,6 +516,12 @@ export default function MyJobOrders() {
                     className="group inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-medium shadow-[0_6px_14px_-6px_rgba(5,150,105,.7)] hover:shadow-[0_10px_20px_-6px_rgba(5,150,105,.8)] active:scale-[.97] transition-all">
                     <Camera size={15} {...ICON} className="group-hover:-rotate-12 transition-transform" /> Update progress
                   </button>
+                  {jo.status === 'In Progress' && !jo.finished_at && (
+                    <button onClick={e => { e.stopPropagation(); setFinishJob(jo) }}
+                      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-emerald-200 bg-white text-[13px] font-medium text-emerald-700 hover:bg-emerald-50 active:scale-[.97] transition-all">
+                      <Flag size={15} {...ICON} /> Mark as finished
+                    </button>
+                  )}
                 </div>
               </article>
             )
@@ -624,11 +646,14 @@ export default function MyJobOrders() {
                 <span className="text-[11px] text-slate-400">JPG or PNG, up to {MAX_SIZE_MB}MB</span>
               </div>
 
-              {!withinRange && (
-                <p className="sc-fadein mb-2.5 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-3 py-2">
-                  <Clock size={13} {...ICON} className="flex-shrink-0" />
-                  Uploads are only allowed between {fmtDate(pStart)} and {fmtDate(pEnd)}.
+              {blockReason && (
+                <p className="sc-fadein mb-2.5 flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 ring-1 ring-slate-200 rounded-lg px-3 py-2">
+                  <Clock size={13} {...ICON} className="flex-shrink-0 text-slate-400" />
+                  {blockReason}
                 </p>
+              )}
+              {progressJob.status === 'Scheduled' && !blockReason && (
+                <p className="sc-fadein mb-2.5 text-xs text-slate-500">Your first photo starts the job (it moves to In Progress).</p>
               )}
 
               <div
@@ -713,6 +738,14 @@ export default function MyJobOrders() {
         </Modal>
       )}
 
+      {finishJob && (
+        <FinishModal
+          job={finishJob}
+          onClose={() => setFinishJob(null)}
+          onDone={msg => { setFinishJob(null); setToast({ type: 'success', msg }); loadJobs().catch(() => {}) }}
+        />
+      )}
+
       {/* Toast */}
       {toast && (
         <div role="status" className={`sc-slide fixed bottom-5 right-5 z-[60] overflow-hidden flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium shadow-[0_16px_40px_-10px_rgba(16,24,40,0.3)] bg-white
@@ -725,5 +758,84 @@ export default function MyJobOrders() {
         </div>
       )}
     </div>
+  )
+}
+// ── Mark as finished ───────────────────────────────────────────
+function FinishModal({ job, onClose, onDone }) {
+  const [photo, setPhoto] = useState(null)
+  const [note,  setNote]  = useState('')
+  const [error, setError] = useState(null)
+  const [busy,  setBusy]  = useState(false)
+  const MAX_MB = 1
+  const early = job.end_date && todayStr() < job.end_date.slice(0, 10)
+
+  const pick = f => {
+    if (!f) return
+    if (!f.type.startsWith('image/')) return setError('Only image files (JPG, PNG) are allowed.')
+    if (f.size > MAX_MB * 1024 * 1024) return setError(`Photo must be under ${MAX_MB}MB. Your file is ${(f.size / 1024 / 1024).toFixed(2)}MB.`)
+    setError(null); setPhoto(f)
+  }
+
+  const submit = async () => {
+    if (!photo) return setError('Add a photo of the finished work.')
+    setBusy(true); setError(null)
+    try {
+      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
+      const fd = new FormData()
+      fd.append('job_order_id', job.id)
+      fd.append('photo', photo)
+      fd.append('note', note.trim())
+      const res = await fetch(`${API}/job-orders/finish.php`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not mark the job as finished.')
+      onDone(data.message || 'Marked as finished.')
+    } catch (e) { setError(e.message) }
+    setBusy(false)
+  }
+
+  return (
+    <Modal>
+      <ModalHeader job={job} onClose={onClose} />
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <p className="text-sm text-slate-600 leading-relaxed">
+          {early ? <>You are finishing <span className="font-semibold text-slate-800">before the end date</span> ({fmtDate(job.end_date)}). That's okay. </> : null}
+          Upload a photo of the finished work. The customer will be asked to confirm that the job is done.
+        </p>
+
+        <div>
+          <p className="text-sm font-semibold text-slate-900 mb-2.5">Final photo <span className="text-red-500">*</span></p>
+          <label className={`block rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${photo ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-300 hover:border-emerald-400 hover:bg-emerald-50/40'}`}>
+            <input type="file" accept=".jpg,.jpeg,.png" className="hidden" onChange={e => pick(e.target.files[0])} />
+            {photo ? (
+              <span className="inline-flex items-center gap-2 text-sm text-slate-700"><FileText size={16} {...ICON} className="text-emerald-600" />{photo.name}</span>
+            ) : (
+              <>
+                <span className="mx-auto w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><Upload size={20} {...ICON} /></span>
+                <p className="mt-3 text-sm text-slate-600">Choose a photo of the finished work</p>
+                <p className="text-xs text-slate-400 mt-1">JPG or PNG, up to {MAX_MB}MB</p>
+              </>
+            )}
+          </label>
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold text-slate-900 mb-2.5">Note for the customer <span className="font-normal text-slate-400">(optional)</span></p>
+          <textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)}
+            placeholder="e.g. All outlets installed and tested."
+            className="w-full rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-sm text-slate-800 resize-none focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10" />
+        </div>
+
+        {error && <p className="flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={13} {...ICON} /> {error}</p>}
+      </div>
+      <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex gap-3 justify-end">
+        <button onClick={onClose} disabled={busy}
+          className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+        <button onClick={submit} disabled={busy}
+          className="inline-flex items-center justify-center gap-2 h-9 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white text-[13px] font-semibold">
+          {busy ? <RefreshCw size={14} {...ICON} className="animate-spin" /> : <Flag size={14} {...ICON} />}
+          {busy ? 'Sending…' : 'Mark as finished'}
+        </button>
+      </div>
+    </Modal>
   )
 }

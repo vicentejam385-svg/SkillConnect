@@ -225,6 +225,29 @@ $offerResult = null;
 try {
     $nowStatus = (int)($row['status_id'] ?? 0);
 
+    // Worker removed from a Scheduled job: back to Under Review so it can be offered again
+    if ($workerRemoved && in_array($nowStatus, [JO_STATUS_SCHEDULED, JO_STATUS_ACTIVE], true)) {
+        $pdo->prepare("UPDATE job_orders SET status_id = ? WHERE id = ?")->execute([JO_STATUS_UNDER_REVIEW, $id]);
+        $nowStatus = JO_STATUS_UNDER_REVIEW;
+        $row['status_id'] = JO_STATUS_UNDER_REVIEW;
+        jobOrderSystemLog($pdo, $before, 'Job order ' . ($before['job_order_code'] ?? '#' . $id)
+            . ' moved back to "Under Review" because the worker was removed', ['status' => $before['status_label'] ?? null], ['status' => 'Under Review']);
+    }
+
+    // Status set by hand: remember when work started / when it was confirmed complete
+    if (array_key_exists('status', $chgNew)) {
+        if ($nowStatus === JO_STATUS_IN_PROGRESS) {
+            $pdo->prepare("UPDATE job_orders SET started_at = COALESCE(started_at, ?) WHERE id = ?")->execute([jobOfferNow(), $id]);
+        } elseif ($nowStatus === JO_STATUS_COMPLETE) {
+            $pdo->prepare("UPDATE job_orders SET completed_at = ?, completed_by = 'admin', issue_note = NULL, issue_at = NULL WHERE id = ?")
+                ->execute([jobOfferNow(), $id]);
+            if (!empty($row['worker_user_id'])) {
+                jobOrderInboxUpdate($pdo, (int)$row['worker_user_id'], $id,
+                    ($before['job_order_code'] ?? 'Job order') . ' is complete', 'The admin marked this job as complete. Thank you!');
+            }
+        }
+    }
+
     if ($directAssign) {
         // Admin picked the worker: auto-accepted, the worker gets a notice
         $pdo->prepare("UPDATE job_orders SET accepted_at = ?, assigned_by = 'admin' WHERE id = ?")
@@ -266,9 +289,8 @@ try {
     error_log('[job-offers] update.php offer step failed for job order ' . $id . ': ' . $e->getMessage());
 }
 
-// Auto-advance status from the contract dates
-// (e.g. marked Scheduled but the start date has already arrived / end date already passed)
-syncJobOrderStatuses($pdo, $id);
+// A worker and agreed dates: move to Scheduled automatically
+jobOrderAutoSchedule($pdo, $id);
 
 $rowStmt->execute([$id]);
 $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
@@ -276,6 +298,7 @@ $st  = jobOfferState($row);
 $row['offer_state']      = $st['state'];
 $row['offer_expires_at'] = $st['expires_at'];
 $row['offer_can_assign'] = $st['can_assign'];
+$row['flags']            = jobOrderFlags($row);
 
 echo json_encode([
     'success'   => true,

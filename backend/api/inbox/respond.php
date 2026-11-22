@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-offers.php';
+require_once __DIR__ . '/../../helpers/job-order-status.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -101,6 +102,9 @@ try {
     $pdo->prepare("UPDATE worker_inbox SET response = 'accepted', responded_at = ?, read_at = COALESCE(read_at, ?) WHERE id = ?")
         ->execute([$now, $now, $id]);
     $pdo->commit();
+
+    // A worker and agreed dates: the job moves to Scheduled
+    jobOrderAutoSchedule($pdo, $joId);
 
     auditLog(array_merge(auditActor($auth), [
         'action'         => 'UPDATE',

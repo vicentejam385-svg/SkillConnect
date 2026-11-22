@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertCircle, AlertTriangle, ClipboardList, Briefcase, ChevronRight, ChevronLeft,
-  MapPin, X, CalendarDays, CalendarCheck2, CalendarX2, ArrowRight, Camera, Eye, ShieldCheck,
+  MapPin, X, CalendarDays, CalendarCheck2, CalendarX2, ArrowRight, Camera, Eye, ShieldCheck, Inbox,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { apiGet, BASE_URL } from '../../../utils/api'
@@ -250,6 +250,18 @@ export default function WorkerHome() {
   const [licenses,  setLicenses]  = useState([])
   const [jobPhotos, setJobPhotos] = useState({})
   const [loading,   setLoading]   = useState(true)
+  const [offers,    setOffers]    = useState(0)
+
+  // Job offers waiting in the Inbox
+  useEffect(() => {
+    let alive = true
+    const check = () => apiGet('/api/inbox/list.php', { summary: 1 })
+      .then(r => { if (alive) setOffers(Number(r?.open_offers || 0)) })
+      .catch(() => {})
+    check()
+    window.addEventListener('sc-inbox-changed', check)
+    return () => { alive = false; window.removeEventListener('sc-inbox-changed', check) }
+  }, [])
 
   // ── Data loading (unchanged, except the minimum skeleton time)
   useEffect(() => {
@@ -266,16 +278,13 @@ export default function WorkerHome() {
         if (!worker) return
 
         const [jData, sData] = await Promise.all([
-          apiGet('/api/job-orders/list.php', { per_page: 100 }),
+          apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 }),   // only this worker's jobs
           apiGet('/api/schedules/list.php',  { per_page: 100 }),
         ])
 
-        const myJobs = (jData.job_orders || []).filter(jo =>
-          String(jo.worker_contact_id) === String(worker.contact_id) ||
-          String(jo.worker_contact_id) === String(worker.id)         ||
-          String(jo.worker_name)       === String(worker.full_name)
-        )
-        const mySchedules = (sData.schedules || []).filter(sc => sc.worker_contact_code === worker.contact_code)
+        const myJobs = jData.job_orders || []
+        // Only this worker's own schedules
+        const mySchedules = (sData.schedules || []).filter(sc => String(sc.worker_user_id ?? sc.worker_contact_id) === String(worker.id))
         setJobs(myJobs)
         setSchedules(mySchedules)
 
@@ -295,8 +304,8 @@ export default function WorkerHome() {
 
         // Licenses for the notice
         try {
-          const lData = await apiGet('/api/licenses/list.php', { per_page: 50 })
-          setLicenses((lData.licenses || []).filter(l => String(l.contact_id) === String(worker?.contact_id)))
+          const lData = await apiGet('/api/licenses/list.php', { per_page: 500 })
+          setLicenses((lData.licenses || []).filter(l => String(l.user_id ?? l.contact_id) === String(worker.id)))
         } catch { /* silent */ }
       } catch (err) {
         console.error('WorkerHome load error:', err)
@@ -352,6 +361,22 @@ export default function WorkerHome() {
       </div>
 
       <LicenseBanner licenses={licenses} />
+
+      {offers > 0 && (
+        <button onClick={() => navigate('/worker/inbox')}
+          className="sc-rise w-full flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3.5 text-left hover:bg-emerald-50 transition-colors">
+          <span className="w-10 h-10 rounded-lg bg-white ring-1 ring-emerald-200 text-emerald-600 flex items-center justify-center flex-shrink-0">
+            <Inbox size={18} {...ICON} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-semibold text-emerald-900">
+              You have {offers} new job offer{offers === 1 ? '' : 's'}
+            </span>
+            <span className="block text-xs text-emerald-800/80 mt-0.5">The first worker to accept gets the job. Open your Inbox to see the details.</span>
+          </span>
+          <ArrowRight size={16} {...ICON} className="text-emerald-600 flex-shrink-0" />
+        </button>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

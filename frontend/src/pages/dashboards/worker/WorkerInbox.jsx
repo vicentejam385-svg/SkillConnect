@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Inbox, Briefcase, CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, CalendarDays, MapPin,
-  FileText, Hammer, User, Smartphone, Hourglass, XCircle, CheckCheck, Loader2, RefreshCw, ClipboardList,
+  FileText, Hammer, User, Smartphone, Hourglass, XCircle, CheckCheck, Loader2, RefreshCw, ClipboardList, Bell,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 
@@ -59,6 +59,7 @@ const STATE = {
   expired:    { label: 'Ended',           cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   withdrawn:  { label: 'No longer available', cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   reassigned: { label: 'Reassigned',      cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  info:       { label: 'Update',          cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
 }
 
 function StateChip({ msg }) {
@@ -95,6 +96,7 @@ const FILTERS = [
   { v: 'unread',   l: 'Unread' },
   { v: 'offers',   l: 'Job offers' },
   { v: 'assigned', l: 'Assignments' },
+  { v: 'updates',  l: 'Updates' },
 ]
 
 export default function WorkerInbox() {
@@ -138,7 +140,8 @@ export default function WorkerInbox() {
   const visible = useMemo(() => messages.filter(m =>
     filter === 'unread'   ? !m.read_at :
     filter === 'offers'   ? m.type === 'job_offer' :
-    filter === 'assigned' ? m.type === 'job_assigned' : true
+    filter === 'assigned' ? m.type === 'job_assigned' :
+    filter === 'updates'  ? !['job_offer', 'job_assigned'].includes(m.type) : true
   ), [messages, filter])
 
   const unread = messages.filter(m => !m.read_at).length
@@ -237,7 +240,7 @@ export default function WorkerInbox() {
               <ul className="divide-y divide-slate-100">
                 {visible.map((m, i) => {
                   const isOffer = m.type === 'job_offer'
-                  const Icon = isOffer ? Briefcase : CheckCircle2
+                  const Icon = isOffer ? Briefcase : m.type === 'job_assigned' ? CheckCircle2 : Bell
                   const on = m.id === selId
                   return (
                     <li key={m.id}>
@@ -325,7 +328,7 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
           <ChevronLeft size={18} {...ICON} />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-slate-500">{isOffer ? 'Job offer' : 'Assignment'} · {timeAgo(msg.created_at)}{job.code ? ` · ${job.code}` : ''}</p>
+          <p className="text-xs text-slate-500">{isOffer ? 'Job offer' : msg.type === 'job_assigned' ? 'Assignment' : 'Update'} · {timeAgo(msg.created_at)}{job.code ? ` · ${job.code}` : ''}</p>
           <h2 className="text-base sm:text-lg font-semibold text-slate-900 mt-0.5">{msg.title}</h2>
           <div className="mt-2"><StateChip msg={msg} /></div>
         </div>
@@ -343,6 +346,9 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
           </dl>
         )}
 
+        {msg.state === 'info' && msg.body && (
+          <p className="text-sm text-slate-700 leading-relaxed rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3.5 py-3 whitespace-pre-line">{msg.body}</p>
+        )}
         {note && <p className="text-sm text-slate-600 leading-relaxed">{note}</p>}
       </div>
 

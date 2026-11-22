@@ -210,12 +210,13 @@ export default function MySchedules() {
 
   useEffect(() => {
     const t0 = Date.now()
-    apiGet('/api/workers/list.php')
+    apiGet('/api/workers/list.php', { per_page: 100 })
       .then(wData => {
-        const worker = (wData.workers || []).find(w => w.id === user?.id)
+        const worker = (wData.workers || []).find(w => String(w.id) === String(user?.id))
         if (!worker) return setSchedules([])
         return apiGet('/api/schedules/list.php', { per_page: 100 }).then(d => {
-          const mine = (d.schedules || []).filter(sc => sc.worker_contact_code === worker.contact_code)
+          // Only this worker's own schedules
+          const mine = (d.schedules || []).filter(sc => String(sc.worker_user_id ?? sc.worker_contact_id) === String(worker.id))
           setSchedules(mine)
         })
       })

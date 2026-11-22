@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, CheckCircle, Clock, Zap, RefreshCw } from 'lucide-react'
+import { ClipboardList, CheckCircle, Clock, Zap, RefreshCw, ArrowRight } from 'lucide-react'
 import { apiGet } from '../../../utils/api'
 
 // ── Responsive Hook ────────────────────────────────────────────
@@ -23,11 +23,6 @@ const C = {
   cyanLight: '#cffafe',
   card: '#ffffff', border: '#e5e7eb',
   text: '#111827', textSub: '#6b7280', textFaint: '#9ca3af',
-}
-
-function getCustomerContactId() {
-  try { return JSON.parse(localStorage.getItem('sc_user') || '{}')?.contact_id || null }
-  catch { return null }
 }
 
 const STATUS_COLORS = {
@@ -81,7 +76,6 @@ function StatCard({ label, value, icon: Icon, iconBg, iconColor }) {
 // ── Customer Dashboard Home ────────────────────────────────────
 export default function CustomerHome() {
   const navigate  = useNavigate()
-  const contactId = getCustomerContactId()
   const isMobile  = useWindowWidth() < 640
   const [jobOrders, setJobOrders] = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -90,12 +84,9 @@ export default function CustomerHome() {
     const load = async () => {
       setLoading(true)
       try {
-        const joData = await apiGet('/api/job-orders/list.php', { per_page: 100 })
-        const all  = joData.job_orders || []
-        const mine = contactId
-          ? all.filter(jo => String(jo.client_contact_id) === String(contactId))
-          : all
-        setJobOrders(mine)
+        // The server only returns this customer's own job orders
+        const joData = await apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 })
+        setJobOrders(joData.job_orders || [])
       } catch {}
       setLoading(false)
     }
@@ -106,6 +97,7 @@ export default function CustomerHome() {
   const active    = jobOrders.filter(jo => ['Active', 'In Progress', 'Scheduled'].includes(jo.status)).length
   const completed = jobOrders.filter(jo => jo.status === 'Complete').length
   const pending   = jobOrders.filter(jo => jo.status === 'Pending').length
+  const toConfirm = jobOrders.filter(jo => jo.finished_at && jo.status === 'In Progress')
   const recent    = [...jobOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6)
 
   // Matches screenshot stat order: Total Projects | In Projects | Completed | Too Projects
@@ -122,6 +114,26 @@ export default function CustomerHome() {
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {stats.map(s => <StatCard key={s.label} {...s} />)}
       </div>
+
+      {/* Finished work waiting for the customer's confirmation */}
+      {toConfirm.length > 0 && (
+        <button onClick={() => navigate('/customer/job-orders')} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+          background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 12,
+          padding: '14px 18px', marginBottom: 20, cursor: 'pointer',
+        }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: '#fff', border: '1px solid #a7f3d0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <CheckCircle size={17} color={C.green} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>
+              {toConfirm.length === 1 ? `${toConfirm[0].job_order_code} is finished` : `${toConfirm.length} jobs are finished`}. Please confirm the work.
+            </div>
+            <div style={{ fontSize: 12, color: '#047857', marginTop: 2 }}>Check the final photo, then confirm or tell us what still needs fixing.</div>
+          </div>
+          <ArrowRight size={16} color={C.green} />
+        </button>
+      )}
 
       {/* Recent Activity Card */}
       <div style={{
@@ -172,7 +184,7 @@ export default function CustomerHome() {
                     {jo.job_order_code} – {jo.description || jo.contract_type || 'Construction'}
                   </div>
                   <div style={{ fontSize: 11, color: C.textSub }}>
-                    {jo.client_address || jo.location || 'Parañaque City'}
+                    {jo.client_address || jo.location || '—'}
                   </div>
                 </div>
 

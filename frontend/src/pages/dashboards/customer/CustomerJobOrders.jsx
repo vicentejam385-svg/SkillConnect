@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react'
 import {
   RefreshCw, ClipboardList, MapPin, Calendar, Clock,
-  DollarSign, X, CheckCircle, AlertCircle
+  DollarSign, X, CheckCircle, AlertCircle, Image as ImageIcon, Flag,
 } from 'lucide-react'
-import { apiGet } from '../../../utils/api'
+import { apiGet, apiPost } from '../../../utils/api'
+
+const HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
+const fmtDate = s => {
+  if (!s) return '—'
+  const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
+  return isNaN(d) ? s : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 
 // ── Responsive Hook ────────────────────────────────────────────
 function useWindowWidth() {
@@ -25,14 +32,6 @@ const C = {
   cyanLight: '#cffafe',
   bg: '#f3f4f6', card: '#ffffff', border: '#e5e7eb',
   text: '#111827', textMid: '#374151', textSub: '#6b7280', textFaint: '#9ca3af',
-}
-
-function getCustomerContactId() {
-  try {
-    const u = JSON.parse(localStorage.getItem('sc_user') || '{}')
-    return u?.contact_id || u?.id || null
-  }
-  catch { return null }
 }
 
 function Toast({ toast }) {
@@ -78,7 +77,6 @@ function StatusBadge({ status }) {
   )
 }
 export default function CustomerJobOrdersPage() {
-  const contactId      = getCustomerContactId()
   const isMobile       = useWindowWidth() < 640
   const [jobOrders,    setJobOrders]    = useState([])
   const [search,       setSearch]       = useState('')
@@ -95,13 +93,9 @@ export default function CustomerJobOrdersPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const data = await apiGet('/api/job-orders/list.php', { per_page: 100 })
-      const all  = data.job_orders || []
-      // Never fall back to "all" — a client must only see their own job orders
-      const mine = contactId
-        ? all.filter(jo => String(jo.client_contact_id) === String(contactId))
-        : []
-      setJobOrders(mine)
+      // The server only returns this customer's own job orders
+      const data = await apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 })
+      setJobOrders(data.job_orders || [])
     } catch {
       showToast('Failed to load job orders.', 'error')
     }
@@ -209,6 +203,20 @@ export default function CustomerJobOrdersPage() {
                   </div>
                 )}
               </div>
+
+              {jo.finished_at && jo.status === 'In Progress' && (
+                <ConfirmCard jo={jo} isMobile={isMobile} onDone={(msg, type) => { showToast(msg, type); if (type !== 'error') load() }} />
+              )}
+              {!jo.finished_at && jo.issue_note && jo.status === 'In Progress' && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e' }}>
+                  Still to do: “{jo.issue_note}”. The worker is working on it.
+                </div>
+              )}
+              {jo.status === 'Complete' && jo.completed_at && (
+                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.greenDark }}>
+                  <CheckCircle size={13} /> Completed on {fmtDate(jo.completed_at)}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -239,7 +247,6 @@ export default function CustomerJobOrdersPage() {
                 { label: 'Start Date',      value: selected.start_date     },
                 { label: 'End Date',        value: selected.end_date       },
                 { label: 'Inquiry Ref',     value: selected.inquiry_code   },
-                { label: 'Schedule',        value: selected.schedule_code  },
                 { label: 'Created',         value: selected.created_at?.slice(0, 10) },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', gap: 16, padding: '12px 24px', borderBottom: `1px solid ${C.border}` }}>
@@ -248,6 +255,8 @@ export default function CustomerJobOrdersPage() {
                 </div>
               ))}
             </div>
+
+            <ProgressPhotos jobId={selected.id} />
 
             <div style={{ padding: '16px 24px' }}>
               <button onClick={() => setSelected(null)} style={{
@@ -261,6 +270,102 @@ export default function CustomerJobOrdersPage() {
       )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+// ── Confirm the finished work ──────────────────────────────────
+function ConfirmCard({ jo, isMobile, onDone }) {
+  const [mode, setMode] = useState(null)   // null | 'confirm' | 'issue'
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const send = async (action) => {
+    if (action === 'issue' && !note.trim()) return onDone('Tell us what still needs to be done.', 'error')
+    setBusy(true)
+    try {
+      const res = await apiPost('/api/job-orders/confirm.php', { id: jo.id, action, note: note.trim() })
+      if (res?.success === false) throw new Error(res.error)
+      onDone(res?.message || 'Thank you!', 'success')
+    } catch (e) { onDone(e.message || 'Something went wrong. Please try again.', 'error') }
+    setBusy(false)
+  }
+
+  const btn = (primary) => ({
+    padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
+    border: primary ? 'none' : `1px solid ${C.border}`, background: primary ? C.green : '#fff',
+    color: primary ? '#fff' : C.textMid, opacity: busy ? 0.7 : 1,
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+  })
+
+  return (
+    <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <Flag size={16} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>The worker finished this job on {fmtDate(jo.finished_at)}</div>
+          {jo.finish_note && <div style={{ fontSize: 12, color: '#047857', marginTop: 3 }}>“{jo.finish_note}”</div>}
+          {jo.finish_photo_path && (
+            <a href={`${HOST}/${jo.finish_photo_path}`} target="_blank" rel="noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, fontSize: 12, fontWeight: 600, color: C.greenDark }}>
+              <ImageIcon size={13} /> View final photo
+            </a>
+          )}
+          <div style={{ fontSize: 12, color: '#047857', marginTop: 6 }}>Please check the work. Is everything done?</div>
+        </div>
+      </div>
+
+      {mode === 'issue' ? (
+        <div style={{ marginTop: 12 }}>
+          <textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)}
+            placeholder="What still needs to be done?"
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, outline: 'none', boxSizing: 'border-box', resize: 'none', background: '#fff' }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => send('issue')} disabled={busy} style={btn(true)}>{busy ? 'Sending…' : 'Send to the worker'}</button>
+            <button onClick={() => { setMode(null); setNote('') }} disabled={busy} style={btn(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : mode === 'confirm' ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>Confirm that the job is complete?</span>
+          <button onClick={() => send('confirm')} disabled={busy} style={btn(true)}><CheckCircle size={13} />{busy ? 'Saving…' : 'Yes, confirm'}</button>
+          <button onClick={() => setMode(null)} disabled={busy} style={btn(false)}>Cancel</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+          <button onClick={() => setMode('confirm')} style={{ ...btn(true), justifyContent: 'center' }}><CheckCircle size={13} />Confirm it's done</button>
+          <button onClick={() => setMode('issue')} style={{ ...btn(false), justifyContent: 'center' }}>Report a problem</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Progress photos in the details view ────────────────────────
+function ProgressPhotos({ jobId }) {
+  const [photos, setPhotos] = useState(null)
+  useEffect(() => {
+    let alive = true
+    apiGet('/api/job-orders/get-progress.php', { job_order_id: jobId })
+      .then(d => { if (alive) setPhotos(d.photos || []) })
+      .catch(() => { if (alive) setPhotos([]) })
+    return () => { alive = false }
+  }, [jobId])
+
+  if (!photos || photos.length === 0) return null
+  return (
+    <div style={{ padding: '16px 24px 0' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>Progress photos ({photos.length})</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+        {photos.map(p => (
+          <a key={p.id} href={`${HOST}/${p.file_path}`} target="_blank" rel="noreferrer"
+            style={{ position: 'relative', display: 'block', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+            <img src={`${HOST}/${p.file_path}`} alt={`Progress ${p.upload_date}`} style={{ width: '100%', height: 96, objectFit: 'cover', display: 'block' }} />
+            <span style={{ position: 'absolute', left: 6, bottom: 6, padding: '1px 6px', borderRadius: 4, background: 'rgba(15,23,42,.65)', color: '#fff', fontSize: 10, fontWeight: 600 }}>
+              {p.is_final ? 'Final · ' : ''}{fmtDate(p.upload_date)}
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
   )
 }

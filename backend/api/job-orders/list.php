@@ -1,5 +1,10 @@
 <?php
-// backend/api/job-orders/list.php  (your GET job orders list file)
+// backend/api/job-orders/list.php
+//
+// Admins see every job order.
+// Workers see only the job orders assigned to them; clients only their own.
+// Add ?mine=1 to always get only your own (used by the worker and customer pages,
+// also for workers who have admin access).
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
@@ -15,23 +20,36 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-requireAuth();
+$auth = requireAuth();
+$role = $auth['role'] ?? '';
+$uid  = (int)($auth['sub'] ?? 0);
 
 try {
     $pdo = getDB();
-
-    // Bring Scheduled / In Progress job orders up to date before listing them,
-    // so the status column, the status filter and the counts are all correct.
-    syncJobOrderStatuses($pdo);
 
     $search  = trim($_GET['search'] ?? '');
     $status  = trim($_GET['status'] ?? '');
     $page    = max(1, (int)($_GET['page'] ?? 1));
     $perPage = min(500, max(1, (int)($_GET['per_page'] ?? 20)));
     $offset  = ($page - 1) * $perPage;
+    $mine    = !empty($_GET['mine']);
 
     $where  = ['1=1'];
     $params = [];
+
+    // ── Who can see what
+    $isAdmin = isAdminUser($auth);
+    if ($mine || !$isAdmin) {
+        if ($role === 'worker') {
+            $where[] = 'jo.worker_user_id = ?'; $params[] = $uid;
+        } elseif ($role === 'client') {
+            $where[] = 'jo.client_user_id = ?'; $params[] = $uid;
+        } elseif (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Not allowed.']);
+            exit;
+        }
+    }
 
     if ($status !== '') {
         if (ctype_digit($status)) { $where[] = 'jo.status_id = ?'; }
@@ -56,6 +74,7 @@ try {
              LEFT JOIN contract_types ct ON ct.id = jo.contract_type_id
              LEFT JOIN inquiries i ON i.id = jo.inquiry_id
              LEFT JOIN schedules sc ON sc.id = jo.schedule_id
+             LEFT JOIN job_order_progress_photos fp ON fp.id = jo.finish_photo_id
              -- Service of the job order (from the inquiry, else the description)
              -- and its suggested contract
              LEFT JOIN specializations sp ON sp.name = COALESCE(NULLIF(i.reason, ''), jo.description)
@@ -72,8 +91,10 @@ try {
                 jo.client_user_id AS client_contact_id,
                 CONCAT(w.first_name,' ',w.last_name) AS worker_name,
                 w.user_code AS worker_code,
+                w.mobile AS worker_mobile,
                 CONCAT(c.first_name,' ',c.last_name) AS client_name,
                 c.user_code AS client_code,
+                c.mobile AS client_mobile,
                 COALESCE(NULLIF(c.address, ''), i.address) AS client_address,
                 s.label AS status,
                 ct.name AS contract_type,
@@ -82,6 +103,9 @@ try {
                 sp.name AS service,
                 sp.default_contract_type_id,
                 dct.name AS default_contract_type,
+                fp.file_path AS finish_photo_path,
+                (SELECT COUNT(*) FROM job_order_progress_photos p WHERE p.job_order_id = jo.id) AS photos_count,
+                (SELECT MAX(p.upload_date) FROM job_order_progress_photos p WHERE p.job_order_id = jo.id) AS last_photo_date,
                 -- Job offers: how many workers got it and how many said Not interested
                 (SELECT COUNT(*) FROM worker_inbox m
                   WHERE m.job_order_id = jo.id AND m.type = 'job_offer') AS offers_sent,
@@ -93,28 +117,36 @@ try {
     $dataStmt->execute($params);
     $jobOrders = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Offer state for each job order (waiting / expired / no_match / ...)
+    $today = jobOrderToday();
     foreach ($jobOrders as &$jo) {
         $st = jobOfferState($jo);
         $jo['offer_state']      = $st['state'];
         $jo['offer_expires_at'] = $st['expires_at'];
         $jo['offer_can_assign'] = $st['can_assign'];
+        $jo['flags']            = jobOrderFlags($jo, $today);
+
+        // Offers are only the admin's business
+        if (!$isAdmin || $mine) {
+            unset($jo['offers_sent'], $jo['offers_declined'], $jo['offer_state'],
+                  $jo['offer_expires_at'], $jo['offer_can_assign']);
+        }
     }
     unset($jo);
 
     // Suggested contract for every service (used by the New job order form)
-    $serviceDefaults = $pdo->query(
+    $serviceDefaults = $isAdmin ? $pdo->query(
         "SELECT sp.name AS service, sp.default_contract_type_id, ct.name AS default_contract_type
          FROM specializations sp
          LEFT JOIN contract_types ct ON ct.id = sp.default_contract_type_id
          ORDER BY sp.name"
-    )->fetchAll(PDO::FETCH_ASSOC);
+    )->fetchAll(PDO::FETCH_ASSOC) : [];
 
     echo json_encode([
         'success'          => true,
         'service_defaults' => $serviceDefaults,
         'job_orders'       => $jobOrders,
         'server_now'       => jobOfferNow(),
+        'today'            => $today,
         'pagination' => [
             'total'    => $total,
             'page'     => $page,

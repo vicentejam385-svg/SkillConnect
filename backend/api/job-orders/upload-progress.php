@@ -1,98 +1,89 @@
 <?php
 // backend/api/job-orders/upload-progress.php
+// The assigned worker uploads one progress photo per day.
+// The first photo on a Scheduled job moves it to In Progress.
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
+require_once __DIR__ . '/../../helpers/job-order-status.php';
+require_once __DIR__ . '/../../helpers/job-order-photos.php';
 
 handleCors();
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Method not allowed.']);
+function uploadFail(string $msg, int $code = 422): never
+{
+    http_response_code($code);
+    echo json_encode(['success' => false, 'error' => $msg]);
     exit;
 }
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') uploadFail('Method not allowed.', 405);
 
 $auth = requireAuth();
-$pdo = getDB();
+$uid  = (int)($auth['sub'] ?? 0);
+$pdo  = getDB();
 
-$jobOrderId  = isset($_POST['job_order_id'])  ? (int)$_POST['job_order_id']  : 0;
-$uploadDate  = isset($_POST['upload_date'])   ? $_POST['upload_date']         : date('Y-m-d');
+$jobOrderId = (int)($_POST['job_order_id'] ?? 0);
+if (!$jobOrderId) uploadFail('job_order_id is required.', 400);
 
-if (!$jobOrderId) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'job_order_id is required.']);
-    exit;
+$jo = jobOrderForPhotos($pdo, $jobOrderId);
+if (!$jo) uploadFail('Job order not found.', 404);
+
+// Only the worker assigned to this job can upload
+if ((int)$jo['worker_user_id'] !== $uid) uploadFail('Only the worker assigned to this job can upload photos.', 403);
+
+$status = (int)$jo['status_id'];
+if (!in_array($status, [JO_STATUS_SCHEDULED, JO_STATUS_IN_PROGRESS], true)) {
+    uploadFail('Photos can only be uploaded while the job is Scheduled or In Progress.');
+}
+if (!empty($jo['finished_at'])) {
+    uploadFail('You already reported this job as finished. Wait for the confirmation.');
 }
 
-if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'No valid photo uploaded.']);
-    exit;
+// Server date in the Philippines, not the phone's date
+$today = jobOrderToday();
+if (empty($jo['start_date']) || $today < $jo['start_date']) {
+    uploadFail('Uploads start on the start date (' . date('M j, Y', strtotime((string)$jo['start_date'])) . ').');
 }
-$maxFileSize = 1 * 1024 * 1024; 
 
-if ($_FILES['photo']['size'] > $maxFileSize) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'File size exceeds the limit of 1MB.']);
-    exit;
-}
-// Check one upload per day per job order
+// One photo per day
 $check = $pdo->prepare("SELECT COUNT(*) FROM job_order_progress_photos WHERE job_order_id = ? AND upload_date = ?");
-$check->execute([$jobOrderId, $uploadDate]);
-if ((int)$check->fetchColumn() > 0) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'A photo has already been uploaded today for this job order.']);
-    exit;
-}
+$check->execute([$jobOrderId, $today]);
+if ((int)$check->fetchColumn() > 0) uploadFail('A photo has already been uploaded today for this job order.');
 
-// Validate file type
-$allowed   = ['image/jpeg', 'image/png', 'image/jpg'];
-$mimeType  = mime_content_type($_FILES['photo']['tmp_name']);
-if (!in_array($mimeType, $allowed)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'Only JPG and PNG files are allowed.']);
-    exit;
-}
+$saved = jobOrderSaveUploadedPhoto($jobOrderId, $today);
+if (!$saved['ok']) uploadFail($saved['error'], $saved['code']);
 
-// Save file
-$uploadDir = __DIR__ . '/../../../uploads/progress_photos/';
-if (!is_dir($uploadDir)) {
-    mkdir($uploadDir, 0755, true);
-}
+$pdo->prepare("INSERT INTO job_order_progress_photos (job_order_id, file_path, upload_date) VALUES (?, ?, ?)")
+    ->execute([$jobOrderId, $saved['path'], $today]);
 
-$ext      = pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION);
-$filename = 'progress_' . $jobOrderId . '_' . $uploadDate . '_' . uniqid() . '.' . $ext;
-$destPath = $uploadDir . $filename;
-
-if (!move_uploaded_file($_FILES['photo']['tmp_name'], $destPath)) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Failed to save photo.']);
-    exit;
-}
-
-$filePath = 'uploads/progress_photos/' . $filename;
-
-// Insert record
-$stmt = $pdo->prepare("INSERT INTO job_order_progress_photos (job_order_id, file_path, upload_date) VALUES (?, ?, ?)");
-$stmt->execute([$jobOrderId, $filePath, $uploadDate]);
-
-$joStmt = $pdo->prepare("SELECT job_order_code FROM job_orders WHERE id = ?");
-$joStmt->execute([$jobOrderId]);
-$joCode = $joStmt->fetchColumn() ?: ('#' . $jobOrderId);
-
+$code = $jo['job_order_code'] ?: ('#' . $jobOrderId);
 auditLog(array_merge(auditActor($auth), [
     'action'       => 'CREATE',
     'module'       => 'Job Orders',
-    'description'  => 'Uploaded a progress photo for job order ' . $joCode . ' (' . $uploadDate . ')',
+    'description'  => 'Uploaded a progress photo for job order ' . $code . ' (' . $today . ')',
     'target_type'  => 'job_order',
     'target_id'    => $jobOrderId,
-    'target_label' => $joCode,
+    'target_label' => $code,
 ]));
+
+// First photo on a Scheduled job: work has started
+$started = false;
+if ($status === JO_STATUS_SCHEDULED) {
+    $upd = $pdo->prepare("UPDATE job_orders SET status_id = ?, started_at = COALESCE(started_at, ?) WHERE id = ? AND status_id = ?");
+    $upd->execute([JO_STATUS_IN_PROGRESS, jobOrderNow(), $jobOrderId, JO_STATUS_SCHEDULED]);
+    if ($upd->rowCount() === 1) {
+        $started = true;
+        jobOrderSystemLog($pdo, $jo, 'Job order ' . $code . ' moved to "In Progress" (first progress photo)',
+            ['status' => 'Scheduled'], ['status' => 'In Progress']);
+    }
+}
 
 echo json_encode([
     'success'   => true,
-    'message'   => 'Progress photo uploaded.',
-    'file_path' => $filePath,
+    'message'   => $started ? 'Photo uploaded. The job is now In Progress.' : 'Progress photo uploaded.',
+    'file_path' => $saved['path'],
+    'started'   => $started,
 ]);

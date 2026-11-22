@@ -4,7 +4,7 @@ import {
   Briefcase, Plus, Search, Pencil, CheckCircle2, AlertCircle, X, AlertTriangle, Filter,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown,
   ArrowUpDown, Loader2, Clock, CalendarDays, HardHat, User, Mail, Smartphone, MapPin,
-  Link2, Info, Check, Lock, Hourglass, Send, UserX,
+  Link2, Info, Check, Lock, Hourglass, Send, UserX, Camera, Flag, ImageIcon,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -379,16 +379,42 @@ const GROUPS = {
 }
 
 // ── Job statuses & flow (unchanged) ────────────────────────────
+// Scheduled is set automatically when a worker is assigned, and In Progress on the
+// worker's first photo. Active is an old status kept only for existing job orders.
 const JO_STATUSES = [
-  { id: 16, l: 'Pending',      next: [20] },
-  { id: 20, l: 'Under Review', next: [17, 23, 19] },
-  { id: 19, l: 'On Hold',      next: [17] },
-  { id: 17, l: 'Active',       next: [21] },
-  { id: 21, l: 'Scheduled',    next: [22] },
-  { id: 22, l: 'In Progress',  next: [18] },
+  { id: 16, l: 'Pending',      next: [20, 23] },
+  { id: 20, l: 'Under Review', next: [19, 23] },
+  { id: 19, l: 'On Hold',      next: [20, 23] },
+  { id: 17, l: 'Active',       next: [21, 23] },
+  { id: 21, l: 'Scheduled',    next: [22, 19, 23] },
+  { id: 22, l: 'In Progress',  next: [18, 19, 23] },
   { id: 18, l: 'Complete',     next: [] },
   { id: 23, l: 'Cancelled',    next: [] },
 ]
+
+const API_HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
+
+// What needs attention on a job order (flags come from list.php)
+const FLAG = {
+  no_photo_yet:     { label: 'No photo yet',          cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  past_end:         { label: 'Past end date',         cls: 'bg-red-50 text-red-700 ring-red-200' },
+  awaiting_confirm: { label: 'Finished · to confirm', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  issue:            { label: 'Not finished yet',      cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+}
+function FlagBadges({ jo }) {
+  const flags = (jo.flags || []).filter(k => FLAG[k])
+  if (!flags.length) return null
+  return (
+    <span className="flex flex-wrap gap-1 mt-1">
+      {flags.map(k => (
+        <span key={k} title={k === 'no_photo_yet' ? `Should have started ${fmtDay(jo.start_date)}` : undefined}
+          className={`inline-flex items-center h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset whitespace-nowrap ${FLAG[k].cls}`}>
+          {FLAG[k].label}{k === 'awaiting_confirm' && (jo.flags || []).includes('customer_slow') ? ' · 3+ days' : ''}
+        </span>
+      ))}
+    </span>
+  )
+}
 
 // ── Job Orders Page ────────────────────────────────────────────
 export default function JobOrdersPage() {
@@ -648,9 +674,6 @@ export default function JobOrdersPage() {
       }
     }
 
-    const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-    const base = 'https://saddlebrown-swan-877763.hostingersite.com/backend/api'
     setSaving(true)
     try {
       const res = editTarget
@@ -658,15 +681,8 @@ export default function JobOrdersPage() {
         : await apiPost('/api/job-orders/create.php', form)
       if (!res.success) throw new Error(res.error)
       delete drafts.current[editTarget?.id ?? 'new']
-      if (!editTarget && form.start_date && form.end_date) {
-        try {
-          await fetch(`${base}/schedules/create.php`, {
-            method: 'POST', headers,
-            body: JSON.stringify({ worker_contact_id: form.worker_contact_id || null, client_contact_id: form.client_contact_id || null, start_time: `${form.start_date} 08:00:00`, end_time: `${form.end_date} 17:00:00`, description: form.description || '', status_id: 11 }),
-          })
-        } catch (e) { console.warn('Schedule auto-create failed:', e) }
-      }
-      const done = editTarget ? 'Job order updated' : 'Job order created'
+      const movedToScheduled = res.job_order?.status === 'Scheduled' && editTarget?.status !== 'Scheduled'
+      const done = (editTarget ? 'Job order updated' : 'Job order created') + (movedToScheduled ? ' and moved to Scheduled' : '')
       const sentTo = res.offer?.sent
       showToast(
         typeof sentTo === 'number'
@@ -677,41 +693,23 @@ export default function JobOrdersPage() {
             ? `${done}. The worker has been notified.`
             : done
       )
-      const wasEdit = editTarget
       setSaving(false); setShowForm(false); setEditTarget(null); setForm(emptyForm); load()
-
-      if (Number(form.status_id) === 21 && wasEdit) {
-        const selectedContract = contracts.find(c => String(c.id) === String(form.contract_type_id))
-        const contractName = selectedContract?.name || ''
-        const isLongContract = ['3 Months', '6 Months', '1 Year', '5 Years ++'].includes(contractName)
-        let schedStart = form.start_date
-        let schedEnd   = form.end_date
-        if (isLongContract && form.start_date) {
-          const joStart = new Date(form.start_date)
-          const joEnd   = new Date(form.end_date)
-          const rangeDays = Math.floor((joEnd - joStart) / (1000 * 60 * 60 * 24))
-          const maxOffset = Math.max(0, rangeDays - 4)
-          const randStart = new Date(joStart)
-          randStart.setDate(randStart.getDate() + Math.floor(Math.random() * (maxOffset + 1)))
-          const randEnd = new Date(randStart)
-          randEnd.setDate(randEnd.getDate() + (Math.random() < 0.5 ? 3 : 4) - 1)
-          schedStart = randStart.toISOString().slice(0, 10)
-          schedEnd   = randEnd.toISOString().slice(0, 10)
-        }
-        navigate('/admin/scheduling', { state: { fromJobOrder: {
-          id: wasEdit.id,
-          worker_contact_id: form.worker_contact_id,
-          client_contact_id: form.client_contact_id,
-          description: form.description,
-          start_date: schedStart,
-          end_date:   schedEnd,
-          contract_name: contractName,
-          is_long_contract: isLongContract,
-          jo_start_date: form.start_date,
-          jo_end_date:   form.end_date,
-        } } })
-      }
     } catch (err) { showToast(err.message || 'Failed to save job order.', 'error'); setSaving(false) }
+  }
+
+  // Confirm the worker's "Mark as finished" (or say it is not done yet)
+  const confirmJob = async (jo, action, note = '') => {
+    try {
+      const res = await apiPost('/api/job-orders/confirm.php', { id: jo.id, action, note })
+      if (res?.success === false) throw new Error(res.error)
+      showToast(res?.message || (action === 'confirm' ? 'Job order is complete.' : 'The worker has been told.'))
+      delete drafts.current[jo.id]
+      setShowForm(false); setEditTarget(null); setForm(emptyForm); load()
+      return true
+    } catch (err) {
+      showToast(err.message || 'Could not update the job order.', 'error')
+      return false
+    }
   }
 
   const groupCount = g => scoped.filter(jo => GROUPS[g].includes(jo.status)).length
@@ -816,6 +814,7 @@ export default function JobOrdersPage() {
                         <p className="text-sm font-medium text-slate-900">{jo.job_order_code}</p>
                         <StatusBadge status={jo.status} />
                       </div>
+                      <FlagBadges jo={jo} />
                       <p className="text-xs text-slate-600 truncate mt-0.5">{jo.description || 'No description'} · {jo.client_name || '—'}</p>
                       <p className="text-xs text-slate-400 mt-0.5">{jo.worker_name || offerView(jo)?.short || 'No worker yet'} · {jo.start_date && jo.end_date ? `${fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – ${fmtDay(jo.end_date)}` : 'Not scheduled'}</p>
                     </div>
@@ -889,7 +888,7 @@ export default function JobOrdersPage() {
                         {jo.contract_type ? <span className="block truncate text-slate-700" title={jo.contract_type}>{jo.contract_type}</span> : <span className="text-slate-400">—</span>}
                       </td>
 
-                      <td className="px-3 py-3"><StatusBadge status={jo.status} /></td>
+                      <td className="px-3 py-3"><StatusBadge status={jo.status} /><FlagBadges jo={jo} /></td>
                       <td className="px-3 pr-4 py-3">
                         <div className="flex items-center justify-end">
                           <button onClick={() => openEdit(jo)} aria-label={`Edit ${jo.job_order_code}`} title="Edit"
@@ -912,7 +911,7 @@ export default function JobOrdersPage() {
       {showForm && (
         <JobOrderModal
           {...{ form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange, calcEndDate,
-                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable, showToast, hasDraft, onDiscardDraft: discardDraft }}
+                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable, showToast, hasDraft, onDiscardDraft: discardDraft, confirmJob }}
         />
       )}
     </div>
@@ -923,7 +922,7 @@ export default function JobOrdersPage() {
 function JobOrderModal({
   form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange,
   calcEndDate, isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable,
-  showToast, hasDraft, onDiscardDraft,
+  showToast, hasDraft, onDiscardDraft, confirmJob,
 }) {
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && closeForm()
@@ -1245,6 +1244,13 @@ function JobOrderModal({
 
           <div className="h-px bg-slate-100" />
 
+          {editTarget && [21, 22].includes(savedId) && (
+            <>
+              <CompletionPanel jo={editTarget} confirmJob={confirmJob} />
+              <div className="h-px bg-slate-100" />
+            </>
+          )}
+
           {/* Status */}
           <fieldset>
             <legend className="text-sm font-semibold text-slate-900 mb-1">Status</legend>
@@ -1254,7 +1260,9 @@ function JobOrderModal({
                 : locked && savedId === 16 ? 'Move to Under Review to agree the dates with the customer.'
                 : locked ? 'Assign a worker to unlock Active and later stages.'
                 : 'Move this job to its next stage.'}
-              {editTarget && Number(form.status_id) === 21 && ' Saving as Scheduled opens Scheduling so you can plan the site visit.'}
+              {editTarget && [16, 20, 17].includes(savedId) && form.worker_contact_id && form.start_date && form.end_date
+                && ' Saving moves this job to Scheduled automatically.'}
+              {savedId === 21 && ' It moves to In Progress when the worker uploads the first photo.'}
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -1307,5 +1315,101 @@ function JobOrderModal({
       </div>
     </div>,
     document.body
+  )
+}
+// ── Finish / confirm panel (inside the job order popup) ────────
+function CompletionPanel({ jo, confirmJob }) {
+  const [mode, setMode] = useState(null)   // 'confirm' | 'issue'
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const flags = jo.flags || []
+  const finished = !!jo.finished_at
+  const pastEnd = flags.includes('past_end')
+  const noPhoto = flags.includes('no_photo_yet')
+
+  if (!finished && !pastEnd && !noPhoto && !jo.issue_note) return null
+
+  const run = async (action) => {
+    setBusy(true)
+    const ok = await confirmJob(jo, action, note.trim())
+    setBusy(false)
+    if (!ok) return
+    setMode(null); setNote('')
+  }
+  const box = 'rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-700'
+  const link = 'text-sm font-medium text-emerald-700 hover:underline underline-offset-2'
+
+  return (
+    <section>
+      <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><Flag size={16} {...ICON} className="text-slate-400" />Progress</h4>
+      <div className="space-y-3">
+        {noPhoto && (
+          <div className={`${box} flex items-start gap-2.5`}>
+            <Camera size={16} {...ICON} className="text-slate-400 flex-shrink-0 mt-0.5" />
+            <p>No photo yet. This job should have started on <span className="font-medium">{fmtDay(jo.start_date)}</span>. Call the worker to check, or set it to In Progress yourself.</p>
+          </div>
+        )}
+        {!finished && jo.issue_note && (
+          <div className={`${box} flex items-start gap-2.5`}>
+            <AlertTriangle size={16} {...ICON} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p><span className="font-medium">Not finished yet:</span> {jo.issue_note}</p>
+          </div>
+        )}
+        {finished ? (
+          <div className={box}>
+            <div className="flex items-start gap-2.5">
+              <CheckCircle2 size={16} {...ICON} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p><span className="font-medium">{jo.worker_name || 'The worker'}</span> marked this job as finished on {fmtDay(jo.finished_at)}
+                  {jo.end_date && String(jo.finished_at).slice(0, 10) < jo.end_date ? ' (before the end date)' : ''}.</p>
+                {jo.finish_note && <p className="mt-1 text-slate-600">“{jo.finish_note}”</p>}
+                <p className="mt-1 text-slate-500">
+                  Waiting for the customer to confirm{flags.includes('customer_slow') ? ' for more than 3 days. You can call them and confirm it yourself.' : '.'}
+                </p>
+                {jo.finish_photo_path && (
+                  <a href={`${API_HOST}/${jo.finish_photo_path}`} target="_blank" rel="noreferrer" className="mt-2.5 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:underline underline-offset-2">
+                    <ImageIcon size={14} {...ICON} />View final photo
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : pastEnd && (
+          <div className={`${box} flex items-start gap-2.5`}>
+            <Clock size={16} {...ICON} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <p>The end date (<span className="font-medium">{fmtDay(jo.end_date)}</span>) has passed and the worker hasn't marked this job as finished. Call the worker, change the end date, or confirm it complete yourself.</p>
+          </div>
+        )}
+
+        {(finished || pastEnd) && (
+          mode === 'issue' ? (
+            <div className="sc-pop space-y-2">
+              <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={500}
+                placeholder="What still needs to be done? The worker will see this."
+                className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white shadow-sm resize-none focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => run('issue')} disabled={busy || !note.trim()} className={btnPrimary}>
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} {...ICON} />}Send to worker
+                </button>
+                <button type="button" onClick={() => { setMode(null); setNote('') }} disabled={busy} className={btnSecondary}>Cancel</button>
+              </div>
+            </div>
+          ) : mode === 'confirm' ? (
+            <div className="sc-pop flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="text-sm text-slate-700">Mark this job as complete?</span>
+              <button type="button" onClick={() => run('confirm')} disabled={busy} className={btnPrimary}>
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}Yes, it's complete
+              </button>
+              <button type="button" onClick={() => setMode(null)} disabled={busy} className="text-sm font-medium text-slate-500 hover:text-slate-700">Cancel</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <button type="button" onClick={() => setMode('confirm')} className={btnSecondary}><CheckCircle2 size={16} {...ICON} />Confirm complete</button>
+              {finished && <button type="button" onClick={() => setMode('issue')} className={link}>Not finished yet</button>}
+            </div>
+          )
+        )}
+      </div>
+    </section>
   )
 }

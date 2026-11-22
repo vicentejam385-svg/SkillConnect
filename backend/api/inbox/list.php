@@ -83,6 +83,8 @@ try {
         // Live state of the message
         if ($r['type'] === 'job_assigned') {
             $state = $mine ? 'assigned' : 'reassigned';
+        } elseif ($r['type'] !== 'job_offer') {
+            $state = 'info';   // updates and notices: nothing to answer
         } elseif ($r['response'] === 'accepted') {
             $state = $mine ? 'accepted' : 'reassigned';
         } elseif ($r['response'] === 'declined') {
