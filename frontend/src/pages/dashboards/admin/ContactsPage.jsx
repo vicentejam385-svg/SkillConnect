@@ -480,37 +480,14 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
             </span>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">New contact</h3>
-              <p className="text-sm text-slate-500 mt-0.5">Add a client or organisation you work with.</p>
+              <p className="text-sm text-slate-500 mt-0.5">Add a client you work with.</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
         </div>
 
         <div className="px-6 pb-6 overflow-y-auto flex-1 custom-scroll space-y-6">
-          {/* Type */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { value: 'client',       icon: User,      title: 'Client',       text: 'An individual customer' },
-              { value: 'organisation', icon: Building2, title: 'Organisation', text: 'A company or agency' },
-            ].map(o => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => f('type', o.value)}
-                className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                  form.type === o.value ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${form.type === o.value ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  <o.icon size={16} {...ICON} />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold text-slate-900">{o.title}</span>
-                  <span className="block text-xs text-slate-500 mt-0.5">{o.text}</span>
-                </span>
-              </button>
-            ))}
-          </div>
+
 
           {/* Name */}
           <fieldset>
@@ -539,14 +516,34 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
             <legend className="text-sm font-semibold text-slate-900 mb-3">Contact information</legend>
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Mobile" icon={Smartphone}>
-                  <input className={input(null, true)} value={form.mobile} onChange={e => f('mobile', e.target.value)} placeholder="09XX XXX XXXX" inputMode="tel" />
+                <Field label="Mobile number" required icon={Smartphone} error={errors.mobile}>
+                  <input
+                    className={input(errors.mobile, true)}
+                    value={form.mobile}
+                    maxLength={13}
+                    inputMode="tel"
+                    placeholder="+639XXXXXXXXX"
+                    onChange={e => {
+                      let val = e.target.value
+                      if (!val.startsWith('+63')) val = '+63'
+                      let digits = val.slice(3).replace(/\D/g, '')
+                      if (digits.startsWith('0')) digits = digits.slice(1)
+                      f('mobile', '+63' + digits.slice(0, 10))
+                    }}
+                  />
                 </Field>
-                <Field label="Phone" icon={Phone}>
-                  <input className={input(null, true)} value={form.phone} onChange={e => f('phone', e.target.value)} placeholder="02 XXXX XXXX" inputMode="tel" />
+                <Field label="Phone number" required icon={Phone} error={errors.phone}>
+                  <input
+                    className={input(errors.phone, true)}
+                    value={form.phone}
+                    maxLength={14}
+                    inputMode="tel"
+                    placeholder="02 8123 4567"
+                    onChange={e => f('phone', e.target.value.replace(/[^\d\s-]/g, ''))}
+                  />
                 </Field>
               </div>
-              <Field label="Email" icon={Mail} error={errors.email}>
+              <Field label="Email" required icon={Mail} error={errors.email}>
                 <input type="email" className={input(errors.email, true)} value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@company.com" />
               </Field>
               <Field label="Address" icon={MapPin}>
@@ -573,7 +570,7 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
 }
 
 // ── Contacts Page ──────────────────────────────────────────────
-const EMPTY_FORM = { first_name: '', last_name: '', suffix: '', email: '', mobile: '', phone: '', address: '', type: 'client', status_id: '1' }
+const EMPTY_FORM = { first_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', address: '', type: 'client', status_id: '1' }
 
 export default function ContactsPage() {
   const navigate = useNavigate()
@@ -594,7 +591,7 @@ export default function ContactsPage() {
   const [saving,     setSaving]     = useState(false)
   const [errors,     setErrors]     = useState({})
   const [toast,      setToast]      = useState(null)
-  const [form, setForm] = useState({ ...EMPTY_FORM, type: location.state?.defaultType || 'client' })
+  const [form, setForm] = useState(EMPTY_FORM)
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
   const f = (key, val) => { setForm(p => ({ ...p, [key]: val })); setErrors(e => ({ ...e, [key]: undefined })) }
@@ -656,9 +653,27 @@ export default function ContactsPage() {
 
   const handleCreate = async () => {
     const errs = {}
-    if (!form.first_name.trim()) errs.first_name = 'Enter a first name.'
-    if (!form.last_name.trim()) errs.last_name = 'Enter a last name.'
-    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) errs.email = 'Enter a valid email address.'
+    const nameOk  = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/
+    const mobile  = form.mobile.trim()
+    const phone   = form.phone.trim()
+    const phoneDigits = phone.replace(/\D/g, '')
+    const email   = form.email.trim()
+
+    if (!form.first_name.trim()) errs.first_name = 'First name is required.'
+    else if (!nameOk.test(form.first_name.trim())) errs.first_name = 'First name must contain letters only.'
+
+    if (!form.last_name.trim()) errs.last_name = 'Last name is required.'
+    else if (!nameOk.test(form.last_name.trim())) errs.last_name = 'Last name must contain letters only.'
+
+    if (!mobile || mobile === '+63') errs.mobile = 'Mobile number is required.'
+    else if (!/^\+639\d{9}$/.test(mobile)) errs.mobile = 'Enter a valid PH mobile number (+639XXXXXXXXX).'
+
+    if (!phone) errs.phone = 'Phone number is required.'
+    else if (phoneDigits.length < 7 || phoneDigits.length > 11) errs.phone = 'Enter a valid phone number (e.g. 02 8123 4567).'
+
+    if (!email) errs.email = 'Email is required.'
+    else if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email)) errs.email = 'Enter a valid email address (e.g. name@example.com).'
+
     if (Object.keys(errs).length) { setErrors(errs); return }
     setSaving(true)
     try {
