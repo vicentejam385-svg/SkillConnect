@@ -888,15 +888,12 @@ function JobOrderModal({
 
   // Requirements: a worker, contract and dates are needed before the status can move forward
   const locked = !form.worker_contact_id
-  const statusChanged = Number(form.status_id) !== savedId
   const missing = {}
   if (!editTarget && !form.client_contact_id) missing.client = 'Select a client.'
-  if (statusChanged) {
-    if (!form.worker_contact_id) missing.worker   = 'Assign a worker.'
-    if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
-    if (!form.start_date)        missing.start    = 'Pick a start date.'
-    if (!form.end_date)          missing.end      = 'Pick an end date.'
-  }
+  if (!form.worker_contact_id) missing.worker   = 'Assign a worker.'
+  if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
+  if (!form.start_date)        missing.start    = 'Pick a start date.'
+  if (!form.end_date)          missing.end      = 'Pick an end date.'
   const err = key => (tried ? missing[key] : null)
   const errCls = '!border-red-300 bg-red-50'
   const fieldError = msg => msg ? <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1"><AlertCircle size={12} {...ICON} />{msg}</p> : null
@@ -1110,15 +1107,12 @@ function JobOrderModal({
           {/* Status */}
           <fieldset>
             <legend className="text-sm font-semibold text-slate-900 mb-1">Status</legend>
-            <p className="text-xs text-slate-500 mb-3">
-              {statusOptions.length > 1 ? 'Move this job to its next stage.' : 'This job is at its final stage.'}
+            <p className="text-xs text-slate-500 mb-3 flex flex-wrap items-center gap-1.5">
+              {locked && statusOptions.length > 1 && <Lock size={12} {...ICON} className="text-slate-400 flex-shrink-0" />}
+              {statusOptions.length <= 1 ? 'This job is at its final stage.' : locked ? 'Assign a worker to unlock the next stage.' : 'Move this job to its next stage.'}
               {editTarget && Number(form.status_id) === 21 && ' Saving as Scheduled opens Scheduling so you can plan the site visit.'}
             </p>
-            {locked && statusOptions.length > 1 && (
-              <div className="mb-3">
-                <Notice tone="warning" icon={Lock}>Assign a worker before changing the status.</Notice>
-              </div>
-            )}
+
             <div className="flex flex-wrap gap-2">
               {statusOptions.map(s => {
                 const on = Number(form.status_id) === s.id
