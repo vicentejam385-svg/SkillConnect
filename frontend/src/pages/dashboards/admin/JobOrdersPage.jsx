@@ -335,6 +335,9 @@ export default function JobOrdersPage() {
   const [today,          setToday]          = useState(null)
   const emptyForm = { worker_contact_id: '', client_contact_id: '', inquiry_id: '', contract_type_id: '', description: '', start_date: '', end_date: '', status_id: '16', _usedStatuses: [16] }
   const [form, setForm] = useState(emptyForm)
+  const drafts  = useRef({})     // unsaved changes per job order ('new' for a new one)
+  const initial = useRef(null)   // the form as it was when the popup opened
+  const [hasDraft, setHasDraft] = useState(false)
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }
   const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
@@ -499,7 +502,15 @@ export default function JobOrdersPage() {
     return fn ? fn().toISOString().slice(0, 10) : ''
   }
 
-  const openCreate = () => { setEditTarget(null); setForm(emptyForm); setShowForm(true) }
+  const openWith = (key, fresh) => {
+    initial.current = fresh
+    const draft = drafts.current[key]
+    setForm(draft || fresh)
+    setHasDraft(!!draft)
+    setShowForm(true)
+  }
+
+  const openCreate = () => { setEditTarget(null); openWith('new', emptyForm) }
 
   const openEdit = (jo) => {
     setEditTarget(jo)
@@ -511,7 +522,7 @@ export default function JobOrdersPage() {
     // No contract yet -> pre-select the suggested contract for this service
     const service   = jo.service || linkedInquiry?.reason || jo.description || ''
     const suggested = contract?.id ? '' : (jo.default_contract_type_id ? String(jo.default_contract_type_id) : suggestedContractId(service))
-    setForm({
+    const fresh = {
       worker_contact_id: worker?.id    || '',
       client_contact_id: client?.id    || '',
       inquiry_id:        jo.inquiry_id  || '',
@@ -528,11 +539,23 @@ export default function JobOrdersPage() {
       _inquiry_code:     linkedInquiry?.inquiry_code || '',
       _inquiry_reason:   linkedInquiry?.reason || '',
       _inquiry_description: linkedInquiry?.reason === 'Other' ? (linkedInquiry?.description || '') : '',
-    })
-    setShowForm(true)
+    }
+    openWith(jo.id, fresh)
   }
 
-  const closeForm = useCallback(() => { if (!saving) { setShowForm(false); setEditTarget(null) } }, [saving])
+  const closeForm = useCallback(() => {
+    if (saving) return
+    const key = editTarget?.id ?? 'new'
+    if (JSON.stringify(form) !== JSON.stringify(initial.current)) drafts.current[key] = form
+    else delete drafts.current[key]
+    setShowForm(false); setEditTarget(null)
+  }, [saving, editTarget, form])
+
+  const discardDraft = () => {
+    delete drafts.current[editTarget?.id ?? 'new']
+    setForm(initial.current)
+    setHasDraft(false)
+  }
 
   const handleSave = async () => {
     if (form.worker_contact_id && form.start_date && form.end_date) {
@@ -552,6 +575,7 @@ export default function JobOrdersPage() {
         ? await apiPut('/api/job-orders/update.php', { id: editTarget.id, ...form })
         : await apiPost('/api/job-orders/create.php', form)
       if (!res.success) throw new Error(res.error)
+      delete drafts.current[editTarget?.id ?? 'new']
       if (!editTarget && form.start_date && form.end_date) {
         try {
           await fetch(`${base}/schedules/create.php`, {
@@ -791,7 +815,7 @@ export default function JobOrdersPage() {
       {showForm && (
         <JobOrderModal
           {...{ form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange, calcEndDate,
-                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable }}
+                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable, showToast, hasDraft, onDiscardDraft: discardDraft }}
         />
       )}
     </div>
@@ -802,6 +826,7 @@ export default function JobOrdersPage() {
 function JobOrderModal({
   form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange,
   calcEndDate, isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable,
+  showToast, hasDraft, onDiscardDraft,
 }) {
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && closeForm()
@@ -810,6 +835,7 @@ function JobOrderModal({
     document.body.style.overflow = 'hidden'
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [closeForm])
+  const [tried, setTried] = useState(false)
 
   const inputCls = 'w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors'
   const selectCls = `${inputCls} appearance-none pr-9 cursor-pointer`
@@ -860,9 +886,40 @@ function JobOrderModal({
   const statusOptions = JO_STATUSES.filter(s => s.id === savedId || (savedStatus?.next || []).includes(s.id))
   const selectedContract = contracts.find(c => String(c.id) === String(form.contract_type_id))
 
+  // Requirements: a worker, contract and dates are needed before the status can move forward
+  const locked = !form.worker_contact_id
+  const statusChanged = Number(form.status_id) !== savedId
+  const missing = {}
+  if (!editTarget && !form.client_contact_id) missing.client = 'Select a client.'
+  if (statusChanged) {
+    if (!form.worker_contact_id) missing.worker   = 'Assign a worker.'
+    if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
+    if (!form.start_date)        missing.start    = 'Pick a start date.'
+    if (!form.end_date)          missing.end      = 'Pick an end date.'
+  }
+  const err = key => (tried ? missing[key] : null)
+  const errCls = '!border-red-300 bg-red-50'
+  const fieldError = msg => msg ? <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1"><AlertCircle size={12} {...ICON} />{msg}</p> : null
+
+  // If the worker is removed after picking a new status, put the status back
+  useEffect(() => {
+    if (locked && Number(form.status_id) !== savedId) f('status_id', savedId)
+  }, [locked]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trySave = () => {
+    setTried(true)
+    const labels = { client: 'client', worker: 'worker', contract: 'contract type', start: 'start date', end: 'end date' }
+    const keys = Object.keys(missing)
+    if (keys.length) {
+      showToast(`Fill in the required fields first: ${keys.map(k => labels[k]).join(', ')}.`, 'error')
+      return
+    }
+    handleSave()
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={closeForm} />
+      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" />
       <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-5 border-b border-slate-100 flex-shrink-0">
@@ -884,6 +941,12 @@ function JobOrderModal({
         </div>
 
         <div className="px-6 py-6 overflow-y-auto flex-1 custom-scroll space-y-6">
+          {hasDraft && (
+            <Notice tone="info" icon={Info}
+              action={<button type="button" onClick={onDiscardDraft} className="text-sm font-medium text-sky-800 hover:underline underline-offset-2 whitespace-nowrap">Discard</button>}>
+              Your unsaved changes were restored.
+            </Notice>
+          )}
           {/* Client */}
           <fieldset>
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><User size={16} {...ICON} className="text-slate-400" />Client</legend>
@@ -898,13 +961,16 @@ function JobOrderModal({
                 <p className="text-xs text-slate-500 mt-1.5">The client can’t be changed after the job order is created.</p>
               </>
             ) : (
-              <div className="relative">
-                <select className={selectCls} value={form.client_contact_id} onChange={e => handleClientChange(e.target.value)}>
-                  <option value="">Select a client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                </select>
-                <Chev />
-              </div>
+              <>
+                <div className="relative">
+                  <select className={`${selectCls} ${err('client') ? errCls : ''}`} value={form.client_contact_id} onChange={e => handleClientChange(e.target.value)}>
+                    <option value="">Select a client</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                  </select>
+                  <Chev />
+                </div>
+                {fieldError(err('client'))}
+              </>
             )}
 
             {(form.client_contact_id || editTarget) && (
@@ -936,12 +1002,13 @@ function JobOrderModal({
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><HardHat size={16} {...ICON} className="text-slate-400" />Worker</legend>
             <label className={labelCls}>Assigned worker</label>
             <div className="relative">
-              <select className={selectCls} value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}>
+              <select className={`${selectCls} ${err('worker') ? errCls : ''}`} value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}>
                 <option value="">Select a worker</option>
                 {requiredSpec ? matched.map(renderOption) : allWorkers.map(renderOption)}
               </select>
               <Chev />
             </div>
+            {fieldError(err('worker'))}
             {requiredSpec && (
               <p className="text-xs text-slate-500 mt-1.5">
                 {matched.length
@@ -983,7 +1050,7 @@ function JobOrderModal({
               <div>
                 <label className={labelCls}>Contract type</label>
                 <div className="relative">
-                  <select className={selectCls} value={form.contract_type_id} onChange={e => {
+                  <select className={`${selectCls} ${err('contract') ? errCls : ''}`} value={form.contract_type_id} onChange={e => {
                     const id = e.target.value
                     f('contract_type_id', id)
                     f('_contract_suggested', false)
@@ -995,11 +1062,12 @@ function JobOrderModal({
                   </select>
                   <Chev />
                 </div>
+                {fieldError(err('contract'))}
               </div>
               <div>
                 <label className={labelCls}>Start date</label>
                 <input type="date"
-                  className={`${inputCls} ${startBusy ? '!border-red-300 bg-red-50' : ''}`}
+                  className={`${inputCls} ${startBusy || err('start') ? errCls : ''}`}
                   value={form.start_date}
                   min={nextAvail || (today ? today.toISOString().slice(0, 10) : undefined)}
                   onChange={e => {
@@ -1008,15 +1076,17 @@ function JobOrderModal({
                     if (ct && e.target.value) { const end = calcEndDate(e.target.value, ct.name); if (end) f('end_date', end) }
                   }} />
                 {startBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
+                {!startBusy && fieldError(err('start'))}
               </div>
               <div>
                 <label className={labelCls}>End date</label>
                 <input type="date"
-                  className={`${inputCls} ${endBusy ? '!border-red-300 bg-red-50' : ''}`}
+                  className={`${inputCls} ${endBusy || err('end') ? errCls : ''}`}
                   value={form.end_date}
                   min={form.start_date || (today ? today.toISOString().slice(0, 10) : undefined)}
                   onChange={e => f('end_date', e.target.value)} />
                 {endBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
+                {!endBusy && fieldError(err('end'))}
               </div>
             </div>
             {form._contract_suggested && selectedContract && (
@@ -1044,14 +1114,21 @@ function JobOrderModal({
               {statusOptions.length > 1 ? 'Move this job to its next stage.' : 'This job is at its final stage.'}
               {editTarget && Number(form.status_id) === 21 && ' Saving as Scheduled opens Scheduling so you can plan the site visit.'}
             </p>
+            {locked && statusOptions.length > 1 && (
+              <div className="mb-3">
+                <Notice tone="warning" icon={Lock}>Assign a worker before changing the status.</Notice>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {statusOptions.map(s => {
                 const on = Number(form.status_id) === s.id
                 const current = s.id === savedId
                 return (
                   <button key={s.id} type="button" onClick={() => f('status_id', s.id)} aria-pressed={on}
-                    className={`inline-flex items-center gap-2 h-9 px-3.5 rounded-lg text-sm font-medium border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
-                      ${on ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
+                    disabled={locked && !current}
+                    title={locked && !current ? 'Assign a worker first' : undefined}
+                    className={`inline-flex items-center gap-2 h-9 px-3.5 rounded-lg text-sm font-medium border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed
+                      ${on ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 disabled:hover:bg-white disabled:hover:border-slate-200'}`}>
                     <span className={`w-2 h-2 rounded-full ${STATUS[s.l]?.[1]}`} />
                     {s.l}
                     {current && <span className="text-[11px] font-normal text-slate-500">(current)</span>}
@@ -1078,10 +1155,12 @@ function JobOrderModal({
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
           {hasConflict
             ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertTriangle size={14} {...ICON} />Fix the date conflict to save.</p>
-            : <span className="hidden sm:block" />}
+            : tried && Object.keys(missing).length
+              ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={14} {...ICON} />Fill in the required fields to save.</p>
+              : <span className="hidden sm:block" />}
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={closeForm} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
-            <button onClick={handleSave} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
+            <button onClick={trySave} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
               {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}
               {saving ? 'Saving…' : editTarget ? 'Save changes' : 'Create job order'}
             </button>
