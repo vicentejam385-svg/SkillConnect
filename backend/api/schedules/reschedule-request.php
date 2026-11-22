@@ -1,103 +1,73 @@
 <?php
+// backend/api/schedules/reschedule-request.php
+// The worker on a site visit asks to move it.
+//   POST { schedule_id, new_start_time, new_end_time, reason }
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../middleware/audit.php';
+require_once __DIR__ . '/../../helpers/site-visits.php';
 
 handleCors();
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Method not allowed.']);
+function rrFail(string $msg, int $code = 422): never
+{
+    http_response_code($code);
+    echo json_encode(['success' => false, 'error' => $msg]);
     exit;
 }
 
-$user = requireAuth();
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') rrFail('Method not allowed.', 405);
 
-$body           = json_decode(file_get_contents('php://input'), true);
-$schedule_id    = isset($body['schedule_id'])    ? (int)$body['schedule_id']    : 0;
-$schedule_code  = isset($body['schedule_code'])  ? trim($body['schedule_code']) : '';
-$new_start_time = isset($body['new_start_time']) ? trim($body['new_start_time']): '';
-$new_end_time   = isset($body['new_end_time'])   ? trim($body['new_end_time'])  : '';
-$reason         = isset($body['reason'])         ? trim($body['reason'])        : '';
+$auth = requireAuth();
+$uid  = (int)($auth['sub'] ?? 0);
+$body = json_decode(file_get_contents('php://input'), true) ?? [];
 
-if (!$schedule_id)    { echo json_encode(['success' => false, 'error' => 'schedule_id is required']);    exit; }
-if (!$new_start_time) { echo json_encode(['success' => false, 'error' => 'new_start_time is required']); exit; }
-if (!$new_end_time)   { echo json_encode(['success' => false, 'error' => 'new_end_time is required']);   exit; }
-if (!$reason)         { echo json_encode(['success' => false, 'error' => 'reason is required']);         exit; }
+$scheduleId = (int)($body['schedule_id'] ?? 0);
+$start      = svNormalizeTime($body['new_start_time'] ?? '');
+$end        = svNormalizeTime($body['new_end_time'] ?? '');
+$reason     = trim((string)($body['reason'] ?? ''));
 
-$new_start_time = str_replace('T', ' ', $new_start_time);
-$new_end_time   = str_replace('T', ' ', $new_end_time);
-
-if (strtotime($new_start_time) === false) { echo json_encode(['success' => false, 'error' => 'Invalid new_start_time']); exit; }
-if (strtotime($new_end_time)   === false) { echo json_encode(['success' => false, 'error' => 'Invalid new_end_time']);   exit; }
-if (strtotime($new_end_time) <= strtotime($new_start_time)) {
-    echo json_encode(['success' => false, 'error' => 'End time must be after start time']); exit;
-}
+if (!$scheduleId) rrFail('schedule_id is required.', 400);
+if ($reason === '') rrFail('Add a reason so the admin can review the request.');
+if (mb_strlen($reason) > 1000) rrFail('Keep the reason under 1000 characters.');
+if ($err = svCheckSlot($start, $end)) rrFail($err);
 
 try {
     $pdo = getDB();
+    $v   = svLoad($pdo, $scheduleId);
+    if (!$v) rrFail('Schedule not found.', 404);
+    if ((int)$v['worker_user_id'] !== $uid) rrFail('You can only ask to move your own site visits.', 403);
+    if (!in_array((int)$v['status_id'], svOpenStatuses(), true)) rrFail('This visit is no longer open.');
+    if ($v['start_time'] <= jobOrderNow()) rrFail('This visit has already started.');
 
-    // Verify schedule exists
-    $stmt = $pdo->prepare('SELECT id FROM schedules WHERE id = ? LIMIT 1');
-    $stmt->execute([$schedule_id]);
-    if (!$stmt->fetch()) {
-        echo json_encode(['success' => false, 'error' => 'Schedule not found']); exit;
-    }
+    $dup = $pdo->prepare("SELECT 1 FROM reschedule_requests WHERE schedule_id = ? AND status = 'pending' LIMIT 1");
+    $dup->execute([$scheduleId]);
+    if ($dup->fetchColumn()) rrFail('You already have a request waiting for this visit.', 409);
 
-    // Get worker name — try contacts table directly
-    $worker_name = $user['name'] ?? null;
-    if (!$worker_name) {
-        $stmt = $pdo->prepare("
-            SELECT CONCAT(first_name, ' ', last_name) AS full_name 
-            FROM users 
-            WHERE id = ? LIMIT 1
-        ");
-        $stmt->execute([$user['sub']]);
-        $w = $stmt->fetch();
-        $worker_name = $w['full_name'] ?? ('Worker #' . ($user['sub'] ?? '?'));
-    }
+    if ($clash = svWorkerClash($pdo, $uid, $start, $end, $scheduleId)) rrFail('You already have visit ' . $clash . ' at that time.');
 
-    $stmt = $pdo->prepare('
-        INSERT INTO reschedule_requests
-            (schedule_id, schedule_code, requested_by_contact_id, worker_name, new_start_time, new_end_time, reason, status)
-        VALUES
-            (:schedule_id, :schedule_code, :contact_id, :worker_name, :new_start_time, :new_end_time, :reason, "pending")
-    ');
-    $stmt->execute([
-        ':schedule_id'    => $schedule_id,
-        ':schedule_code'  => $schedule_code,
-        ':contact_id'     => $user['sub'] ?? null,
-        ':worker_name'    => $worker_name,
-        ':new_start_time' => $new_start_time,
-        ':new_end_time'   => $new_end_time,
-        ':reason'         => $reason,
-    ]);
-
+    $pdo->prepare(
+        "INSERT INTO reschedule_requests (schedule_id, requested_by_user_id, new_start_time, new_end_time, reason, status)
+         VALUES (?, ?, ?, ?, ?, 'pending')"
+    )->execute([$scheduleId, $uid, $start, $end, $reason]);
     $requestId = (int)$pdo->lastInsertId();
 
-    auditLog(array_merge(auditActor($user), [
+    $code = $v['schedule_code'] ?: ('#' . $scheduleId);
+    auditLog(array_merge(auditActor($auth), [
         'action'       => 'CREATE',
         'module'       => 'Schedules',
-        'description'  => 'Requested to reschedule ' . ($schedule_code ?: ('schedule #' . $schedule_id)),
+        'description'  => trim((string)$v['worker_name']) . ' asked to move site visit ' . $code,
         'target_type'  => 'reschedule_request',
         'target_id'    => $requestId,
-        'target_label' => $schedule_code ?: ('Schedule #' . $schedule_id),
-        'new_values'   => [
-            'new_start_time' => $new_start_time,
-            'new_end_time'   => $new_end_time,
-            'reason'         => $reason,
-        ],
+        'target_label' => $code,
+        'old_values'   => ['time' => $v['start_time'] . ' – ' . $v['end_time']],
+        'new_values'   => ['time' => $start . ' – ' . $end, 'reason' => $reason],
     ]));
 
-    echo json_encode([
-        'success'    => true,
-        'message'    => 'Reschedule request submitted successfully',
-        'request_id' => $requestId,
-    ]);
-
+    echo json_encode(['success' => true, 'message' => 'Request sent. You will get an Inbox message when the admin answers.', 'request_id' => $requestId]);
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);
 }

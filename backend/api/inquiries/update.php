@@ -1,4 +1,5 @@
 <?php
+// backend/api/inquiries/update.php
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
@@ -40,7 +41,13 @@ try {
 
     // contact_id -> user_id in the new schema
     $fields = ['first_name', 'last_name', 'email', 'address', 'phone', 'mobile',
-               'description', 'reason', 'status_id', 'user_id'];
+               'description', 'reason', 'status_id', 'user_id', 'source'];
+
+    if (array_key_exists('source', $body) && !in_array($body['source'], ['online', 'walk_in'], true)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => 'Source must be online or walk_in.']);
+        exit;
+    }
 
     // Optional: allow the frontend to send a status label ("Won", "Lost", "New")
     if (!array_key_exists('status_id', $body) && !empty($body['status'])) {

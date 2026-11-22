@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Inbox, Briefcase, CheckCircle2, AlertCircle, ChevronDown, ChevronLeft, CalendarDays, MapPin,
   FileText, Hammer, User, Smartphone, Hourglass, XCircle, CheckCheck, Loader2, RefreshCw, ClipboardList, Bell,
+  CalendarClock, Clock,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 
@@ -60,6 +61,15 @@ const STATE = {
   withdrawn:  { label: 'No longer available', cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   reassigned: { label: 'Reassigned',      cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   info:       { label: 'Update',          cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  visit:      { label: 'Site visit',      cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  visit_done: { label: 'Visit done',      cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
+}
+const VISIT_TYPES = { ocular: 'Ocular inspection', progress: 'Progress inspection', other: 'Site visit' }
+const isVisitMsg = m => m.type === 'site_visit' || m.type === 'visit_update'
+const fmtSlot = v => {
+  const s = parseServerTime(v?.start_time), e = parseServerTime(v?.end_time)
+  if (!s) return null
+  return `${s.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}${e ? ` – ${e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : ''}`
 }
 
 function StateChip({ msg }) {
@@ -96,6 +106,7 @@ const FILTERS = [
   { v: 'unread',   l: 'Unread' },
   { v: 'offers',   l: 'Job offers' },
   { v: 'assigned', l: 'Assignments' },
+  { v: 'visits',   l: 'Site visits' },
   { v: 'updates',  l: 'Updates' },
 ]
 
@@ -141,7 +152,8 @@ export default function WorkerInbox() {
     filter === 'unread'   ? !m.read_at :
     filter === 'offers'   ? m.type === 'job_offer' :
     filter === 'assigned' ? m.type === 'job_assigned' :
-    filter === 'updates'  ? !['job_offer', 'job_assigned'].includes(m.type) : true
+    filter === 'visits'   ? isVisitMsg(m) :
+    filter === 'updates'  ? m.type === 'job_update' : true
   ), [messages, filter])
 
   const unread = messages.filter(m => !m.read_at).length
@@ -191,7 +203,7 @@ export default function WorkerInbox() {
       <div className="sc-rise flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-[30px] leading-tight font-semibold text-slate-900 tracking-tight">Inbox</h1>
-          <p className="text-sm text-slate-500 mt-1">Job offers that match your specialization, and jobs the admin assigns to you.</p>
+          <p className="text-sm text-slate-500 mt-1">Job offers, assignments, site visits and updates from the admin.</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
@@ -240,7 +252,7 @@ export default function WorkerInbox() {
               <ul className="divide-y divide-slate-100">
                 {visible.map((m, i) => {
                   const isOffer = m.type === 'job_offer'
-                  const Icon = isOffer ? Briefcase : m.type === 'job_assigned' ? CheckCircle2 : Bell
+                  const Icon = isOffer ? Briefcase : m.type === 'job_assigned' ? CheckCircle2 : isVisitMsg(m) ? CalendarClock : Bell
                   const on = m.id === selId
                   return (
                     <li key={m.id}>
@@ -285,6 +297,7 @@ export default function WorkerInbox() {
                 onAccept={() => respond('accept')}
                 onDecline={() => respond('decline')}
                 onOpenJobs={() => navigate('/worker/job-orders')}
+                onOpenSchedule={() => navigate('/worker/schedules')}
               />
             )}
           </section>
@@ -294,12 +307,19 @@ export default function WorkerInbox() {
   )
 }
 
-function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, onOpenJobs }) {
+function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, onOpenJobs, onOpenSchedule }) {
   const job = msg.job || {}
   const isOffer = msg.type === 'job_offer'
   const left = msg.state === 'open' ? hoursLeft(msg.expires_at) : null
 
-  const rows = [
+  const visit = msg.visit
+  const rows = visit ? [
+    { icon: CalendarClock, label: 'Visit',   value: VISIT_TYPES[visit.type] || 'Site visit' },
+    { icon: Clock,         label: 'When',    value: fmtSlot(visit) },
+    { icon: MapPin,        label: visit.is_mine ? 'Address' : 'Area', value: visit.is_mine ? (job.address || job.area) : job.area },
+    { icon: Hammer,        label: 'Job',     value: job.code ? `${job.code}${job.service ? ` · ${job.service}` : ''}` : null },
+    { icon: Briefcase,     label: 'Visit status', value: visit.status === 'Scheduled' ? 'Planned' : visit.status },
+  ].filter(r => r.value) : [
     { icon: Hammer,       label: 'Service',  value: job.service },
     { icon: FileText,     label: 'Contract', value: job.contract_type },
     { icon: CalendarDays, label: 'Dates',    value: job.start_date && job.end_date ? `${fmtDay(job.start_date, { month: 'short', day: 'numeric' })} – ${fmtDay(job.end_date)}` : null },
@@ -318,7 +338,9 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
     taken:      'Another worker accepted this job first.',
     expired:    'This offer has ended. The admin will choose a worker.',
     withdrawn:  'This job is no longer available.',
-    reassigned: 'This job is now assigned to another worker.',
+    reassigned: msg.type === 'site_visit' ? 'This visit was given to another worker. You no longer need to go.' : 'This job is now assigned to another worker.',
+    visit:      'Please be on time. If you can\'t make it, ask to move the visit from your Schedule page.',
+    visit_done: 'This visit is marked as done.',
   }[msg.state]
 
   return (
@@ -328,7 +350,7 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
           <ChevronLeft size={18} {...ICON} />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-slate-500">{isOffer ? 'Job offer' : msg.type === 'job_assigned' ? 'Assignment' : 'Update'} · {timeAgo(msg.created_at)}{job.code ? ` · ${job.code}` : ''}</p>
+          <p className="text-xs text-slate-500">{isOffer ? 'Job offer' : msg.type === 'job_assigned' ? 'Assignment' : msg.type === 'site_visit' ? 'Site visit' : 'Update'} · {timeAgo(msg.created_at)}{job.code ? ` · ${job.code}` : ''}</p>
           <h2 className="text-base sm:text-lg font-semibold text-slate-900 mt-0.5">{msg.title}</h2>
           <div className="mt-2"><StateChip msg={msg} /></div>
         </div>
@@ -337,8 +359,8 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
       <div className="px-5 sm:px-6 py-5 space-y-5 flex-1">
         {rows.length > 0 && (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-px rounded-lg border border-slate-200 bg-slate-200 overflow-hidden text-sm">
-            {rows.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="bg-slate-50/80 px-3.5 py-2.5 min-w-0">
+            {rows.map(({ icon: Icon, label, value }, i) => (
+              <div key={label} className={`bg-slate-50/80 px-3.5 py-2.5 min-w-0 ${i === rows.length - 1 && rows.length % 2 ? 'sm:col-span-2' : ''}`}>
                 <dt className="text-xs text-slate-500 flex items-center gap-1.5"><Icon size={12} {...ICON} />{label}</dt>
                 <dd className="text-slate-900 mt-0.5 break-words">{value}</dd>
               </div>
@@ -346,13 +368,13 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
           </dl>
         )}
 
-        {msg.state === 'info' && msg.body && (
+        {(msg.state === 'info' || isVisitMsg(msg)) && msg.body && (
           <p className="text-sm text-slate-700 leading-relaxed rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3.5 py-3 whitespace-pre-line">{msg.body}</p>
         )}
         {note && <p className="text-sm text-slate-600 leading-relaxed">{note}</p>}
       </div>
 
-      {(msg.state === 'open' || job.is_mine) && (
+      {(msg.state === 'open' || job.is_mine || visit?.is_mine) && (
         <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
           {msg.state === 'open' ? (
             confirm ? (
@@ -379,7 +401,9 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
             )
           ) : (
             <div className="flex justify-end">
-              <button onClick={onOpenJobs} className={btnSecondary}><ClipboardList size={16} {...ICON} />Open My Job Orders</button>
+              {visit?.is_mine
+                ? <button onClick={onOpenSchedule} className={btnSecondary}><CalendarClock size={16} {...ICON} />Open my schedule</button>
+                : <button onClick={onOpenJobs} className={btnSecondary}><ClipboardList size={16} {...ICON} />Open My Job Orders</button>}
             </div>
           )}
         </div>

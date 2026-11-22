@@ -1,5 +1,6 @@
 <?php
-// api/contacts/list.php — "contacts" are now users of type worker/client
+// backend/api/contacts/list.php — "contacts" are users of type worker/client.
+// Admins see everyone; clients and workers only their own record.
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
@@ -22,7 +23,7 @@ try {
     $type    = $_GET['type']   ?? '';
     $search  = $_GET['search'] ?? '';
     $page    = max(1, (int)($_GET['page']     ?? 1));
-    $perPage = min(200, max(1, (int)($_GET['per_page'] ?? 100)));
+    $perPage = min(500, max(1, (int)($_GET['per_page'] ?? 100)));
     $offset  = ($page - 1) * $perPage;
 
     // Replaces the old v_contacts_full view. Same column names as before where possible.
@@ -90,7 +91,7 @@ try {
 
     echo json_encode([
         'success'    => true,
-        'contacts'   => $stmt->fetchAll(),
+        'contacts'   => $stmt->fetchAll(PDO::FETCH_ASSOC),
         'pagination' => [
             'total'    => $total,
             'page'     => $page,

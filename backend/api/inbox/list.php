@@ -56,6 +56,8 @@ try {
                 m.responded_at, m.created_at,
                 jo.job_order_code, jo.worker_user_id, jo.offered_at, jo.status_id,
                 jo.start_date, jo.end_date, jo.description,
+                v.id AS visit_id, v.schedule_code AS visit_code, v.visit_type, v.start_time AS visit_start,
+                v.end_time AS visit_end, v.worker_user_id AS visit_worker_id, vs.label AS visit_status,
                 s.label  AS job_status,
                 ct.name  AS contract_type,
                 sp.name  AS service,
@@ -69,6 +71,8 @@ try {
          LEFT JOIN inquiries i        ON i.id  = jo.inquiry_id
          LEFT JOIN users c            ON c.id  = jo.client_user_id
          LEFT JOIN specializations sp ON sp.name = COALESCE(NULLIF(i.reason, ''), jo.description)
+         LEFT JOIN schedules v        ON v.id  = m.schedule_id
+         LEFT JOIN statuses vs        ON vs.id = v.status_id
          WHERE m.user_id = ?
          ORDER BY m.created_at DESC, m.id DESC
          LIMIT 200"
@@ -79,10 +83,16 @@ try {
     $messages = [];
     foreach ($rows as $r) {
         $mine = $r['worker_user_id'] !== null && (int)$r['worker_user_id'] === $uid;
+        // The worker going on a site visit needs the full address too
+        $myVisit = $r['visit_id'] !== null && (int)$r['visit_worker_id'] === $uid;
 
         // Live state of the message
         if ($r['type'] === 'job_assigned') {
             $state = $mine ? 'assigned' : 'reassigned';
+        } elseif ($r['type'] === 'site_visit') {
+            $state = !$myVisit ? 'reassigned'
+                   : ($r['visit_status'] === 'Cancelled' ? 'withdrawn'
+                   : ($r['visit_status'] === 'Complete' ? 'visit_done' : 'visit'));
         } elseif ($r['type'] !== 'job_offer') {
             $state = 'info';   // updates and notices: nothing to answer
         } elseif ($r['response'] === 'accepted') {
@@ -126,10 +136,19 @@ try {
                 'status'        => $r['job_status'],
                 'area'          => jobOfferArea($r['client_address']),
                 // Full address and client contact only once the job is theirs
-                'address'       => $mine ? $r['client_address'] : null,
+                'address'       => ($mine || $myVisit) ? $r['client_address'] : null,
                 'client_name'   => $mine ? ($r['client_name'] ?: null) : null,
                 'client_mobile' => $mine ? $r['client_mobile'] : null,
                 'is_mine'       => $mine,
+            ],
+            'visit' => $r['visit_id'] === null ? null : [
+                'id'         => (int)$r['visit_id'],
+                'code'       => $r['visit_code'],
+                'type'       => $r['visit_type'],
+                'start_time' => $r['visit_start'],
+                'end_time'   => $r['visit_end'],
+                'status'     => $r['visit_status'],
+                'is_mine'    => $myVisit,
             ],
         ];
     }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   RefreshCw, MessageSquare, MapPin, Calendar, Phone, FileText,
   X, CheckCircle, AlertCircle
@@ -27,10 +28,9 @@ const C = {
   text: '#111827', textMid: '#374151', textSub: '#6b7280', textFaint: '#9ca3af',
 }
 
-function getCustomerContactId() {
-  try { return JSON.parse(localStorage.getItem('sc_user') || '{}')?.contact_id || null }
-  catch { return null }
-}
+// Customer-friendly names for the inquiry statuses
+const STATUS_LABEL = { New: 'Under review', Won: 'Accepted', Lost: 'Closed' }
+const statusLabel = s => STATUS_LABEL[s] || s || '—'
 function getCustomerInfo() {
   try { return JSON.parse(localStorage.getItem('sc_user') || '{}') }
   catch { return {} }
@@ -54,7 +54,7 @@ function Toast({ toast }) {
   )
 }
 export default function CustomerInquiriesPage() {
-  const contactId = getCustomerContactId()
+  const navigate  = useNavigate()
   const customer  = getCustomerInfo()
   const isMobile  = useWindowWidth() < 640
   const [inquiries,    setInquiries]    = useState([])
@@ -63,6 +63,14 @@ export default function CustomerInquiriesPage() {
   const [search,       setSearch]       = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [selected,     setSelected]     = useState(null)
+  const [services,     setServices]     = useState([])
+
+  // Services = the company's specializations
+  useEffect(() => {
+    apiGet('/api/config/specializations.php')
+      .then(d => setServices((d.data || d.specializations || []).map(s => s.name).filter(Boolean)))
+      .catch(() => {})
+  }, [])
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -122,8 +130,7 @@ export default function CustomerInquiriesPage() {
   const handleSubmitInquiry = async () => {
     if (!inquiryForm.first_name.trim() || !inquiryForm.last_name.trim()) { showToast('First and last name are required.', 'error'); return }
     if (!inquiryForm.province || !inquiryForm.city || !inquiryForm.barangay || !inquiryForm.house_street.trim()) { showToast('Complete address is required.', 'error'); return }
-    if (!inquiryForm.reason) { showToast('Please select a reason.', 'error'); return }
-    if (inquiryForm.reason === 'Other' && !inquiryForm.description.trim()) { showToast('Please specify your reason.', 'error'); return }
+    if (!inquiryForm.reason) { showToast('Please choose a service.', 'error'); return }
     if (inquiryLoading) return
     setInquiryLoading(true)
     try {
@@ -137,7 +144,9 @@ export default function CustomerInquiriesPage() {
   }
 
   const INQUIRY_STATUS_COLORS = {
-    'New':         { bg: C.blueLight,   color: '#1e40af', border: '#93c5fd' },
+    'New':         { bg: C.purpleLight, color: '#6b21a8', border: '#d8b4fe' },
+    'Won':         { bg: C.greenLight,  color: C.greenDark, border: '#86efac' },
+    'Lost':        { bg: '#f3f4f6',     color: '#374151', border: '#d1d5db' },
     'Pending':     { bg: '#fef9c3',     color: '#854d0e', border: '#fde047' },
     'Reviewed':    { bg: C.purpleLight, color: '#6b21a8', border: '#d8b4fe' },
     'Converted':   { bg: C.greenLight,  color: C.greenDark, border: '#86efac' },
@@ -228,7 +237,7 @@ export default function CustomerInquiriesPage() {
           style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, outline: 'none', background: '#fff', minWidth: 140 }}
         >
           <option value="">All Statuses</option>
-          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+          {statuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </select>
       </div>
 
@@ -268,14 +277,19 @@ export default function CustomerInquiriesPage() {
                       const s = INQUIRY_STATUS_COLORS[inq.status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
                       return (
                         <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-                          {inq.status || '—'}
+                          {statusLabel(inq.status)}
                         </span>
                       )
                     })()}
                   </div>
                   <div style={{ fontSize: 12, color: C.textSub, marginLeft: 38 }}>
                     {inq.reason || 'General Inquiry'}
-                    {inq.description && inq.reason === 'Other' ? ` — ${inq.description}` : ''}
+                    {inq.status === 'Won' && inq.job_order_code && (
+                      <button onClick={() => navigate('/customer/job-orders')}
+                        style={{ marginLeft: 8, border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: C.green, fontWeight: 600, fontSize: 12 }}>
+                        · Job order {inq.job_order_code}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <button
@@ -401,32 +415,18 @@ export default function CustomerInquiriesPage() {
                 </div>
 
                 <div>
-                  <label style={lbl}>Reason for Inquiry *</label>
+                  <label style={lbl}>Service *</label>
                   <select value={inquiryForm.reason} onChange={e => setF('reason', e.target.value)} style={inp}>
-                    <option value="">Select a reason...</option>
-                    <option value="New Construction">New Construction</option>
-                    <option value="Renovation & Remodeling">Renovation &amp; Remodeling</option>
-                    <option value="Repair & Maintenance">Repair &amp; Maintenance</option>
-                    <option value="Electrical Installation">Electrical Installation</option>
-                    <option value="Plumbing Services">Plumbing Services</option>
-                    <option value="Painting & Finishing">Painting &amp; Finishing</option>
-                    <option value="Carpentry">Carpentry</option>
-                    <option value="Masonry">Masonry</option>
-                    <option value="Roofing">Roofing</option>
-                    <option value="Landscaping">Landscaping</option>
-                    <option value="Interior Design">Interior Design</option>
-                    <option value="Project Management">Project Management</option>
-                    <option value="Other">Other</option>
+                    <option value="">{services.length ? 'Select a service...' : 'Loading services...'}</option>
+                    {services.map(sv => <option key={sv} value={sv}>{sv}</option>)}
                   </select>
                 </div>
 
-                {inquiryForm.reason === 'Other' && (
-                  <div>
-                    <label style={lbl}>Please Specify *</label>
-                    <textarea value={inquiryForm.description} onChange={e => setF('description', e.target.value)} rows={3}
-                      placeholder="Tell us about your inquiry..." style={{ ...inp, resize: 'none' }} />
-                  </div>
-                )}
+                <div>
+                  <label style={lbl}>Details (optional)</label>
+                  <textarea value={inquiryForm.description} onChange={e => setF('description', e.target.value)} rows={3} maxLength={1000}
+                    placeholder="Tell us a little about the work you need..." style={{ ...inp, resize: 'none' }} />
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, padding: '16px 24px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
@@ -454,7 +454,7 @@ export default function CustomerInquiriesPage() {
                   <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{selected.inquiry_code || `INQ-${selected.id}`}</span>
                   {(() => {
                     const s = INQUIRY_STATUS_COLORS[selected.status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
-                    return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>{selected.status || '—'}</span>
+                    return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>{statusLabel(selected.status)}</span>
                   })()}
                 </div>
                 <p style={{ fontSize: 11, color: C.textSub, margin: 0 }}>Inquiry Details</p>
@@ -471,9 +471,10 @@ export default function CustomerInquiriesPage() {
                 { label: 'Email',         value: selected.email        },
                 { label: 'Mobile',        value: selected.mobile       },
                 { label: 'Address',       value: selected.address      },
-                { label: 'Reason',        value: selected.reason       },
-                { label: 'Description',   value: selected.description  },
-                { label: 'Status',        value: selected.status       },
+                { label: 'Service',       value: selected.reason       },
+                { label: 'Details',       value: selected.description  },
+                { label: 'Status',        value: statusLabel(selected.status) },
+                { label: 'Job order',     value: selected.job_order_code },
                 { label: 'Submitted',     value: selected.created_at?.slice(0, 10) },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', gap: 16, padding: '12px 24px', borderBottom: `1px solid ${C.border}` }}>

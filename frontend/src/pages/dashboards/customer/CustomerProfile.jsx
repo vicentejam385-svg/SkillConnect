@@ -25,10 +25,6 @@ const C = {
   text: '#111827', textMid: '#374151', textSub: '#6b7280', textFaint: '#9ca3af',
 }
 
-function getCustomerContactId() {
-  try { return JSON.parse(localStorage.getItem('sc_user') || '{}')?.contact_id || null }
-  catch { return null }
-}
 function getCustomerInfo() {
   try { return JSON.parse(localStorage.getItem('sc_user') || '{}') }
   catch { return {} }
@@ -83,7 +79,6 @@ function PasswordInput({ label, value, onChange, placeholder }) {
 
 // ── Customer Profile Page ──────────────────────────────────────
 export default function CustomerProfilePage() {
-  const contactId = getCustomerContactId()
   const customer  = getCustomerInfo()
   const isMobile  = useWindowWidth() < 640
   const [contact,   setContact]   = useState(null)
@@ -106,9 +101,10 @@ export default function CustomerProfilePage() {
     const load = async () => {
       setLoading(true)
       try {
-        if (contactId) {
-          const cData = await apiGet('/api/contacts/list.php', { per_page: 100 })
-          const found = (cData.contacts || []).find(c => String(c.id) === String(contactId))
+        {
+          // The server only returns the logged-in customer's own record
+          const cData = await apiGet('/api/contacts/list.php', { per_page: 1 })
+          const found = (cData.contacts || [])[0]
           setContact(found || null)
           if (found?.address) {
             const parts = found.address.split(', ')
@@ -198,15 +194,15 @@ const handleChangePassword = async () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px', marginBottom: 20 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ display: 'block', fontSize: 11, color: C.textSub, marginBottom: 5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Full Name</label>
-                <input readOnly={!editMode} value={fullName} style={inputStyle} onChange={() => {}} />
+                <input readOnly value={fullName} style={{ ...inputStyle, background: '#f9fafb', color: C.textSub, cursor: 'default' }} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, color: C.textSub, marginBottom: 5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email Address</label>
-                <input readOnly={!editMode} value={contact?.email || customer?.email || ''} style={inputStyle} onChange={() => {}} />
+                <input readOnly value={contact?.email || customer?.email || ''} style={{ ...inputStyle, background: '#f9fafb', color: C.textSub, cursor: 'default' }} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, color: C.textSub, marginBottom: 5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phone Number</label>
-                <input readOnly={!editMode} value={contact?.mobile || customer?.mobile || ''} style={inputStyle} onChange={() => {}} />
+                <input readOnly value={contact?.mobile || customer?.mobile || ''} style={{ ...inputStyle, background: '#f9fafb', color: C.textSub, cursor: 'default' }} />
               </div>
               
               {!editMode ? (
@@ -265,7 +261,7 @@ const handleChangePassword = async () => {
                   const cityName = cities.find(c => c.psgcCode === profileForm.city)?.name ?? ''
                   const builtAddress = [profileForm.house_street, profileForm.barangay, cityName, provName].filter(Boolean).join(', ')
                   try {
-                    const res = await apiPost('/api/contacts/update.php', { id: contactId, address: builtAddress })
+                    const res = await apiPost('/api/contacts/update.php', { id: contact?.id, address: builtAddress })
                     if (res.success) {
                       setContact(c => ({ ...c, address: builtAddress }))
                       showToast('Profile updated!')

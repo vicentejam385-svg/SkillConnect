@@ -4,7 +4,7 @@ import {
   Briefcase, Plus, Search, Pencil, CheckCircle2, AlertCircle, X, AlertTriangle, Filter,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown,
   ArrowUpDown, Loader2, Clock, CalendarDays, HardHat, User, Mail, Smartphone, MapPin,
-  Link2, Info, Check, Lock, Hourglass, Send, UserX, Camera, Flag, ImageIcon,
+  Link2, Info, Check, Lock, Hourglass, Send, UserX, Camera, Flag, ImageIcon, CalendarClock,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -618,7 +618,8 @@ export default function JobOrdersPage() {
     setShowForm(true)
   }
 
-  const openCreate = () => { setEditTarget(null); openWith('new', emptyForm) }
+  // New jobs start as an inquiry (walk-in), so the service always matches workers for job offers
+  const openCreate = () => navigate('/admin/inquiries', { state: { newWalkIn: true } })
 
   const openEdit = (jo) => {
     setEditTarget(jo)
@@ -726,7 +727,7 @@ export default function JobOrdersPage() {
           <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Job orders</h1>
           <p className="text-sm text-slate-500 mt-1">Assign workers to client projects and track each job from review to completion.</p>
         </div>
-        <button onClick={openCreate} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> New job order</button>
+        <button onClick={openCreate} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> New walk-in inquiry</button>
       </div>
 
       {(highlightInquiryCode || highlightClientName) && (
@@ -799,8 +800,8 @@ export default function JobOrdersPage() {
             ? <EmptyState icon={Search} title="No matching job orders" text="Try a different search or remove a filter." action={<button onClick={clearFilters} className={btnSecondary}>Clear filters</button>} />
             : <EmptyState icon={Briefcase}
                 title={highlightInquiryCode ? 'No job order for this inquiry yet' : highlightClientName ? `No job orders for ${highlightClientName}` : 'No job orders yet'}
-                text="Job orders are created when an inquiry is won, or you can add one yourself."
-                action={<button onClick={openCreate} className={btnPrimary}><Plus size={16} {...ICON} /> New job order</button>} />
+                text="A job order is created when you mark an inquiry as won. For a walk-in customer, add a walk-in inquiry first."
+                action={<button onClick={openCreate} className={btnPrimary}><Plus size={16} {...ICON} /> New walk-in inquiry</button>} />
         ) : (
           <>
             {/* Mobile list */}
@@ -911,7 +912,8 @@ export default function JobOrdersPage() {
       {showForm && (
         <JobOrderModal
           {...{ form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange, calcEndDate,
-                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable, showToast, hasDraft, onDiscardDraft: discardDraft, confirmJob }}
+                isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable, showToast, hasDraft, onDiscardDraft: discardDraft, confirmJob,
+                onPlanVisit: jo => { closeForm(); navigate('/admin/scheduling', { state: { planVisitFor: jo.id } }) } }}
         />
       )}
     </div>
@@ -922,7 +924,7 @@ export default function JobOrdersPage() {
 function JobOrderModal({
   form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange,
   calcEndDate, isWorkerAvailable, getWorkerBusyRanges, getWorkerNextAvailable,
-  showToast, hasDraft, onDiscardDraft, confirmJob,
+  showToast, hasDraft, onDiscardDraft, confirmJob, onPlanVisit,
 }) {
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && closeForm()
@@ -1298,12 +1300,16 @@ function JobOrderModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
           {hasConflict
             ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertTriangle size={14} {...ICON} />Fix the date conflict to save.</p>
             : tried && Object.keys(missing).length
               ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={14} {...ICON} />Fill in the required fields to save.</p>
-              : <span className="hidden sm:block" />}
+              : editTarget && [20, 21, 22, 17].includes(savedId)
+                ? <button type="button" onClick={() => onPlanVisit(editTarget)} className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap">
+                    <CalendarClock size={15} {...ICON} />{savedId === 20 ? 'Plan ocular visit' : 'Plan site visit'}
+                  </button>
+                : <span className="hidden sm:block" />}
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={closeForm} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
             <button onClick={trySave} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>

@@ -17,10 +17,18 @@ function fail(string $msg, int $code): never {
     exit;
 }
 
-$auth = requireAdminAccess();
+$auth    = requireAuth();
+$isAdmin = isAdminUser($auth);
 
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : (int)($data['id'] ?? 0);
+
+// Customers and workers can update their own address and phone numbers only
+if (!$isAdmin) {
+    if (!$id) $id = (int)($auth['sub'] ?? 0);
+    if ($id !== (int)($auth['sub'] ?? 0)) fail('You can only update your own profile.', 403);
+    $data = array_intersect_key($data, array_flip(['address', 'mobile', 'phone']));
+}
 
 if (!$id) fail('Contact ID is required.', 400);
 

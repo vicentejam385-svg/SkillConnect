@@ -1,113 +1,84 @@
 <?php
 // backend/api/schedules/create.php
+// Admin plans a site visit for a job order.
+//   POST { job_order_id, visit_type: ocular|progress|other, worker_user_id, start_time, end_time, description }
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
+require_once __DIR__ . '/../../helpers/site-visits.php';
 
 handleCors();
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Method not allowed.']);
+function svFail(string $msg, int $code = 422): never
+{
+    http_response_code($code);
+    echo json_encode(['success' => false, 'error' => $msg]);
     exit;
 }
 
-$auth = requireAuth();
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') svFail('Method not allowed.', 405);
+
+$auth = requireAdminAccess();
 $pdo  = getDB();
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 
-// Use given status only if it is a real status for this entity, else use the default
-function resolveStatus(PDO $pdo, $given, string $entity, int $default): int {
-    if (empty($given)) return $default;
-    $s = $pdo->prepare('SELECT id FROM statuses WHERE id = ? AND entity = ?');
-    $s->execute([(int)$given, $entity]);
-    return $s->fetchColumn() ? (int)$given : $default;
-}
+$jobId    = (int)($data['job_order_id'] ?? 0);
+$type     = $data['visit_type'] ?? '';
+$workerId = (int)($data['worker_user_id'] ?? $data['worker_contact_id'] ?? 0);
+$start    = svNormalizeTime($data['start_time'] ?? '');
+$end      = svNormalizeTime($data['end_time'] ?? '');
+$descr    = trim((string)($data['description'] ?? ''));
 
-$required = [
-    'start_time' => 'Start time',
-    'end_time'   => 'End time',
-];
-foreach ($required as $field => $label) {
-    if (empty(trim($data[$field] ?? ''))) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'error' => "$label is required."]);
-        exit;
-    }
-}
-
-if ($data['start_time'] >= $data['end_time']) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'End time must be after start time.']);
-    exit;
-}
-
-// Accept both the new (user) and old (contact) field names from the frontend
-$workerId = !empty($data['worker_user_id']) ? (int)$data['worker_user_id']
-          : (!empty($data['worker_contact_id']) ? (int)$data['worker_contact_id'] : null);
-$clientId = !empty($data['client_user_id']) ? (int)$data['client_user_id']
-          : (!empty($data['client_contact_id']) ? (int)$data['client_contact_id'] : null);
+if (!$jobId) svFail('Choose the job order for this visit.');
+if (!in_array($type, ['ocular', 'progress', 'other'], true)) svFail('Choose the type of visit.');
+if (!$workerId) svFail('Choose who goes on the visit.');
+if ($err = svCheckSlot($start, $end)) svFail($err);
+if (mb_strlen($descr) > 1000) svFail('Keep the notes under 1000 characters.');
 
 try {
-    // schedule_code (SCHED0001...) is set automatically by the database trigger
-    $stmt = $pdo->prepare("
-        INSERT INTO schedules (worker_user_id, client_user_id, start_time, end_time, description, status_id)
-        VALUES (:worker, :client, :start, :end, :descr, :status)
-    ");
-    $stmt->execute([
-        ':worker' => $workerId,
-        ':client' => $clientId,
-        ':start'  => $data['start_time'],
-        ':end'    => $data['end_time'],
-        ':descr'  => trim($data['description'] ?? ''),
-        ':status' => resolveStatus($pdo, $data['status_id'] ?? null, 'schedule', 11), // 11 = Pending
-    ]);
+    $jo = svLoadJob($pdo, $jobId);
+    if (!$jo) svFail('Job order not found.', 404);
 
+    $allowed = svAllowedTypes((int)$jo['status_id']);
+    if (!$allowed) svFail('Site visits can be planned when the job order is Under Review, Scheduled or In Progress.');
+    if (!in_array($type, $allowed, true)) {
+        svFail($type === 'ocular'
+            ? 'An ocular inspection is only for job orders that are Under Review.'
+            : 'A progress inspection is only for job orders that are Scheduled or In Progress.');
+    }
+    if ($err = svCheckWorker($pdo, $jo, $type, $workerId)) svFail($err);
+    if ($clash = svWorkerClash($pdo, $workerId, $start, $end)) svFail('This worker already has visit ' . $clash . ' at that time.');
+
+    // schedule_code (SCHED0001...) is set automatically by the database trigger
+    $pdo->prepare(
+        "INSERT INTO schedules (worker_user_id, client_user_id, job_order_id, visit_type, start_time, end_time, description, status_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    )->execute([$workerId, $jo['client_user_id'] ?: null, $jobId, $type, $start, $end, $descr !== '' ? $descr : null, SV_SCHEDULED]);
     $newId = (int)$pdo->lastInsertId();
 
-    $rowStmt = $pdo->prepare(
-        "SELECT sc.*,
-                sc.worker_user_id AS worker_contact_id,
-                sc.client_user_id AS client_contact_id,
-                CONCAT(w.first_name,' ',w.last_name) AS worker_name,
-                CONCAT(c.first_name,' ',c.last_name) AS client_name,
-                s.label AS status
-         FROM schedules sc
-         LEFT JOIN users w ON w.id = sc.worker_user_id
-         LEFT JOIN users c ON c.id = sc.client_user_id
-         LEFT JOIN statuses s ON s.id = sc.status_id
-         WHERE sc.id = ?"
-    );
-    $rowStmt->execute([$newId]);
-
-    $sched = $rowStmt->fetch();
+    $v = svLoad($pdo, $newId);
+    $code = $v['schedule_code'] ?? ('#' . $newId);
 
     auditLog(array_merge(auditActor($auth), [
         'action'         => 'CREATE',
         'module'         => 'Schedules',
-        'description'    => 'Created schedule ' . ($sched['schedule_code'] ?? ('#' . $newId))
-                            . ' for worker "' . trim($sched['worker_name'] ?? '') . '"',
-        'target_user_id' => $clientId,
+        'description'    => 'Planned ' . strtolower(svTypeLabel($type)) . ' ' . $code . ' for job order '
+                            . ($jo['job_order_code'] ?: '#' . $jobId) . ' with ' . trim((string)$v['worker_name']),
+        'target_user_id' => $jo['client_user_id'] ?? null,
         'target_type'    => 'schedule',
         'target_id'      => $newId,
-        'target_label'   => ($sched['schedule_code'] ?? ('#' . $newId)) . ' — ' . trim($sched['worker_name'] ?? ''),
-        'new_values'     => [
-            'worker'     => trim($sched['worker_name'] ?? '') ?: null,
-            'client'     => trim($sched['client_name'] ?? '') ?: null,
-            'start_time' => $sched['start_time'] ?? null,
-            'end_time'   => $sched['end_time'] ?? null,
-            'status'     => $sched['status'] ?? null,
-        ],
+        'target_label'   => $code . ' — ' . trim((string)$v['worker_name']),
+        'new_values'     => ['type' => svTypeLabel($type), 'worker' => $v['worker_name'], 'start_time' => $start, 'end_time' => $end],
     ]));
 
+    svNotify($pdo, $newId, 'site_visit',
+        'Site visit: ' . svTypeLabel($type) . ' on ' . (new DateTime($start, jobOrderTz()))->format('M j'),
+        $descr !== '' ? $descr : 'You are scheduled to visit this site.');
+
     http_response_code(201);
-    echo json_encode([
-        'success'  => true,
-        'message'  => 'Schedule created.',
-        'schedule' => $sched,
-    ]);
+    echo json_encode(['success' => true, 'message' => 'Site visit planned. The worker has been notified.', 'schedule' => svLoad($pdo, $newId)]);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);

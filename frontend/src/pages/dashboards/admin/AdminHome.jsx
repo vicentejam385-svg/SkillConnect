@@ -538,6 +538,7 @@ export default function AdminHome() {
   const [rescheduleRequests, setRescheduleRequests] = useState([])
   const [reviewSaving, setReviewSaving] = useState(null) // { id, action }
   const [leaving, setLeaving] = useState([])
+  const [reviewError, setReviewError] = useState(null) // { id, msg }
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
@@ -546,7 +547,7 @@ export default function AdminHome() {
         apiGet('/api/inquiries/list.php',  { per_page: 100 }),
         apiGet('/api/job-orders/list.php', { per_page: 50 }),
         apiGet('/api/contacts/list.php',   { per_page: 1 }),
-        apiGet('/api/schedules/list.php',  { per_page: 1 }),
+        apiGet('/api/schedules/list.php',  { per_page: 500 }),
         apiGet('/api/contacts/list.php',   { per_page: 1, type: 'worker' }),
         apiGet('/api/licenses/list.php',   { per_page: 100 }),
         apiGet('/api/schedules/reschedule-requests/list.php', { status: 'pending' }),
@@ -567,7 +568,9 @@ export default function AdminHome() {
         inquiries: inqData.pagination?.total ?? 0,
         jobOrders: joData.pagination?.total ?? 0,
         contacts:  contactsData.pagination?.total ?? 0,
-        schedules: schedData.pagination?.total ?? 0,
+        // Upcoming site visits (planned, not done or cancelled)
+        schedules: (schedData.schedules || []).filter(v =>
+          ['Pending', 'Scheduled', 'In Progress'].includes(v.status) && parseDate(v.end_time) >= now).length,
         workers:   workersData.pagination?.total ?? 0,
         licensesExpired:  allLic.filter(l => l.expiry_date && exp(l) < now).length,
         licensesExpiring: allLic.filter(l => l.expiry_date && exp(l) >= now && exp(l) - now < soon).length,
@@ -588,6 +591,7 @@ export default function AdminHome() {
 
   const reviewRequest = async (req, action) => {
     setReviewSaving({ id: req.id, action })
+    setReviewError(null)
     try {
       const token = JSON.parse(localStorage.getItem('sc_user'))?.token
       const res = await fetch(REVIEW_URL, {
@@ -603,7 +607,7 @@ export default function AdminHome() {
         setLeaving(l => l.filter(id => id !== req.id))
       }, 300)
     } catch (e) {
-      alert(`Could not ${action} request: ${e.message}`)
+      setReviewError({ id: req.id, msg: e.message || `Could not ${action} the request.` })
     }
     setReviewSaving(null)
   }
@@ -771,7 +775,7 @@ export default function AdminHome() {
           <Card
             className="xl:absolute xl:inset-0"
             title="Reschedule requests"
-            subtitle="Workers asking to move a shift"
+            subtitle="Workers asking to move a site visit"
             bodyClass="min-h-0"
             action={rescheduleRequests.length > 0 && (
               <span className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md bg-amber-50 text-amber-700 text-xs font-semibold ring-1 ring-inset ring-amber-200 whitespace-nowrap">
@@ -797,7 +801,9 @@ export default function AdminHome() {
                         <Avatar name={req.worker_name} seed={req.id} />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-900 truncate">{req.worker_name}</p>
-                          <p className="text-xs text-slate-500">{req.schedule_code}</p>
+                          <p className="text-xs text-slate-500 truncate">
+                            {req.visit_label || 'Site visit'}{req.job_order_code ? ` · ${req.job_order_code}` : ''}{req.client_name ? ` · ${req.client_name}` : ''}
+                          </p>
                         </div>
                       </div>
                       {req.reason && <p className="mt-2.5 text-sm text-slate-600 line-clamp-2">“{req.reason}”</p>}
@@ -811,6 +817,9 @@ export default function AdminHome() {
                           {fmtDateTime(req.new_start_time)} – {fmtDateTime(req.new_end_time)}
                         </p>
                       </div>
+                      {reviewError?.id === req.id && (
+                        <p className="mt-2.5 flex items-start gap-1.5 text-xs text-red-600"><AlertTriangle size={13} {...ICON} className="flex-shrink-0 mt-px" />{reviewError.msg}</p>
+                      )}
                       <div className="mt-3 flex gap-2">
                         <button
                           disabled={saving}
@@ -853,7 +862,7 @@ export default function AdminHome() {
           )}
         </Card>
 
-        <Card title="Scheduling" subtitle="Shifts across all job sites" action={<LinkButton onClick={() => navigate('/admin/scheduling')}>Open</LinkButton>}>
+        <Card title="Site visits" subtitle="Ocular and progress inspections" action={<LinkButton onClick={() => navigate('/admin/scheduling')}>Open</LinkButton>}>
           {loading ? (
             <div className="space-y-3"><Skel className="h-16 w-full" /><Skel className="h-16 w-full" /></div>
           ) : (
@@ -862,14 +871,14 @@ export default function AdminHome() {
                 <span className="w-9 h-9 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center"><CalendarClock size={18} {...ICON} /></span>
                 <div>
                   <p className="text-xl font-semibold text-slate-900 tabular-nums"><Num value={counts.schedules} /></p>
-                  <p className="text-xs text-slate-500">Active schedules</p>
+                  <p className="text-xs text-slate-500">Upcoming visits</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3">
                 <span className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center"><Clock size={18} {...ICON} /></span>
                 <div>
                   <p className="text-xl font-semibold text-slate-900 tabular-nums"><Num value={rescheduleRequests.length} /></p>
-                  <p className="text-xs text-slate-500">Awaiting your review</p>
+                  <p className="text-xs text-slate-500">Reschedule requests</p>
                 </div>
               </div>
             </div>

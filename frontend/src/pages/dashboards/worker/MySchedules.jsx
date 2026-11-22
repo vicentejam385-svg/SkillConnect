@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import {
-  RefreshCw, CheckCircle2, AlertCircle, Calendar, X, ChevronLeft, ChevronRight,
-  Clock, User, FileText, Eye, CalendarClock, Timer,
+  RefreshCw, CheckCircle2, AlertCircle, Calendar, X, Clock, User, FileText, Eye, CalendarClock,
+  MapPin, Briefcase, Smartphone, ChevronDown, ClipboardCheck, Hammer, Hourglass,
 } from 'lucide-react'
-import { useAuth } from '../../../context/AuthContext'
-import { apiGet } from '../../../utils/api'
+import { apiGet, apiPost } from '../../../utils/api'
 
 const ICON = { strokeWidth: 1.75 }
-const API  = 'https://saddlebrown-swan-877763.hostingersite.com/backend/api'
-const SCH_PER_PAGE = 3
 const MIN_SKELETON_MS = 800
 
 // ── Local styles ───────────────────────────────────────────────
@@ -17,107 +16,96 @@ const styles = `
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
   .ss-page :focus-visible { outline: 2px solid #059669; outline-offset: 2px; border-radius: 8px; }
-
   @keyframes ss-shimmer { 100% { transform: translateX(100%); } }
   .ss-skel { position: relative; overflow: hidden; background: #e8edf2; border-radius: 8px; }
-  .ss-skel::after {
-    content: ''; position: absolute; inset: 0; transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent);
-    animation: ss-shimmer 1.2s infinite;
-  }
-  @keyframes ss-in     { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-  @keyframes ss-slide  { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  .ss-skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.85), transparent); animation: ss-shimmer 1.2s infinite; }
+  @keyframes ss-in     { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
   @keyframes ss-fadein { from { opacity: 0; } to { opacity: 1; } }
   @keyframes ss-modal  { from { opacity: 0; transform: translateY(18px) scale(.95); } to { opacity: 1; transform: none; } }
-  @keyframes ss-pulse  { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.5); } 70%,100% { box-shadow: 0 0 0 7px rgba(16,185,129,0); } }
-  @keyframes ss-float  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
   @keyframes ss-shake  { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-  @keyframes ss-toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-
-  .ss-rise   { animation: ss-in .7s cubic-bezier(.16,1,.3,1) both; }
-  .ss-slide  { animation: ss-slide .55s cubic-bezier(.16,1,.3,1) both; }
-  .ss-fadein { animation: ss-fadein .35s ease both; }
-  .ss-modal  { animation: ss-modal .4s cubic-bezier(.16,1,.3,1) both; }
-  .ss-float  { animation: ss-float 3.6s ease-in-out infinite; }
+  .ss-rise   { animation: ss-in .6s cubic-bezier(.16,1,.3,1) both; }
+  .ss-fadein { animation: ss-fadein .3s ease both; }
+  .ss-modal  { animation: ss-modal .35s cubic-bezier(.16,1,.3,1) both; }
   .ss-shake  { animation: ss-shake .35s ease; }
-  .ss-dot-live { animation: ss-pulse 1.8s infinite; }
-  .ss-toast-bar { transform-origin: left; animation: ss-toast-bar 3.5s linear forwards; }
-
-  .ss-card { position: relative; transition: transform .35s cubic-bezier(.16,1,.3,1), box-shadow .35s, border-color .35s; }
-  .ss-card::before {
-    content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px; border-radius: 0 3px 3px 0;
-    background: var(--rail, #cbd5e1); transform: scaleY(.4); opacity: .6;
-    transition: transform .45s cubic-bezier(.16,1,.3,1), opacity .3s;
-  }
-  .ss-card:hover { transform: translateY(-3px); border-color: #cbd5e1; box-shadow: 0 18px 32px -18px rgba(16,24,40,.28); }
-  .ss-card:hover::before { transform: scaleY(1); opacity: 1; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .ss-skel::after, .ss-rise, .ss-slide, .ss-fadein, .ss-modal, .ss-float, .ss-shake, .ss-dot-live, .ss-toast-bar { animation: none; }
-    .ss-card, .ss-card::before { transition: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .ss-skel::after, .ss-rise, .ss-fadein, .ss-modal, .ss-shake { animation: none; } }
 `
 
 const Skel = ({ className = '' }) => <div className={`ss-skel ${className}`} />
 
 // ── Helpers ────────────────────────────────────────────────────
-const toDate = s => {
-  if (!s) return null
-  const d = new Date(String(s).slice(0, 16).replace(' ', 'T'))
-  return isNaN(d) ? null : d
-}
-const fmtDateTime = s => {
-  const d = toDate(s)
-  return d ? d.toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
-}
-const fmtTime = s => {
-  const d = toDate(s)
-  return d ? d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '—'
-}
-const duration = (a, b) => {
-  const s = toDate(a), e = toDate(b)
-  if (!s || !e || e <= s) return null
-  const mins = Math.round((e - s) / 60000)
-  const h = Math.floor(mins / 60), m = mins % 60
-  if (h >= 24) { const d = Math.floor(h / 24); return `${d} day${d > 1 ? 's' : ''}` }
-  return [h && `${h} hr`, m && `${m} min`].filter(Boolean).join(' ') || null
-}
+const pad = n => String(n).padStart(2, '0')
+const toDate = s => { if (!s) return null; const d = new Date(String(s).slice(0, 16).replace(' ', 'T')); return isNaN(d) ? null : d }
+const fmtDate = (s, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => { if (!s) return '—'; const d = toDate(String(s).length === 10 ? s + ' 00:00' : s); return d ? d.toLocaleDateString('en-PH', opts) : '—' }
+const fmtTime = s => { const d = toDate(s); return d ? d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '—' }
+const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const isWeekend = dateStr => { const d = new Date(dateStr + 'T00:00'); return d.getDay() === 0 || d.getDay() === 6 }
+const addMinutes = (time, mins) => { const [h, m] = time.split(':').map(Number); const t = h * 60 + m + mins; return `${pad(Math.floor(t / 60) % 24)}:${pad(t % 60)}` }
 
-// Upcoming / Today / In progress / Past, derived from times
-function phase(sc) {
-  const s = toDate(sc.start_time), e = toDate(sc.end_time), now = new Date()
-  if (!s) return 'Scheduled'
+const TYPE_LABEL = { ocular: 'Ocular inspection', progress: 'Progress inspection', other: 'Site visit' }
+const typeLabel = t => TYPE_LABEL[t] || 'Site visit'
+const OPEN = ['Pending', 'Scheduled', 'In Progress']
+
+function visitPhase(v) {
+  if (v.status === 'Cancelled') return 'Cancelled'
+  if (v.status === 'Complete') return 'Done'
+  const s = toDate(v.start_time), e = toDate(v.end_time), now = new Date()
   if (e && now > e) return 'Past'
-  if (now >= s) return 'In progress'
-  return s.toDateString() === now.toDateString() ? 'Today' : 'Upcoming'
+  if (s && now >= s) return 'Now'
+  return s && s.toDateString() === now.toDateString() ? 'Today' : 'Upcoming'
 }
 const PHASE = {
-  'In progress': ['bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500', '#10b981', true],
-  'Today':       ['bg-amber-50 text-amber-700 ring-amber-200',       'bg-amber-500',   '#f59e0b', false],
-  'Upcoming':    ['bg-cyan-50 text-cyan-700 ring-cyan-200',          'bg-cyan-500',    '#06b6d4', false],
-  'Scheduled':   ['bg-slate-50 text-slate-600 ring-slate-200',       'bg-slate-400',   '#94a3b8', false],
-  'Past':        ['bg-slate-50 text-slate-500 ring-slate-200',       'bg-slate-300',   '#cbd5e1', false],
+  Now:       'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  Today:     'bg-amber-50 text-amber-700 ring-amber-200',
+  Upcoming:  'bg-cyan-50 text-cyan-700 ring-cyan-200',
+  Past:      'bg-slate-50 text-slate-500 ring-slate-200',
+  Done:      'bg-blue-50 text-blue-700 ring-blue-200',
+  Cancelled: 'bg-red-50 text-red-700 ring-red-200',
 }
+const PhaseBadge = ({ name }) => (
+  <span className={`inline-flex items-center px-2.5 py-1 rounded-full ring-1 ring-inset text-xs font-medium whitespace-nowrap ${PHASE[name] || PHASE.Past}`}>{name}</span>
+)
 
-function PhaseBadge({ name }) {
-  const [cls, dot, , live] = PHASE[name] || PHASE.Scheduled
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ring-1 ring-inset text-xs font-medium whitespace-nowrap ${cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dot} ${live ? 'ss-dot-live' : ''}`} />{name}
-    </span>
-  )
-}
-
-// ── Small UI pieces ────────────────────────────────────────────
 function Toast({ toast }) {
   if (!toast) return null
   const ok = toast.type === 'success'
-  return (
-    <div role="status" className={`ss-slide fixed bottom-5 right-5 z-[60] overflow-hidden flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium shadow-[0_16px_40px_-10px_rgba(16,24,40,0.3)] bg-white
+  return createPortal(
+    <div role="status" className={`ss-fadein fixed bottom-5 right-5 z-[1100] flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium shadow-lg bg-white max-w-sm
       ${ok ? 'border-emerald-200 text-emerald-800' : 'border-red-200 text-red-700'}`}>
-      {ok ? <CheckCircle2 size={18} {...ICON} className="text-emerald-600" /> : <AlertCircle size={18} {...ICON} className="text-red-500" />}
+      {ok ? <CheckCircle2 size={18} {...ICON} className="text-emerald-600 flex-shrink-0" /> : <AlertCircle size={18} {...ICON} className="text-red-500 flex-shrink-0" />}
       {toast.msg}
-      <span className={`ss-toast-bar absolute left-0 bottom-0 h-0.5 w-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+    </div>,
+    document.body
+  )
+}
+
+function Modal({ onClose, children, maxW = 'max-w-md' }) {
+  useEffect(() => {
+    const onKey = e => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return createPortal(
+    <div className="ss-fadein fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-[1px]">
+      <div role="dialog" aria-modal="true" className={`ss-modal relative w-full ${maxW} max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden`}>
+        {children}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function ModalHeader({ title, sub, icon: Icon, onClose }) {
+  return (
+    <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="w-11 h-11 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0"><Icon size={20} {...ICON} /></span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-slate-900 tracking-tight truncate">{title}</h2>
+          {sub && <p className="text-xs text-slate-500 mt-0.5 truncate">{sub}</p>}
+        </div>
+      </div>
+      <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X size={18} {...ICON} /></button>
     </div>
   )
 }
@@ -134,326 +122,262 @@ function InfoItem({ icon: Icon, label, value }) {
   )
 }
 
-function Field({ label, value }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs font-medium text-slate-400 mb-1">{label}</p>
-      <p className="text-sm font-medium text-slate-800 break-words">{value || '—'}</p>
-    </div>
-  )
-}
-
-function Modal({ onBackdrop, maxW = 'max-w-md', children }) {
-  return (
-    <div className="ss-fadein fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
-      onMouseDown={e => { if (onBackdrop && e.target === e.currentTarget) onBackdrop() }}>
-      <div role="dialog" aria-modal="true"
-        className={`ss-modal relative w-full ${maxW} max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-[0_32px_80px_-20px_rgba(16,24,40,0.45)] overflow-hidden`}>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function ModalHeader({ title, sub, mono, icon: Icon, onClose, badge }) {
-  return (
-    <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100 bg-gradient-to-br from-emerald-50/80 via-white to-white">
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_8px_16px_-8px_rgba(5,150,105,.7)]"><Icon size={20} {...ICON} /></span>
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-slate-900 tracking-tight truncate">{title}</h2>
-          <p className={`text-xs text-slate-500 mt-0.5 truncate ${mono ? 'font-mono' : ''}`}>{sub}</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {badge}
-        <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 hover:rotate-90 active:scale-90 transition duration-300">
-          <X size={18} {...ICON} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
 const inputCls = 'w-full h-10 rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-sm text-slate-800 placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10'
 
-function SchedulesSkeleton() {
-  return (
-    <div className="space-y-4">
-      {[0, 1, 2].map(i => (
-        <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 flex gap-4">
-          <Skel className="w-16 h-[72px] rounded-xl flex-shrink-0" />
-          <div className="flex-1 space-y-3">
-            <div className="flex justify-between"><Skel className="h-4 w-40" /><Skel className="h-6 w-20 rounded-full" /></div>
-            <Skel className="h-3 w-3/4" />
-            <Skel className="h-14 w-full rounded-xl" />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── MY SCHEDULES ───────────────────────────────────────────────
+// ── MY SCHEDULE ────────────────────────────────────────────────
 export default function MySchedules() {
-  const { user } = useAuth()
-  const [toast,            setToast]            = useState(null)
-  const [schedules,        setSchedules]        = useState([])
-  const [loading,          setLoading]          = useState(true)
-  const [viewSchedule,     setViewSchedule]     = useState(null)
-  const [rescheduleJob,    setRescheduleJob]    = useState(null)
-  const [rescheduleForm,   setRescheduleForm]   = useState({ start_time: '', end_time: '', reason: '' })
-  const [rescheduleSaving, setRescheduleSaving] = useState(false)
-  const [formError,        setFormError]        = useState(null)
-  const [shakeKey,         setShakeKey]         = useState(0)
-  const [schPage,          setSchPage]          = useState(1)
+  const navigate = useNavigate()
+  const [visits,  setVisits]  = useState([])
+  const [jobs,    setJobs]    = useState([])
+  const [loading, setLoading] = useState(true)
+  const [view,    setView]    = useState('upcoming')
+  const [toast,   setToast]   = useState(null)
+  const [open,    setOpen]    = useState(null)   // visit details
+  const [moving,  setMoving]  = useState(null)   // visit to reschedule
+
+  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3800) }
+
+  const load = () => Promise.all([
+    apiGet('/api/schedules/list.php',  { per_page: 200, mine: 1 }).then(d => setVisits(d.schedules || [])),
+    apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 }).then(d => setJobs(d.job_orders || [])),
+  ])
 
   useEffect(() => {
     const t0 = Date.now()
-    apiGet('/api/workers/list.php', { per_page: 100 })
-      .then(wData => {
-        const worker = (wData.workers || []).find(w => String(w.id) === String(user?.id))
-        if (!worker) return setSchedules([])
-        return apiGet('/api/schedules/list.php', { per_page: 100 }).then(d => {
-          // Only this worker's own schedules
-          const mine = (d.schedules || []).filter(sc => String(sc.worker_user_id ?? sc.worker_contact_id) === String(worker.id))
-          setSchedules(mine)
-        })
-      })
-      .catch(() => {})
+    load().catch(() => showToast('Could not load your schedule.', 'error'))
       .finally(() => setTimeout(() => setLoading(false), Math.max(0, MIN_SKELETON_MS - (Date.now() - t0))))
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Esc closes modals · toast auto-hides
-  useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape') { setViewSchedule(null); setRescheduleJob(null); setFormError(null) } }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
-  useEffect(() => {
-    if (!toast) return
-    const id = setTimeout(() => setToast(null), 3500)
-    return () => clearTimeout(id)
-  }, [toast])
+  const now = new Date()
+  const todayKey = dayKey(now)
+  const shown = useMemo(() => {
+    const up = v => OPEN.includes(v.status) && toDate(v.end_time) >= new Date()
+    const list = view === 'upcoming' ? visits.filter(up) : visits.filter(v => !up(v))
+    return [...list].sort((a, b) => view === 'upcoming' ? String(a.start_time).localeCompare(b.start_time) : String(b.start_time).localeCompare(a.start_time))
+  }, [visits, view])
 
-  const openReschedule = sc => {
-    setFormError(null)
-    setRescheduleJob(sc)
-    setRescheduleForm({
-      start_time: sc.start_time?.slice(0, 16).replace(' ', 'T') || '',
-      end_time:   sc.end_time?.slice(0, 16).replace(' ', 'T')   || '',
-      reason: '',
-    })
-  }
-  const closeReschedule = () => { setRescheduleJob(null); setFormError(null) }
-  const fail = msg => { setFormError(msg); setShakeKey(k => k + 1) }
+  // Work days come from the job orders assigned to this worker
+  const workJobs = jobs
+    .filter(j => ['Scheduled', 'In Progress', 'Active'].includes(j.status) && j.start_date && j.end_date && j.end_date.slice(0, 10) >= todayKey)
+    .sort((a, b) => String(a.start_date).localeCompare(b.start_date))
 
-  const sendReschedule = async () => {
-    if (!rescheduleForm.start_time)     return fail('Set a new start time.')
-    if (!rescheduleForm.end_time)       return fail('Set a new end time.')
-    if (rescheduleForm.end_time <= rescheduleForm.start_time) return fail('The end time must be after the start time.')
-    if (!rescheduleForm.reason.trim())  return fail('Add a reason so your supervisor can review the request.')
-    setFormError(null)
-    setRescheduleSaving(true)
-    try {
-      const token = JSON.parse(localStorage.getItem('sc_user'))?.token
-      const res = await fetch(`${API}/schedules/reschedule-request.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          schedule_id: rescheduleJob.id,
-          schedule_code: rescheduleJob.schedule_code,
-          new_start_time: rescheduleForm.start_time,
-          new_end_time: rescheduleForm.end_time,
-          reason: rescheduleForm.reason,
-        }),
-      })
-      const data = await res.json()
-      if (!data.success) throw new Error(data.error || 'Request failed')
-      setRescheduleJob(null)
-      setToast({ msg: 'Reschedule request sent', type: 'success' })
-    } catch (err) {
-      setToast({ msg: 'Could not send request: ' + err.message, type: 'error' })
-    }
-    setRescheduleSaving(false)
-  }
-
-  const totalSchPages = Math.ceil(schedules.length / SCH_PER_PAGE)
-  const pagedSch = schedules.slice((schPage - 1) * SCH_PER_PAGE, schPage * SCH_PER_PAGE)
-  const upcomingCount = schedules.filter(s => ['Upcoming', 'Today', 'In progress'].includes(phase(s))).length
+  const upcomingCount = visits.filter(v => OPEN.includes(v.status) && toDate(v.end_time) >= now).length
 
   return (
     <div className="ss-page w-full space-y-6">
       <style>{styles}</style>
       <Toast toast={toast} />
 
-      {/* Header */}
       <div className="ss-rise">
         <h1 className="text-2xl sm:text-[30px] leading-tight font-semibold text-slate-900 tracking-tight">Schedule</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          {loading || schedules.length === 0
-            ? 'Your upcoming assignments'
-            : `${upcomingCount} upcoming of ${schedules.length} assignment${schedules.length > 1 ? 's' : ''}`}
-        </p>
+        <p className="text-sm text-slate-500 mt-1">Your work days and site visits. Site visits are Monday to Friday.</p>
       </div>
 
-      {loading ? <SchedulesSkeleton /> : schedules.length === 0 ? (
-        <div className="ss-fadein bg-white rounded-2xl border border-dashed border-slate-300 py-16 flex flex-col items-center text-center px-6">
-          <div className="ss-float w-14 h-14 rounded-2xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center"><Calendar size={24} {...ICON} /></div>
-          <p className="mt-4 text-sm font-semibold text-slate-900">No schedules assigned yet</p>
-          <p className="text-sm text-slate-500 mt-1 max-w-xs">When an assignment is scheduled for you, its date and time will show up here.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {pagedSch.map((sc, i) => {
-            const ph = phase(sc)
-            const start = toDate(sc.start_time)
-            const dur = duration(sc.start_time, sc.end_time)
-            return (
-              <article key={`${schPage}-${sc.id}`} style={{ animationDelay: `${i * 120}ms`, '--rail': PHASE[ph][2] }}
-                className={`ss-rise ss-card bg-white rounded-2xl border border-slate-200 p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] ${ph === 'Past' ? 'opacity-80' : ''}`}>
-                <div className="flex gap-4">
-                  {/* Date block */}
-                  <div className="hidden sm:flex w-16 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 py-2.5 h-[72px]">
-                    <span className="text-[11px] font-medium leading-none">{start ? start.toLocaleDateString('en-PH', { month: 'short' }) : '—'}</span>
-                    <span className="text-2xl font-semibold leading-none mt-1 tabular-nums">{start ? start.getDate() : '—'}</span>
+      {/* Work days */}
+      <section className="ss-rise bg-white rounded-2xl border border-slate-200 overflow-hidden" style={{ animationDelay: '80ms' }}>
+        <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900">Work days</h2>
+            <p className="text-xs text-slate-500 mt-0.5">From your job orders. Ask the admin if these dates need to change.</p>
+          </div>
+          <button onClick={() => navigate('/worker/job-orders')} className="text-[13px] font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap">My job orders</button>
+        </header>
+        {loading ? (
+          <div className="p-5 space-y-3"><Skel className="h-12 w-full" /><Skel className="h-12 w-2/3" /></div>
+        ) : workJobs.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-500">No upcoming work days.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {workJobs.map(j => {
+              const active = j.start_date.slice(0, 10) <= todayKey
+              return (
+                <li key={j.id} className="flex items-center gap-4 px-5 py-3.5">
+                  <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ring-1 ${active ? 'bg-emerald-50 text-emerald-600 ring-emerald-100' : 'bg-slate-50 text-slate-500 ring-slate-200'}`}><Hammer size={17} {...ICON} /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">{j.job_order_code} · {j.service || j.description || j.contract_type || 'Job'}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{fmtDate(j.start_date.slice(0, 10), { month: 'short', day: 'numeric' })} – {fmtDate(j.end_date.slice(0, 10))} · {j.client_address || '—'}</p>
                   </div>
+                  <span className={`text-xs font-medium whitespace-nowrap ${active ? 'text-emerald-700' : 'text-slate-500'}`}>{active ? 'Working now' : 'Upcoming'}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="font-mono text-[15px] font-semibold text-slate-900 truncate">{sc.schedule_code}</h3>
-                        <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{sc.description || 'No description'}</p>
+      {/* Site visits */}
+      <section className="space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900">Site visits</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{loading ? 'Loading…' : `${upcomingCount} upcoming`}</p>
+          </div>
+          <div className="relative">
+            <select value={view} onChange={e => setView(e.target.value)}
+              className="appearance-none h-9 pl-3 pr-8 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 shadow-sm focus:outline-none focus:border-emerald-500 cursor-pointer">
+              <option value="upcoming">Upcoming</option>
+              <option value="past">Past and cancelled</option>
+            </select>
+            <ChevronDown size={14} {...ICON} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3">{[0, 1].map(i => <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 flex gap-4"><Skel className="w-16 h-[72px] rounded-xl" /><div className="flex-1 space-y-3"><Skel className="h-4 w-40" /><Skel className="h-12 w-full rounded-xl" /></div></div>)}</div>
+        ) : shown.length === 0 ? (
+          <div className="ss-fadein bg-white rounded-2xl border border-dashed border-slate-300 py-14 flex flex-col items-center text-center px-6">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center"><Calendar size={24} {...ICON} /></div>
+            <p className="mt-4 text-sm font-semibold text-slate-900">{view === 'upcoming' ? 'No upcoming site visits' : 'No past visits'}</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-xs">When the admin plans a visit for you, it shows here and in your Inbox.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {shown.map((v, i) => {
+              const ph = visitPhase(v)
+              const start = toDate(v.start_time)
+              const canMove = OPEN.includes(v.status) && start > now && !Number(v.pending_requests)
+              return (
+                <article key={v.id} style={{ animationDelay: `${i * 80}ms` }}
+                  className={`ss-rise bg-white rounded-2xl border border-slate-200 p-5 ${['Past', 'Done', 'Cancelled'].includes(ph) ? 'opacity-80' : ''}`}>
+                  <div className="flex gap-4">
+                    <div className="hidden sm:flex w-16 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 h-[72px]">
+                      <span className="text-[11px] font-medium leading-none">{start ? start.toLocaleDateString('en-PH', { month: 'short' }) : '—'}</span>
+                      <span className="text-2xl font-semibold leading-none mt-1 tabular-nums">{start ? start.getDate() : '—'}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className={`text-[15px] font-semibold text-slate-900 truncate ${ph === 'Cancelled' ? 'line-through text-slate-500' : ''}`}>{typeLabel(v.visit_type)}</h3>
+                          <p className="text-xs text-slate-500 mt-0.5">{v.job_order_code ? `${v.job_order_code}${v.service ? ` · ${v.service}` : ''}` : v.schedule_code}</p>
+                        </div>
+                        <PhaseBadge name={ph} />
                       </div>
-                      <PhaseBadge name={ph} />
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-xl bg-slate-50/80 ring-1 ring-slate-100 p-3.5">
-                      <InfoItem icon={Clock}  label="Start" value={fmtDateTime(sc.start_time)} />
-                      <InfoItem icon={Clock}  label="End"   value={fmtDateTime(sc.end_time)} />
-                      <InfoItem icon={User}   label="Client" value={sc.client_name} />
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                      <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                        {dur && <><Timer size={13} {...ICON} /> {fmtTime(sc.start_time)} – {fmtTime(sc.end_time)} · {dur}</>}
-                      </p>
-                      <div className="flex gap-2">
-                        <button onClick={() => setViewSchedule(sc)}
-                          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-[.97] transition-all">
-                          <Eye size={15} {...ICON} /> View details
+                      <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-3.5 rounded-xl bg-slate-50/80 ring-1 ring-slate-100 p-3.5">
+                        <InfoItem icon={Clock} label="When" value={start ? `${start.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(v.start_time)} – ${fmtTime(v.end_time)}` : '—'} />
+                        <InfoItem icon={MapPin} label="Address" value={v.address} />
+                      </div>
+                      {Number(v.pending_requests) > 0 && (
+                        <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-600"><Hourglass size={13} {...ICON} className="text-amber-500" />You asked to move this visit. Waiting for the admin.</p>
+                      )}
+                      <div className="mt-3.5 flex flex-wrap justify-end gap-2">
+                        <button onClick={() => setOpen(v)} className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50">
+                          <Eye size={15} {...ICON} /> Details
                         </button>
-                        <button onClick={() => openReschedule(sc)} disabled={ph === 'Past'}
-                          className="group inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-medium shadow-[0_6px_14px_-6px_rgba(245,158,11,.8)] active:scale-[.97] transition-all">
-                          <CalendarClock size={15} {...ICON} className="group-hover:rotate-12 transition-transform" /> Reschedule
-                        </button>
+                        {canMove && (
+                          <button onClick={() => setMoving(v)} className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50">
+                            <CalendarClock size={15} {...ICON} /> Request reschedule
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
-              </article>
-            )
-          })}
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
-          {/* Pagination */}
-          {totalSchPages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <p className="text-xs text-slate-500">
-                Showing {(schPage - 1) * SCH_PER_PAGE + 1}–{Math.min(schPage * SCH_PER_PAGE, schedules.length)} of {schedules.length} schedules
-              </p>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setSchPage(p => Math.max(1, p - 1))} disabled={schPage === 1} aria-label="Previous page"
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-90 transition">
-                  <ChevronLeft size={15} {...ICON} />
-                </button>
-                {Array.from({ length: totalSchPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setSchPage(p)} aria-current={schPage === p ? 'page' : undefined}
-                    className={`w-8 h-8 flex items-center justify-center rounded-lg border text-[13px] font-medium tabular-nums transition-all active:scale-90
-                      ${schPage === p ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
-                    {p}
-                  </button>
-                ))}
-                <button onClick={() => setSchPage(p => Math.min(totalSchPages, p + 1))} disabled={schPage === totalSchPages} aria-label="Next page"
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-90 transition">
-                  <ChevronRight size={15} {...ICON} />
-                </button>
+      {open && (
+        <Modal onClose={() => setOpen(null)} maxW="max-w-lg">
+          <ModalHeader icon={ClipboardCheck} title={typeLabel(open.visit_type)} sub={`${open.schedule_code || ''}${open.job_order_code ? ` · ${open.job_order_code}` : ''}`} onClose={() => setOpen(null)} />
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl bg-slate-50/80 ring-1 ring-slate-100 p-4">
+              <InfoItem icon={Calendar}   label="Date"   value={fmtDate(open.start_time, { weekday: 'long', month: 'long', day: 'numeric' })} />
+              <InfoItem icon={Clock}      label="Time"   value={`${fmtTime(open.start_time)} – ${fmtTime(open.end_time)}`} />
+              <InfoItem icon={Briefcase}  label="Job"    value={open.job_order_code ? `${open.job_order_code}${open.service ? ` · ${open.service}` : ''}` : null} />
+              <InfoItem icon={User}       label="Client" value={open.client_name} />
+              <InfoItem icon={Smartphone} label="Client mobile" value={open.client_mobile} />
+              <InfoItem icon={MapPin}     label="Address" value={open.address} />
+            </div>
+            {open.description && (
+              <div className="mt-5">
+                <p className="text-sm font-semibold text-slate-900 mb-1.5 flex items-center gap-1.5"><FileText size={14} {...ICON} className="text-emerald-600" />Notes from the admin</p>
+                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{open.description}</p>
               </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Reschedule Modal ── */}
-      {rescheduleJob && (
-        <Modal>
-          <ModalHeader icon={CalendarClock} title="Request reschedule" sub={rescheduleJob.schedule_code} mono onClose={closeReschedule} />
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-            <div className="rounded-xl bg-slate-50/80 ring-1 ring-slate-100 p-3.5 text-xs text-slate-500">
-              Current slot: <span className="font-medium text-slate-700">{fmtDateTime(rescheduleJob.start_time)}</span> to <span className="font-medium text-slate-700">{fmtDateTime(rescheduleJob.end_time)}</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="rs-start" className="block text-xs font-medium text-slate-600 mb-1.5">New start time</label>
-                <input id="rs-start" type="datetime-local" className={inputCls}
-                  value={rescheduleForm.start_time}
-                  onChange={e => setRescheduleForm(p => ({ ...p, start_time: e.target.value }))} />
-              </div>
-              <div>
-                <label htmlFor="rs-end" className="block text-xs font-medium text-slate-600 mb-1.5">New end time</label>
-                <input id="rs-end" type="datetime-local" className={inputCls}
-                  value={rescheduleForm.end_time}
-                  onChange={e => setRescheduleForm(p => ({ ...p, end_time: e.target.value }))} />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="rs-reason" className="block text-xs font-medium text-slate-600 mb-1.5">Reason <span className="text-red-500">*</span></label>
-              <textarea id="rs-reason" rows={3} placeholder="Tell us why you need a different time"
-                className={`${inputCls} h-auto py-2.5 resize-none`}
-                value={rescheduleForm.reason}
-                onChange={e => setRescheduleForm(p => ({ ...p, reason: e.target.value }))} />
-            </div>
-            {formError && (
-              <p key={shakeKey} className="ss-shake flex items-center gap-1.5 text-xs text-red-600 bg-red-50 ring-1 ring-red-200 rounded-lg px-3 py-2">
-                <AlertCircle size={13} {...ICON} className="flex-shrink-0" /> {formError}
-              </p>
             )}
           </div>
-          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex gap-3 justify-end">
-            <button onClick={closeReschedule} disabled={rescheduleSaving}
-              className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 active:scale-[.97] transition-all">
-              Cancel
-            </button>
-            <button onClick={sendReschedule} disabled={rescheduleSaving}
-              className="inline-flex items-center justify-center gap-2 h-9 px-5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-70 text-white text-[13px] font-semibold shadow-[0_6px_14px_-6px_rgba(245,158,11,.8)] active:scale-[.97] transition-all">
-              {rescheduleSaving && <RefreshCw size={14} {...ICON} className="animate-spin" />}
-              {rescheduleSaving ? 'Sending…' : 'Send request'}
-            </button>
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex justify-end">
+            <button onClick={() => setOpen(null)} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50">Close</button>
           </div>
         </Modal>
       )}
 
-      {/* ── View Schedule Modal ── */}
-      {viewSchedule && (
-        <Modal maxW="max-w-xl" onBackdrop={() => setViewSchedule(null)}>
-          <ModalHeader icon={Calendar} title={viewSchedule.schedule_code} sub={viewSchedule.description || 'No description'}
-            mono onClose={() => setViewSchedule(null)} badge={<PhaseBadge name={phase(viewSchedule)} />} />
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 rounded-xl bg-slate-50/80 ring-1 ring-slate-100 p-4">
-              <Field label="Client"     value={viewSchedule.client_name} />
-              <Field label="Duration"   value={duration(viewSchedule.start_time, viewSchedule.end_time)} />
-              <Field label="Start time" value={fmtDateTime(viewSchedule.start_time)} />
-              <Field label="End time"   value={fmtDateTime(viewSchedule.end_time)} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-1.5"><FileText size={14} {...ICON} className="text-emerald-600" /> Description</p>
-              <p className="text-sm text-slate-600 leading-relaxed">{viewSchedule.description || '—'}</p>
-            </div>
-          </div>
-          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex justify-end">
-            <button onClick={() => setViewSchedule(null)} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 active:scale-[.97] transition-all">Close</button>
-          </div>
-        </Modal>
+      {moving && (
+        <RescheduleModal visit={moving} onClose={() => setMoving(null)}
+          onSent={msg => { setMoving(null); showToast(msg); load().catch(() => {}) }} />
       )}
     </div>
+  )
+}
+
+// ── Ask to move a site visit ───────────────────────────────────
+function RescheduleModal({ visit, onClose, onSent }) {
+  const s = toDate(visit.start_time), e = toDate(visit.end_time)
+  const length = s && e ? Math.round((e - s) / 60000) : 120
+  const [date,   setDate]   = useState('')
+  const [time,   setTime]   = useState(s ? `${pad(s.getHours())}:${pad(s.getMinutes())}` : '09:00')
+  const [reason, setReason] = useState('')
+  const [error,  setError]  = useState(null)
+  const [shake,  setShake]  = useState(0)
+  const [busy,   setBusy]   = useState(false)
+  const todayKey = dayKey(new Date())
+  const endTime = addMinutes(time || '09:00', length)
+
+  const fail = msg => { setError(msg); setShake(k => k + 1) }
+
+  const send = async () => {
+    if (!date) return fail('Pick a new date.')
+    if (isWeekend(date)) return fail('Site visits are Monday to Friday only.')
+    if (date < todayKey) return fail('Pick today or a later date.')
+    if (!time) return fail('Pick a new start time.')
+    if (endTime <= time) return fail('The visit must end on the same day.')
+    if (!reason.trim()) return fail('Add a reason so the admin can review the request.')
+    setBusy(true); setError(null)
+    try {
+      const res = await apiPost('/api/schedules/reschedule-request.php', {
+        schedule_id: visit.id, new_start_time: `${date} ${time}:00`, new_end_time: `${date} ${endTime}:00`, reason: reason.trim(),
+      })
+      if (res?.success === false) throw new Error(res.error)
+      onSent(res?.message || 'Request sent.')
+    } catch (err) { fail(err?.message || 'Could not send the request.') }
+    setBusy(false)
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <ModalHeader icon={CalendarClock} title="Request reschedule" sub={`${typeLabel(visit.visit_type)} · ${fmtDate(visit.start_time)} ${fmtTime(visit.start_time)}`} onClose={onClose} />
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="rs-date" className="block text-xs font-medium text-slate-600 mb-1.5">New date</label>
+            <input id="rs-date" type="date" min={todayKey} className={inputCls} value={date} onChange={ev => setDate(ev.target.value)} />
+            {date && isWeekend(date) && <p className="text-xs text-red-600 mt-1.5">Weekends aren't allowed.</p>}
+          </div>
+          <div>
+            <label htmlFor="rs-time" className="block text-xs font-medium text-slate-600 mb-1.5">New start time</label>
+            <input id="rs-time" type="time" step={900} className={inputCls} value={time} onChange={ev => setTime(ev.target.value)} />
+            <p className="text-xs text-slate-500 mt-1.5">Same length as before. Ends at {fmtTime(`2000-01-01 ${endTime}`)}.</p>
+          </div>
+        </div>
+        <div>
+          <label htmlFor="rs-reason" className="block text-xs font-medium text-slate-600 mb-1.5">Reason <span className="text-red-500">*</span></label>
+          <textarea id="rs-reason" rows={3} maxLength={1000} placeholder="Tell the admin why you need a different time"
+            className={`${inputCls} h-auto py-2.5 resize-none`} value={reason} onChange={ev => setReason(ev.target.value)} />
+        </div>
+        {error && (
+          <p key={shake} className="ss-shake flex items-center gap-1.5 text-xs text-red-600 bg-red-50 ring-1 ring-red-200 rounded-lg px-3 py-2">
+            <AlertCircle size={13} {...ICON} className="flex-shrink-0" /> {error}
+          </p>
+        )}
+      </div>
+      <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex gap-3 justify-end">
+        <button onClick={onClose} disabled={busy} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+        <button onClick={send} disabled={busy} className="inline-flex items-center justify-center gap-2 h-9 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white text-[13px] font-semibold">
+          {busy && <RefreshCw size={14} {...ICON} className="animate-spin" />}
+          {busy ? 'Sending…' : 'Send request'}
+        </button>
+      </div>
+    </Modal>
   )
 }

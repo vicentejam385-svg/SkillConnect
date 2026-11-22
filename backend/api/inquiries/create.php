@@ -22,10 +22,15 @@ $linkedUserId = null;
 $hdr = $_SERVER['HTTP_AUTHORIZATION']
     ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
     ?? (function_exists('apache_request_headers') ? (apache_request_headers()['Authorization'] ?? '') : '');
+$adminTok = null;
 if (str_starts_with($hdr, 'Bearer ')) {
     $tok = jwtVerify(substr($hdr, 7));
     if ($tok && ($tok['role'] ?? '') === 'client') $linkedUserId = (int)$tok['sub'];
+    if ($tok && isAdminUser($tok)) $adminTok = $tok;
 }
+
+// Online (website / customer account) or walk-in (entered by the admin)
+$source = ($adminTok && ($data['source'] ?? '') === 'walk_in') ? 'walk_in' : 'online';
 
 // Use given status only if it is a real status for this entity, else use the default
 function resolveStatus(PDO $pdo, $given, string $entity, int $default): int {
@@ -92,9 +97,9 @@ if (!empty($data['email']) && !preg_match($emailRegex, $data['email'])) {
 try {
     $stmt = $pdo->prepare("
         INSERT INTO inquiries
-            (user_id, first_name, last_name, email, address, phone, mobile, description, reason, status_id)
+            (user_id, first_name, last_name, email, address, phone, mobile, description, reason, status_id, source)
         VALUES
-            (:user_id, :first_name, :last_name, :email, :address, :phone, :mobile, :description, :reason, :status_id)
+            (:user_id, :first_name, :last_name, :email, :address, :phone, :mobile, :description, :reason, :status_id, :source)
     ");
 
     $stmt->execute([
@@ -108,6 +113,7 @@ try {
         ':reason'      => trim($data['reason']),
         ':status_id'   => resolveStatus($pdo, $data['status_id'] ?? null, 'inquiry', 8), // 8 = New
         ':user_id'     => $linkedUserId,
+        ':source'      => $source,
     ]);
 
     $inqId = (int)$pdo->lastInsertId();
@@ -123,18 +129,24 @@ try {
 
     $inquiry = $rowStmt->fetch();
 
-    auditLog([
-        'actor_user_id' => $linkedUserId,
-        'actor_name'    => trim($data['first_name']) . ' ' . trim($data['last_name']),
-        'actor_type'    => $linkedUserId ? 'client' : 'guest',
+    $who = trim($data['first_name']) . ' ' . trim($data['last_name']);
+    $entry = [
         'action'        => 'CREATE',
         'module'        => 'Inquiries',
-        'description'   => 'Submitted a new inquiry (' . trim($data['reason']) . ')',
+        'description'   => ($source === 'walk_in' ? 'Added a walk-in inquiry for ' . $who : 'Submitted a new inquiry')
+                           . ' (' . trim($data['reason']) . ')',
         'target_type'   => 'inquiry',
         'target_id'     => $inqId,
         'target_label'  => $inquiry['inquiry_code'] ?? ('Inquiry #' . $inqId),
         'status'        => 'success',
-    ]);
+    ];
+    auditLog($adminTok
+        ? array_merge(auditActor($adminTok), $entry)
+        : array_merge([
+            'actor_user_id' => $linkedUserId,
+            'actor_name'    => $who,
+            'actor_type'    => $linkedUserId ? 'client' : 'guest',
+          ], $entry));
 
     http_response_code(201);
     echo json_encode(['success' => true, 'message' => 'Inquiry submitted successfully.', 'inquiry' => $inquiry]);

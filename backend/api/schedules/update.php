@@ -1,142 +1,118 @@
 <?php
+// backend/api/schedules/update.php
+// Admin changes a site visit: time, worker, notes, or status (complete / cancel / reopen).
+//   PUT { id, start_time?, end_time?, worker_user_id?, description?, visit_type?, status_id? }
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
+require_once __DIR__ . '/../../helpers/site-visits.php';
 
 handleCors();
 header('Content-Type: application/json');
 
-if (!in_array($_SERVER['REQUEST_METHOD'], ['PUT', 'PATCH'])) {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Method not allowed.']);
+function svFail(string $msg, int $code = 422): never
+{
+    http_response_code($code);
+    echo json_encode(['success' => false, 'error' => $msg]);
     exit;
 }
 
-$auth = requireAuth();
+if (!in_array($_SERVER['REQUEST_METHOD'], ['PUT', 'PATCH'], true)) svFail('Method not allowed.', 405);
 
-$body = json_decode(file_get_contents('php://input'), true);
+$auth = requireAdminAccess();
+$body = json_decode(file_get_contents('php://input'), true) ?? [];
 $id   = (int)($body['id'] ?? 0);
-
-if (!$id) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'Schedule id is required.']);
-    exit;
-}
+if (!$id) svFail('Schedule id is required.');
 
 try {
-    $pdo = getDB();
+    $pdo    = getDB();
+    $before = svLoad($pdo, $id);
+    if (!$before) svFail('Schedule not found.', 404);
 
-    $existing = $pdo->prepare(
-        "SELECT sc.*, s.label AS status_label,
-                CONCAT(w.first_name,' ',w.last_name) AS worker_name,
-                CONCAT(c.first_name,' ',c.last_name) AS client_name
-         FROM schedules sc
-         LEFT JOIN statuses s ON s.id = sc.status_id
-         LEFT JOIN users w ON w.id = sc.worker_user_id
-         LEFT JOIN users c ON c.id = sc.client_user_id
-         WHERE sc.id = ?"
-    );
-    $existing->execute([$id]);
-    $before = $existing->fetch(PDO::FETCH_ASSOC);
-    if (!$before) {
-        http_response_code(404);
-        echo json_encode(['success' => false, 'error' => 'Schedule not found.']);
-        exit;
-    }
-        // Allow status update by label name
+    // Status by label is still accepted
     if (!empty($body['status_id']) && !is_numeric($body['status_id'])) {
-        $labelStmt = $pdo->prepare("SELECT id FROM statuses WHERE entity = 'schedule' AND label = ? LIMIT 1");
-        $labelStmt->execute([$body['status_id']]);
-        $body['status_id'] = $labelStmt->fetchColumn() ?: null;
+        $q = $pdo->prepare("SELECT id FROM statuses WHERE entity = 'schedule' AND label = ? LIMIT 1");
+        $q->execute([$body['status_id']]);
+        $body['status_id'] = $q->fetchColumn() ?: null;
     }
-    // Accept old (contact) names from the frontend and map them to the real columns
     if (array_key_exists('worker_contact_id', $body) && !array_key_exists('worker_user_id', $body)) {
         $body['worker_user_id'] = $body['worker_contact_id'];
     }
-    if (array_key_exists('client_contact_id', $body) && !array_key_exists('client_user_id', $body)) {
-        $body['client_user_id'] = $body['client_contact_id'];
-    }
-    $fields = ['start_time', 'end_time', 'description', 'worker_user_id', 'client_user_id', 'status_id'];
-    $set = []; $params = [];
-    foreach ($fields as $f) {
-        if (array_key_exists($f, $body)) {
-            $set[] = "`$f` = ?";
-            $params[] = ($body[$f] === '' ? null : $body[$f]);
+
+    $new = [
+        'start_time'     => array_key_exists('start_time', $body) ? svNormalizeTime($body['start_time']) : $before['start_time'],
+        'end_time'       => array_key_exists('end_time', $body) ? svNormalizeTime($body['end_time']) : $before['end_time'],
+        'worker_user_id' => array_key_exists('worker_user_id', $body) ? ((int)$body['worker_user_id'] ?: null) : ($before['worker_user_id'] ? (int)$before['worker_user_id'] : null),
+        'description'    => array_key_exists('description', $body) ? (trim((string)$body['description']) ?: null) : $before['description'],
+        'visit_type'     => array_key_exists('visit_type', $body) ? ($body['visit_type'] ?: null) : $before['visit_type'],
+        'status_id'      => array_key_exists('status_id', $body) ? (int)$body['status_id'] : (int)$before['status_id'],
+    ];
+    if (!in_array($new['status_id'], [SV_PENDING, SV_SCHEDULED, SV_IN_PROGRESS, SV_COMPLETE, SV_CANCELLED], true)) svFail('Invalid status.');
+    if ($new['visit_type'] !== null && !in_array($new['visit_type'], ['ocular', 'progress', 'other'], true)) svFail('Invalid visit type.');
+
+    $timeChanged   = $new['start_time'] !== $before['start_time'] || $new['end_time'] !== $before['end_time'];
+    $workerChanged = (string)$new['worker_user_id'] !== (string)$before['worker_user_id'];
+    $stillOpen     = in_array($new['status_id'], svOpenStatuses(), true);
+
+    if ($stillOpen && ($timeChanged || $workerChanged || !in_array((int)$before['status_id'], svOpenStatuses(), true))) {
+        if ($err = svCheckSlot($new['start_time'], $new['end_time'])) svFail($err);
+        if (!$new['worker_user_id']) svFail('Choose who goes on the visit.');
+        if (!empty($before['job_order_id']) && $workerChanged) {
+            $jo = svLoadJob($pdo, (int)$before['job_order_id']);
+            if ($jo && ($err = svCheckWorker($pdo, $jo, $new['visit_type'] ?: 'other', (int)$new['worker_user_id']))) svFail($err);
+        }
+        if ($clash = svWorkerClash($pdo, (int)$new['worker_user_id'], $new['start_time'], $new['end_time'], $id)) {
+            svFail('This worker already has visit ' . $clash . ' at that time.');
         }
     }
 
-    if (!$set) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'error' => 'No fields to update.']);
-        exit;
-    }
+    $pdo->prepare(
+        "UPDATE schedules SET start_time = ?, end_time = ?, worker_user_id = ?, description = ?, visit_type = ?, status_id = ? WHERE id = ?"
+    )->execute([$new['start_time'], $new['end_time'], $new['worker_user_id'], $new['description'], $new['visit_type'], $new['status_id'], $id]);
 
-    $params[] = $id;
-    $pdo->prepare("UPDATE schedules SET " . implode(', ', $set) . " WHERE id = ?")->execute($params);
+    $after = svLoad($pdo, $id);
+    $code  = $before['schedule_code'] ?? ('#' . $id);
 
-    $view = $pdo->prepare(
-        "SELECT sc.*,
-                sc.worker_user_id AS worker_contact_id,
-                sc.client_user_id AS client_contact_id,
-                CONCAT(w.first_name,' ',w.last_name) AS worker_name,
-                CONCAT(c.first_name,' ',c.last_name) AS client_name,
-                s.label AS status
-         FROM schedules sc
-         LEFT JOIN users w ON w.id = sc.worker_user_id
-         LEFT JOIN users c ON c.id = sc.client_user_id
-         LEFT JOIN statuses s ON s.id = sc.status_id
-         WHERE sc.id = ?"
-    );
-    $view->execute([$id]);
-    $updated = $view->fetch();
+    // Audit: only what changed, with readable names
+    $old = []; $chg = [];
+    if ($timeChanged)   { $old['time'] = $before['start_time'] . ' – ' . $before['end_time']; $chg['time'] = $after['start_time'] . ' – ' . $after['end_time']; }
+    if ($workerChanged) { $old['worker'] = $before['worker_name'] ?: null; $chg['worker'] = $after['worker_name'] ?: null; }
+    if ((int)$before['status_id'] !== $new['status_id']) { $old['status'] = $before['status']; $chg['status'] = $after['status']; }
+    if ((string)$before['description'] !== (string)$new['description']) { $old['notes'] = $before['description']; $chg['notes'] = $new['description']; }
+    if ((string)$before['visit_type'] !== (string)$new['visit_type']) { $old['type'] = svTypeLabel($before['visit_type']); $chg['type'] = svTypeLabel($new['visit_type']); }
 
-    // Work out which fields really changed
-    $chgOld = []; $chgNew = [];
-    foreach ($fields as $f) {
-        if (!array_key_exists($f, $body)) continue;
-        $new = ($body[$f] === '' ? null : $body[$f]);
-        if ((string)($before[$f] ?? '') !== (string)($new ?? '')) {
-            $chgOld[$f] = $before[$f] ?? null;
-            $chgNew[$f] = $new;
-        }
-    }
-    // Readable labels and names instead of ids
-    if (array_key_exists('status_id', $chgNew)) {
-        $chgOld['status'] = $before['status_label'] ?? null;
-        $chgNew['status'] = $updated['status'] ?? null;
-        unset($chgOld['status_id'], $chgNew['status_id']);
-    }
-    if (array_key_exists('worker_user_id', $chgNew)) {
-        $chgOld['worker'] = trim($before['worker_name'] ?? '') ?: null;
-        $chgNew['worker'] = trim($updated['worker_name'] ?? '') ?: null;
-        unset($chgOld['worker_user_id'], $chgNew['worker_user_id']);
-    }
-    if (array_key_exists('client_user_id', $chgNew)) {
-        $chgOld['client'] = trim($before['client_name'] ?? '') ?: null;
-        $chgNew['client'] = trim($updated['client_name'] ?? '') ?: null;
-        unset($chgOld['client_user_id'], $chgNew['client_user_id']);
-    }
-
-    if ($chgNew) {
-        $statusChanged = array_key_exists('status', $chgNew);
-        $code = $before['schedule_code'] ?? ('#' . $id);
+    if ($chg) {
         auditLog(array_merge(auditActor($auth), [
-            'action'         => $statusChanged ? 'STATUS_CHANGE' : 'UPDATE',
+            'action'         => isset($chg['status']) ? 'STATUS_CHANGE' : 'UPDATE',
             'module'         => 'Schedules',
-            'description'    => $statusChanged
-                ? 'Changed schedule ' . $code . ' status from "' . ($chgOld['status'] ?? '—') . '" to "' . ($chgNew['status'] ?? '—') . '"'
-                : 'Updated schedule ' . $code . ' (' . implode(', ', array_keys($chgNew)) . ')',
+            'description'    => isset($chg['status'])
+                ? 'Changed site visit ' . $code . ' status from "' . ($old['status'] ?? '—') . '" to "' . ($chg['status'] ?? '—') . '"'
+                : 'Updated site visit ' . $code . ' (' . implode(', ', array_keys($chg)) . ')',
             'target_user_id' => $before['client_user_id'] ?? null,
             'target_type'    => 'schedule',
             'target_id'      => $id,
-            'target_label'   => $code . ' — ' . trim($before['worker_name'] ?? ''),
-            'old_values'     => $chgOld,
-            'new_values'     => $chgNew,
+            'target_label'   => $code . ' — ' . trim((string)$after['worker_name']),
+            'old_values'     => $old,
+            'new_values'     => $chg,
         ]));
     }
 
-    echo json_encode(['success' => true, 'schedule' => $updated]);
+    // Tell the workers
+    $label = svTypeLabel($after['visit_type']);
+    if ($new['status_id'] === SV_CANCELLED && (int)$before['status_id'] !== SV_CANCELLED) {
+        if ($before['worker_user_id']) svNotify($pdo, $id, 'visit_update', $label . ' cancelled', 'This site visit was cancelled.', (int)$before['worker_user_id']);
+    } elseif ($stillOpen) {
+        if ($workerChanged) {
+            if ($before['worker_user_id']) svNotify($pdo, $id, 'visit_update', $label . ' reassigned', 'This site visit was given to another worker. You no longer need to go.', (int)$before['worker_user_id'], false);
+            if ($new['worker_user_id'])    svNotify($pdo, $id, 'site_visit', 'Site visit: ' . $label, $new['description'] ?: 'You are scheduled to visit this site.');
+        } elseif ($timeChanged) {
+            svNotify($pdo, $id, 'visit_update', $label . ' moved to ' . (new DateTime($new['start_time'], jobOrderTz()))->format('M j, g:i A'),
+                'The date or time of this site visit changed.');
+        }
+    }
+
+    echo json_encode(['success' => true, 'schedule' => $after]);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => 'Database error.', 'detail' => $e->getMessage()]);

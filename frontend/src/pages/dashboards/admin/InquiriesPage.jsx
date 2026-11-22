@@ -5,7 +5,7 @@ import {
   Plus, Search, Eye, X, CheckCircle2, AlertCircle, XCircle, Inbox, Trophy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
   Mail, Smartphone, MapPin, Copy, Check, Loader2, MessageSquareText,
-  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle,
+  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, Globe,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -106,6 +106,11 @@ const STATUS = {
   'Lost':         ['bg-red-50 text-red-700 ring-red-200',             'bg-red-500'],
   'Pending':      ['bg-yellow-50 text-yellow-800 ring-yellow-200',    'bg-yellow-500'],
   'Under Review': ['bg-violet-50 text-violet-700 ring-violet-200',    'bg-violet-500'],
+}
+
+function SourceBadge({ source }) {
+  if (source !== 'walk_in') return null
+  return <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-200 whitespace-nowrap"><Store size={11} {...ICON} />Walk-in</span>
 }
 
 function StatusBadge({ status }) {
@@ -320,7 +325,7 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
               <Avatar name={inquiry.full_name} seed={inquiry.id} size="w-14 h-14" text="text-lg" />
               <div className="min-w-0 pt-0.5">
                 <h3 className="text-lg font-semibold text-slate-900 leading-tight">{inquiry.full_name}</h3>
-                <p className="text-sm text-slate-500 mt-0.5">Submitted {fmtDate(created)} · {timeAgo(created)}</p>
+                <p className="text-sm text-slate-500 mt-0.5">{inquiry.source === 'walk_in' ? 'Walk-in' : 'Online'} · {fmtDate(created)} · {timeAgo(created)}</p>
                 <div className="mt-2.5"><StatusBadge status={inquiry.status} /></div>
               </div>
             </div>
@@ -455,6 +460,7 @@ function Field({ label, required, error, hint, icon: Icon, className = '', child
 const EMPTY_FORM = {
   first_name: '', middle_initial: '', last_name: '', suffix: '', email: '', mobile: '+63',
   province: '', city: '', barangay: '', house_street: '', description: '', reason: '', status_id: '',
+  source: 'walk_in',
 }
 
 export default function InquiriesPage() {
@@ -463,6 +469,7 @@ export default function InquiriesPage() {
   const [search,       setSearch]       = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterReason, setFilterReason] = useState('')
+  const [filterSource, setFilterSource] = useState('')
   const [sort,         setSort]         = useState({ key: 'created_at', dir: 'desc' })
   const [loading,      setLoading]      = useState(true)
   const [toast,        setToast]        = useState(null)
@@ -490,6 +497,14 @@ export default function InquiriesPage() {
 
   useEffect(() => { loadInquiries() }, [loadInquiries])
 
+  // Opened from Job Orders ("New walk-in inquiry")
+  const location = useLocation()
+  useEffect(() => {
+    if (!location.state?.newWalkIn) return
+    setForm({ ...EMPTY_FORM, source: 'walk_in' }); setShowForm(true)
+    navigate('/admin/inquiries', { replace: true, state: {} })
+  }, [location.state?.newWalkIn]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Services = your specializations (falls back to the built-in list)
   useEffect(() => {
     apiGet('/api/config/specializations.php')
@@ -499,7 +514,7 @@ export default function InquiriesPage() {
       })
       .catch(() => {})
   }, [])
-  useEffect(() => { setPage(1) }, [search, filterStatus, filterReason, perPage])
+  useEffect(() => { setPage(1) }, [search, filterStatus, filterReason, filterSource, perPage])
 
   // ── Derived data
   const counts = useMemo(() => {
@@ -520,6 +535,7 @@ export default function InquiriesPage() {
     const list = inquiries.filter(i =>
       (!filterStatus || i.status === filterStatus) &&
       (!filterReason || i.reason === filterReason) &&
+      (!filterSource || (i.source || 'online') === filterSource) &&
       (!q || [i.full_name, i.email, i.mobile, i.inquiry_code, i.reason, i.description].some(v => String(v || '').toLowerCase().includes(q)))
     )
     const val = i => sort.key === 'created_at' ? (parseDT(i.created_at)?.getTime() || 0) : String(i[sort.key] || '').toLowerCase()
@@ -528,14 +544,14 @@ export default function InquiriesPage() {
       const r = typeof A === 'number' ? A - B : A.localeCompare(B)
       return sort.dir === 'asc' ? r : -r
     })
-  }, [inquiries, search, filterStatus, filterReason, sort])
+  }, [inquiries, search, filterStatus, filterReason, filterSource, sort])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
   const safePage = Math.min(page, totalPages)
   const pageItems = filtered.slice((safePage - 1) * perPage, safePage * perPage)
   const onSort = key => setSort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))
-  const hasFilters = search || filterStatus || filterReason
-  const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterReason('') }
+  const hasFilters = search || filterStatus || filterReason || filterSource
+  const clearFilters = () => { setSearch(''); setFilterStatus(''); setFilterReason(''); setFilterSource('') }
 
   // ── Create
   const validate = () => {
@@ -553,7 +569,7 @@ export default function InquiriesPage() {
     if (!form.city) e.city = 'City / Municipality is required.'
     if (!form.barangay) e.barangay = 'Barangay is required.'
     if (!form.house_street.trim()) e.house_street = 'House No. & Street is required.'
-    if (!form.reason) e.reason = 'Please select a reason for inquiry.'
+    if (!form.reason) e.reason = 'Please choose a service.'
 
     return e
   }
@@ -585,7 +601,7 @@ export default function InquiriesPage() {
       })
       const data = await res.json()
       if (!data.success) throw new Error(data.error)
-      showToast('Inquiry submitted')
+      showToast(form.source === 'walk_in' ? 'Walk-in inquiry saved' : 'Inquiry saved')
       setShowForm(false)
       setForm(EMPTY_FORM)
       setErrors({})
@@ -698,7 +714,7 @@ export default function InquiriesPage() {
           <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Inquiries</h1>
           <p className="text-sm text-slate-500 mt-1">Project requests from potential clients. Review each one and mark it won or lost.</p>
         </div>
-        <button onClick={() => setShowForm(true)} className={`${btnPrimary} self-start sm:self-auto`}>
+        <button onClick={() => { setForm(EMPTY_FORM); setShowForm(true) }} className={`${btnPrimary} self-start sm:self-auto`}>
           <Plus size={16} {...ICON} /> New inquiry
         </button>
       </div>
@@ -728,6 +744,11 @@ export default function InquiriesPage() {
               />
               {search && <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700"><X size={14} {...ICON} /></button>}
             </div>
+            <SelectBox value={filterSource} onChange={setFilterSource} className="w-36 flex-shrink-0">
+              <option value="">All sources</option>
+              <option value="online">Online</option>
+              <option value="walk_in">Walk-in</option>
+            </SelectBox>
             <SelectBox value={filterReason} onChange={setFilterReason} className="w-44 flex-shrink-0">
               <option value="">All services</option>
               {services.map(r => <option key={r} value={r}>{r}</option>)}
@@ -741,6 +762,7 @@ export default function InquiriesPage() {
             {search && <Chip onRemove={() => setSearch('')}>“{search}”</Chip>}
             {filterStatus && <Chip onRemove={() => setFilterStatus('')}>{filterStatus}</Chip>}
             {filterReason && <Chip onRemove={() => setFilterReason('')}>{filterReason}</Chip>}
+            {filterSource && <Chip onRemove={() => setFilterSource('')}>{filterSource === 'walk_in' ? 'Walk-in' : 'Online'}</Chip>}
             <button onClick={clearFilters} className="ml-auto text-sm font-medium text-emerald-700 hover:text-emerald-800">Clear all</button>
           </div>
         )}
@@ -775,7 +797,7 @@ export default function InquiriesPage() {
                           <StatusBadge status={inq.status} />
                         </div>
                         <p className="text-xs text-slate-600 truncate mt-0.5">{inq.reason || '—'}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{inq.inquiry_code} · {timeAgo(d)}</p>
+                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">{inq.inquiry_code} · {timeAgo(d)} <SourceBadge source={inq.source} /></p>
                       </div>
                       <ChevronRight size={16} {...ICON} className="text-slate-300 flex-shrink-0" />
                     </button>
@@ -809,7 +831,7 @@ export default function InquiriesPage() {
                                 <span className="font-medium text-slate-900 group-hover:text-emerald-700 transition-colors whitespace-nowrap">{inq.full_name}</span>
                                 {inq.status === 'New' && <span className="w-1.5 h-1.5 rounded-full bg-sky-500" title="Awaiting review" />}
                               </span>
-                              <span className="block text-xs text-slate-500 tabular-nums">{inq.inquiry_code}</span>
+                              <span className="flex items-center gap-1.5 text-xs text-slate-500 tabular-nums">{inq.inquiry_code} <SourceBadge source={inq.source} /></span>
                             </span>
                           </button>
                         </td>
@@ -884,11 +906,28 @@ function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit, services
         <div className="px-5 pt-8 pb-6 sm:px-8 sm:pb-8">
           {/* Title */}
           <div className="text-center mb-6">
-            <h3 className="text-2xl font-bold text-gray-900">Submit an Inquiry</h3>
-            <p className="text-sm text-gray-500 mt-1">Tell us about your project and we'll get back to you right away.</p>
+            <h3 className="text-2xl font-bold text-gray-900">New inquiry</h3>
+            <p className="text-sm text-gray-500 mt-1">Record a customer's request. You can mark it won once you agree.</p>
           </div>
 
           <div className="space-y-4">
+            {/* Source */}
+            <div>
+              <label className={labelCls}>How did the customer reach you?{req}</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[{ v: 'walk_in', l: 'Walk-in', d: 'Came to the office', Icon: Store }, { v: 'online', l: 'Online', d: 'Phone, email or website', Icon: Globe }].map(({ v, l, d, Icon }) => {
+                  const on = form.source === v
+                  return (
+                    <button key={v} type="button" onClick={() => f('source', v)} aria-pressed={on}
+                      className={`flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-colors ${on ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-gray-300 bg-white hover:bg-gray-50'}`}>
+                      <Icon size={18} {...ICON} className={on ? 'text-emerald-600' : 'text-gray-400'} />
+                      <span><span className="block text-sm font-semibold text-gray-800">{l}</span><span className="block text-xs text-gray-500">{d}</span></span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* First name | Middle initial */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -972,9 +1011,9 @@ function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit, services
 
             {/* Reason */}
             <div>
-              <label className={labelCls}>Reason for Inquiry{req}</label>
+              <label className={labelCls}>Service{req}</label>
               <select className={inputCls} value={form.reason} onChange={e => f('reason', e.target.value)}>
-                <option value="">Select a reason...</option>
+                <option value="">Select a service...</option>
                 {services.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
@@ -985,7 +1024,7 @@ function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit, services
             <button onClick={onSubmit} disabled={saving}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
               {saving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-              {saving ? 'Submitting...' : 'Submit Inquiry'}
+              {saving ? 'Saving...' : 'Save inquiry'}
             </button>
           </div>
         </div>
