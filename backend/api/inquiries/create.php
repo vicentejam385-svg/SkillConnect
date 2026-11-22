@@ -48,14 +48,19 @@ if (empty(trim($data['last_name'] ?? ''))) {
 }
 if (empty(trim($data['reason'] ?? ''))) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'Reason is required.']);
+    echo json_encode(['success' => false, 'error' => 'Please choose a service.']);
     exit;
 }
-if (($data['reason'] ?? '') === 'Other' && empty(trim($data['description'] ?? ''))) {
+// The service must be one of the specializations (no more "Other")
+$svc = $pdo->prepare('SELECT name FROM specializations WHERE name = ? LIMIT 1');
+$svc->execute([trim($data['reason'])]);
+$svcName = $svc->fetchColumn();
+if (!$svcName) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'Description is required when reason is "Other".']);
+    echo json_encode(['success' => false, 'error' => 'Please choose a service from the list.']);
     exit;
 }
+$data['reason'] = $svcName; // same spelling as the specialization, so job offers match
 
 // ── 2. RegEx validation ───────────────────────────────────────────────────────
 $nameRegex   = '/^[A-Za-zÀ-ÖØ-öø-ÿ\s\'\-\.]{1,100}$/u';

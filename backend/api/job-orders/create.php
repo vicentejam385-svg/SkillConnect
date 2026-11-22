@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
+require_once __DIR__ . '/../../helpers/job-offers.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -133,6 +134,18 @@ try {
     ]);
 
     $joId = (int)$pdo->lastInsertId();
+
+    // A worker picked by the admin is auto-accepted; tell the worker (Inbox + email).
+    // Never let this break creating the job order.
+    if ($workerId) {
+        try {
+            $pdo->prepare("UPDATE job_orders SET accepted_at = ?, assigned_by = 'admin' WHERE id = ?")
+                ->execute([jobOfferNow(), $joId]);
+            jobOfferNotifyAssigned($pdo, $joId, $workerId);
+        } catch (Throwable $e) {
+            error_log('[job-offers] create.php notify failed for job order ' . $joId . ': ' . $e->getMessage());
+        }
+    }
 
     $rowStmt = $pdo->prepare(
         "SELECT jo.*,

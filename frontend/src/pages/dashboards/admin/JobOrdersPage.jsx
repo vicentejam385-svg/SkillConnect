@@ -4,7 +4,7 @@ import {
   Briefcase, Plus, Search, Pencil, CheckCircle2, AlertCircle, X, AlertTriangle, Filter,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ArrowUp, ArrowDown,
   ArrowUpDown, Loader2, Clock, CalendarDays, HardHat, User, Mail, Smartphone, MapPin,
-  Link2, Info, Check, Lock,
+  Link2, Info, Check, Lock, Hourglass, Send, UserX,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -129,6 +129,88 @@ function Notice({ tone = 'info', icon: Icon = Info, children, action }) {
 const btnPrimary = 'inline-flex items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-60'
 const btnSecondary = 'inline-flex items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-60'
 const iconBtn = 'inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500'
+
+// ── Job offers: a job with no worker is sent to every matching worker; the first to accept gets it
+const parseServerTime = s => (s ? new Date(String(s).replace(' ', 'T') + '+08:00') : null)
+
+function offerView(jo) {
+  if (!jo || jo.worker_name || !jo.offer_state) return null
+  const sent = Number(jo.offers_sent || 0)
+  const declined = Number(jo.offers_declined || 0)
+  switch (jo.offer_state) {
+    case 'waiting': {
+      const ms = (parseServerTime(jo.offer_expires_at)?.getTime() || 0) - Date.now()
+      const h = Math.max(0, Math.ceil(ms / 3600000))
+      return {
+        key: 'waiting', icon: Hourglass, tone: 'text-emerald-600',
+        short: h <= 1 ? 'Waiting · under 1h left' : `Waiting · ${h}h left`,
+        text: `Sent to ${sent} matching worker${sent === 1 ? '' : 's'}${declined ? ` (${declined} not interested)` : ''}. The first to accept gets the job. Open for ${h <= 1 ? 'less than an hour' : `${h} more hours`}.`,
+      }
+    }
+    case 'expired':
+      return { key: 'expired', icon: Clock, tone: 'text-slate-500', short: 'No one accepted',
+        text: `No worker accepted within 24 hours${sent ? ` (sent to ${sent})` : ''}. You can pick a worker now.` }
+    case 'all_declined':
+      return { key: 'all_declined', icon: UserX, tone: 'text-slate-500', short: 'All not interested',
+        text: `All ${sent} matching worker${sent === 1 ? '' : 's'} said Not interested. You can pick a worker now.` }
+    case 'no_match':
+      return { key: 'no_match', icon: UserX, tone: 'text-slate-500', short: 'No matching worker',
+        text: 'No worker matches this job right now (same specialization, Active, valid license and free on these dates). You can pick a worker now.' }
+    case 'not_sent':
+      return { key: 'not_sent', icon: Send, tone: 'text-slate-500', short: 'Not sent yet',
+        text: 'Choose the contract type and dates, then save. The job will be sent to every matching worker.' }
+    default:
+      return null
+  }
+}
+
+function OfferPanel({ offer, willSend, resend, assignNow, onAssignNow, onUndo }) {
+  const [confirm, setConfirm] = useState(false)
+  const box = 'mt-3 flex items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-700'
+  const link = 'text-sm font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap'
+
+  if (assignNow) {
+    return (
+      <div className={box}>
+        <Info size={16} {...ICON} className="text-slate-400 flex-shrink-0 mt-0.5" />
+        <p className="flex-1 min-w-0">You can pick a worker now. Once you save, the other workers can no longer accept this job.</p>
+        <button type="button" onClick={onUndo} className={link}>Undo</button>
+      </div>
+    )
+  }
+  if (willSend) {
+    return (
+      <div className={box}>
+        <Send size={16} {...ICON} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+        <p className="flex-1 min-w-0">
+          {resend ? 'Saving sends this job again with the new terms. ' : 'Saving sends this job to every matching worker. '}
+          <span className="text-slate-500">Workers match when they have the same specialization, an Active account, a valid license and no other job on these dates. The first to accept gets it.</span>
+        </p>
+      </div>
+    )
+  }
+  if (!offer) return null
+  const Icon = offer.icon
+  return (
+    <div className={box}>
+      <Icon size={16} {...ICON} className={`${offer.tone} flex-shrink-0 mt-0.5`} />
+      <div className="flex-1 min-w-0">
+        <p>{offer.text}</p>
+        {offer.key === 'waiting' && (
+          confirm ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="text-slate-600">Pick a worker yourself before the offer ends?</span>
+              <button type="button" onClick={() => { setConfirm(false); onAssignNow() }} className={link}>Yes, assign now</button>
+              <button type="button" onClick={() => setConfirm(false)} className="text-sm font-medium text-slate-500 hover:text-slate-700">Cancel</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirm(true)} className={`${link} mt-2 inline-block`}>Assign now anyway</button>
+          )
+        )}
+      </div>
+    </div>
+  )
+}
 
 function Toast({ toast }) {
   if (!toast) return null
@@ -584,7 +666,17 @@ export default function JobOrdersPage() {
           })
         } catch (e) { console.warn('Schedule auto-create failed:', e) }
       }
-      showToast(editTarget ? 'Job order updated' : 'Job order created')
+      const done = editTarget ? 'Job order updated' : 'Job order created'
+      const sentTo = res.offer?.sent
+      showToast(
+        typeof sentTo === 'number'
+          ? (sentTo > 0
+              ? `Saved and sent to ${sentTo} matching worker${sentTo === 1 ? '' : 's'}.`
+              : 'Saved. No worker matches this job right now, so you can pick one yourself.')
+          : (res.offer?.assigned || (!editTarget && form.worker_contact_id))
+            ? `${done}. The worker has been notified.`
+            : done
+      )
       const wasEdit = editTarget
       setSaving(false); setShowForm(false); setEditTarget(null); setForm(emptyForm); load()
 
@@ -725,7 +817,7 @@ export default function JobOrdersPage() {
                         <StatusBadge status={jo.status} />
                       </div>
                       <p className="text-xs text-slate-600 truncate mt-0.5">{jo.description || 'No description'} · {jo.client_name || '—'}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{jo.worker_name || 'No worker yet'} · {jo.start_date && jo.end_date ? `${fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – ${fmtDay(jo.end_date)}` : 'Not scheduled'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{jo.worker_name || offerView(jo)?.short || 'No worker yet'} · {jo.start_date && jo.end_date ? `${fmtDay(jo.start_date, { month: 'short', day: 'numeric' })} – ${fmtDay(jo.end_date)}` : 'Not scheduled'}</p>
                     </div>
                     <ChevronRight size={16} {...ICON} className="text-slate-300 mt-3 flex-shrink-0" />
                   </button>
@@ -784,7 +876,12 @@ export default function JobOrdersPage() {
                           </span>
                         ) : (
                           <button onClick={() => openEdit(jo)} className="inline-flex max-w-full items-center gap-1.5 h-7 px-2.5 rounded-md border border-dashed border-slate-300 text-xs font-medium text-slate-500 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/50 transition-colors">
-                            <Plus size={13} {...ICON} className="flex-shrink-0" /> <span className="truncate">Assign worker</span>
+                                                        {(() => {
+                              const v = offerView(jo)
+                              if (!v || v.key === 'not_sent') return <><Plus size={13} {...ICON} /> Assign worker</>
+                              const I = v.icon
+                              return <><I size={13} {...ICON} className={v.tone} /> {v.short}</>
+                            })()}
                           </button>
                         )}
                       </td>
@@ -888,12 +985,29 @@ function JobOrderModal({
 
   // Requirements: a worker, contract and dates are needed before the status can move forward
   const locked = !form.worker_contact_id
+
+  // Job offers: while workers still have time to accept, the worker picker is locked
+  // (unless the admin chooses "Assign now anyway")
+  const offer    = editTarget && !editTarget.worker_name ? offerView(editTarget) : null
+  const canPick  = !editTarget || !!editTarget.worker_name || editTarget.offer_can_assign !== false || !!form.assign_now
+  const isClosed = [18, 23].includes(Number(form.status_id))
+  const termsChanged = !!editTarget && (
+    String(form.contract_type_id || '') !== String(editTarget.contract_type_id || '') ||
+    String(form.start_date || '')       !== String(editTarget.start_date || '') ||
+    String(form.end_date || '')         !== String(editTarget.end_date || ''))
+  const willSend = !!editTarget && !form.worker_contact_id && !isClosed &&
+    !!(form.contract_type_id && form.start_date && form.end_date) &&
+    (!editTarget.offered_at || termsChanged || !!editTarget.worker_name)
+
+  // Requirements: contract and dates always; a worker on a new job order or when the status changes
+  const statusChanged = Number(form.status_id) !== savedId
   const missing = {}
   if (!editTarget && !form.client_contact_id) missing.client = 'Select a client.'
-  if (!form.worker_contact_id) missing.worker   = 'Assign a worker.'
+  if ((!editTarget || statusChanged) && !form.worker_contact_id) missing.worker = 'Assign a worker.'
   if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
   if (!form.start_date)        missing.start    = 'Pick a start date.'
   if (!form.end_date)          missing.end      = 'Pick an end date.'
+  else if (form.start_date && form.end_date <= form.start_date) missing.end = 'End date must be after the start date.'
   const err = key => (tried ? missing[key] : null)
   const errCls = '!border-red-300 bg-red-50'
   const fieldError = msg => msg ? <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1"><AlertCircle size={12} {...ICON} />{msg}</p> : null
@@ -999,13 +1113,24 @@ function JobOrderModal({
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><HardHat size={16} {...ICON} className="text-slate-400" />Worker</legend>
             <label className={labelCls}>Assigned worker</label>
             <div className="relative">
-              <select className={`${selectCls} ${err('worker') ? errCls : ''}`} value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}>
+              <select className={`${selectCls} ${err('worker') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
+                value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}
+                disabled={!canPick} title={!canPick ? 'Workers still have time to accept this job' : undefined}>
                 <option value="">Select a worker</option>
                 {requiredSpec ? matched.map(renderOption) : allWorkers.map(renderOption)}
               </select>
               <Chev />
             </div>
             {fieldError(err('worker'))}
+            <OfferPanel
+              key={editTarget?.id ?? 'new'}
+              offer={offer}
+              willSend={willSend}
+              resend={!!editTarget?.offered_at}
+              assignNow={!!form.assign_now}
+              onAssignNow={() => f('assign_now', true)}
+              onUndo={() => { f('assign_now', false); f('worker_contact_id', '') }}
+            />
             {requiredSpec && (
               <p className="text-xs text-slate-500 mt-1.5">
                 {matched.length
@@ -1156,7 +1281,7 @@ function JobOrderModal({
             <button onClick={closeForm} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
             <button onClick={trySave} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
               {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}
-              {saving ? 'Saving…' : editTarget ? 'Save changes' : 'Create job order'}
+              {saving ? 'Saving…' : willSend ? 'Save and send to workers' : editTarget ? 'Save changes' : 'Create job order'}
             </button>
           </div>
         </div>

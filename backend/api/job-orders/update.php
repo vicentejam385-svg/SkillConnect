@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-order-status.php';
+require_once __DIR__ . '/../../helpers/job-offers.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -18,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'PUT') {
 $auth = requireAdminAccess();
 $pdo = getDB();
 
-$data = json_decode(file_get_contents('php://input'), true);
+$data = json_decode(file_get_contents('php://input'), true) ?? [];
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : (int)($data['id'] ?? 0);
 
 if (!$id) {
@@ -40,7 +41,7 @@ if (isset($data['status_id'])) {
             echo json_encode(['success' => false, 'error' => "Invalid status: {$data['status_id']}"]);
             exit;
         }
-        } else {
+    } else {
         $data['status_id'] = (int)$data['status_id'];
         $chk = $pdo->prepare("SELECT 1 FROM statuses WHERE id = ? AND entity = 'job_order'");
         $chk->execute([$data['status_id']]);
@@ -92,7 +93,11 @@ if (empty($setClauses)) {
 $beforeStmt = $pdo->prepare(
     "SELECT jo.*, s.label AS status_label,
             CONCAT(w.first_name,' ',w.last_name) AS worker_name,
-            CONCAT(c.first_name,' ',c.last_name) AS client_name
+            CONCAT(c.first_name,' ',c.last_name) AS client_name,
+            (SELECT COUNT(*) FROM worker_inbox m
+              WHERE m.job_order_id = jo.id AND m.type = 'job_offer') AS offers_sent,
+            (SELECT COUNT(*) FROM worker_inbox m
+              WHERE m.job_order_id = jo.id AND m.type = 'job_offer' AND m.response = 'declined') AS offers_declined
      FROM job_orders jo
      LEFT JOIN statuses s ON s.id = jo.status_id
      LEFT JOIN users w ON w.id = jo.worker_user_id
@@ -107,6 +112,38 @@ if (!$before) {
     exit;
 }
 
+// ── Worker assignment rules ───────────────────────────────────────────────────
+$oldWorker = $before['worker_user_id'] ? (int)$before['worker_user_id'] : null;
+$newWorker = $oldWorker;
+if (array_key_exists('worker_user_id', $data)) {
+    $newWorker = ($data['worker_user_id'] === '' || $data['worker_user_id'] === null) ? null : (int)$data['worker_user_id'];
+}
+$directAssign  = $newWorker && $newWorker !== $oldWorker;   // admin picked (or changed) the worker
+$workerRemoved = $oldWorker && !$newWorker;
+
+if ($directAssign) {
+    $wChk = $pdo->prepare("SELECT id FROM users WHERE id = ? AND type = 'worker'");
+    $wChk->execute([$newWorker]);
+    if (!$wChk->fetch()) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => 'Worker not found.']);
+        exit;
+    }
+    // While the job is still open to workers, the admin needs "Assign now anyway"
+    if (!$oldWorker && empty($data['assign_now'])) {
+        $offerBefore = jobOfferState($before);
+        if ($offerBefore['state'] === 'waiting') {
+            http_response_code(422);
+            echo json_encode([
+                'success' => false,
+                'code'    => 'offer_open',
+                'error'   => 'Workers still have time to accept this job. Use "Assign now anyway" to pick a worker yourself.',
+            ]);
+            exit;
+        }
+    }
+}
+
 $params[':id'] = $id;
 $pdo->prepare("UPDATE job_orders SET " . implode(', ', $setClauses) . " WHERE id = :id")->execute($params);
 
@@ -117,7 +154,11 @@ $rowStmt = $pdo->prepare(
             CONCAT(w.first_name,' ',w.last_name) AS worker_name,
             CONCAT(c.first_name,' ',c.last_name) AS client_name,
             s.label AS status,
-            ct.name AS contract_type
+            ct.name AS contract_type,
+            (SELECT COUNT(*) FROM worker_inbox m
+              WHERE m.job_order_id = jo.id AND m.type = 'job_offer') AS offers_sent,
+            (SELECT COUNT(*) FROM worker_inbox m
+              WHERE m.job_order_id = jo.id AND m.type = 'job_offer' AND m.response = 'declined') AS offers_declined
      FROM job_orders jo
      LEFT JOIN users w ON w.id = jo.worker_user_id
      LEFT JOIN users c ON c.id = jo.client_user_id
@@ -138,18 +179,22 @@ foreach ($fields as $f) {
         $chgNew[$f] = $new;
     }
 }
+$termsChanged = array_key_exists('contract_type_id', $chgNew)
+             || array_key_exists('start_date', $chgNew)
+             || array_key_exists('end_date', $chgNew);
+
 // Show readable labels and names instead of ids
-if (isset($chgNew['status_id'])) {
+if (array_key_exists('status_id', $chgNew)) {
     $chgOld['status'] = $before['status_label'] ?? null;
     $chgNew['status'] = $row['status'] ?? null;
     unset($chgOld['status_id'], $chgNew['status_id']);
 }
-if (isset($chgNew['worker_user_id'])) {
+if (array_key_exists('worker_user_id', $chgNew)) {
     $chgOld['worker'] = trim($before['worker_name'] ?? '') ?: null;
     $chgNew['worker'] = trim($row['worker_name'] ?? '') ?: null;
     unset($chgOld['worker_user_id'], $chgNew['worker_user_id']);
 }
-if (isset($chgNew['client_user_id'])) {
+if (array_key_exists('client_user_id', $chgNew)) {
     $chgOld['client'] = trim($before['client_name'] ?? '') ?: null;
     $chgNew['client'] = trim($row['client_name'] ?? '') ?: null;
     unset($chgOld['client_user_id'], $chgNew['client_user_id']);
@@ -163,7 +208,8 @@ if ($chgNew) {
         'module'         => 'Job Orders',
         'description'    => $statusChanged
             ? 'Changed job order ' . $code . ' status from "' . ($chgOld['status'] ?? '—') . '" to "' . ($chgNew['status'] ?? '—') . '"'
-            : 'Updated job order ' . $code . ' (' . implode(', ', array_keys($chgNew)) . ')',
+            : 'Updated job order ' . $code . ' (' . implode(', ', array_keys($chgNew)) . ')'
+              . ($directAssign && !$oldWorker && !empty($data['assign_now']) ? ' — assigned before the offer ended' : ''),
         'target_user_id' => $before['client_user_id'] ?? null,
         'target_type'    => 'job_order',
         'target_id'      => $id,
@@ -173,11 +219,65 @@ if ($chgNew) {
     ]));
 }
 
-// Auto-advance status from the contract dates
-// (e.g. marked Scheduled but the start date has already arrived / end date already passed)
-if (syncJobOrderStatuses($pdo, $id)) {
-    $rowStmt->execute([$id]);
-    $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+// ── Job offers ────────────────────────────────────────────────────────────────
+// Never let an email / inbox problem break saving the job order.
+$offerResult = null;
+try {
+    $nowStatus = (int)($row['status_id'] ?? 0);
+
+    if ($directAssign) {
+        // Admin picked the worker: auto-accepted, the worker gets a notice
+        $pdo->prepare("UPDATE job_orders SET accepted_at = ?, assigned_by = 'admin' WHERE id = ?")
+            ->execute([jobOfferNow(), $id]);
+        jobOfferNotifyAssigned($pdo, $id, $newWorker);
+        $offerResult = ['assigned' => true];
+    } elseif ($workerRemoved) {
+        $pdo->prepare("UPDATE job_orders SET accepted_at = NULL, assigned_by = NULL WHERE id = ?")
+            ->execute([$id]);
+    }
+
+    if (in_array($nowStatus, jobOfferClosedStatuses(), true)) {
+        // Complete / Cancelled: close any open offer
+        if (!$row['worker_user_id'] && $row['offered_at']) {
+            $pdo->prepare("UPDATE job_orders SET offered_at = NULL WHERE id = ?")->execute([$id]);
+        }
+    } elseif (!$newWorker
+        && !empty($row['contract_type_id']) && !empty($row['start_date']) && !empty($row['end_date'])
+        && (empty($row['offered_at']) || $termsChanged || $workerRemoved)
+    ) {
+        // No worker yet and the terms are agreed: send to every eligible worker
+        $offerResult = jobOfferSend($pdo, $id, true);
+
+        $code = $before['job_order_code'] ?? ('#' . $id);
+        auditLog(array_merge(auditActor($auth), [
+            'action'         => 'UPDATE',
+            'module'         => 'Job Orders',
+            'description'    => 'Sent job order ' . $code . ' to ' . $offerResult['sent'] . ' matching worker(s)',
+            'target_user_id' => $before['client_user_id'] ?? null,
+            'target_type'    => 'job_order',
+            'target_id'      => $id,
+            'target_label'   => $code . ' — ' . trim($before['client_name'] ?? ''),
+            'new_values'     => ['offers_sent' => $offerResult['sent'], 'emails_sent' => $offerResult['emailed']],
+        ]));
+    }
+} catch (Throwable $e) {
+    error_log('[job-offers] update.php offer step failed for job order ' . $id . ': ' . $e->getMessage());
 }
 
-echo json_encode(['success' => true, 'message' => 'Job order updated.', 'job_order' => $row]);
+// Auto-advance status from the contract dates
+// (e.g. marked Scheduled but the start date has already arrived / end date already passed)
+syncJobOrderStatuses($pdo, $id);
+
+$rowStmt->execute([$id]);
+$row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+$st  = jobOfferState($row);
+$row['offer_state']      = $st['state'];
+$row['offer_expires_at'] = $st['expires_at'];
+$row['offer_can_assign'] = $st['can_assign'];
+
+echo json_encode([
+    'success'   => true,
+    'message'   => 'Job order updated.',
+    'job_order' => $row,
+    'offer'     => $offerResult,
+]);

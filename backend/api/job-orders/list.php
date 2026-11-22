@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../helpers/job-order-status.php';
+require_once __DIR__ . '/../../helpers/job-offers.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -26,7 +27,7 @@ try {
     $search  = trim($_GET['search'] ?? '');
     $status  = trim($_GET['status'] ?? '');
     $page    = max(1, (int)($_GET['page'] ?? 1));
-    $perPage = min(100, max(1, (int)($_GET['per_page'] ?? 20)));
+    $perPage = min(500, max(1, (int)($_GET['per_page'] ?? 20)));
     $offset  = ($page - 1) * $perPage;
 
     $where  = ['1=1'];
@@ -80,11 +81,26 @@ try {
                 sc.schedule_code,
                 sp.name AS service,
                 sp.default_contract_type_id,
-                dct.name AS default_contract_type
+                dct.name AS default_contract_type,
+                -- Job offers: how many workers got it and how many said Not interested
+                (SELECT COUNT(*) FROM worker_inbox m
+                  WHERE m.job_order_id = jo.id AND m.type = 'job_offer') AS offers_sent,
+                (SELECT COUNT(*) FROM worker_inbox m
+                  WHERE m.job_order_id = jo.id AND m.type = 'job_offer' AND m.response = 'declined') AS offers_declined
          $from
          ORDER BY jo.id DESC LIMIT $perPage OFFSET $offset"
     );
     $dataStmt->execute($params);
+    $jobOrders = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Offer state for each job order (waiting / expired / no_match / ...)
+    foreach ($jobOrders as &$jo) {
+        $st = jobOfferState($jo);
+        $jo['offer_state']      = $st['state'];
+        $jo['offer_expires_at'] = $st['expires_at'];
+        $jo['offer_can_assign'] = $st['can_assign'];
+    }
+    unset($jo);
 
     // Suggested contract for every service (used by the New job order form)
     $serviceDefaults = $pdo->query(
@@ -97,7 +113,8 @@ try {
     echo json_encode([
         'success'          => true,
         'service_defaults' => $serviceDefaults,
-        'job_orders'       => $dataStmt->fetchAll(),
+        'job_orders'       => $jobOrders,
+        'server_now'       => jobOfferNow(),
         'pagination' => [
             'total'    => $total,
             'page'     => $page,

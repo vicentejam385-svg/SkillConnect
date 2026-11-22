@@ -111,6 +111,12 @@ export default function DashboardLayout({ navItems, adminNavItems = [], children
         className={`${navBase} ${active ? `${colors.soft} font-semibold` : navIdle}`}>
         <Icon size={16} {...ICON} className={active ? '' : 'text-slate-400 group-hover:text-slate-600 transition-colors'} />
         <span className="hidden md:inline">{item.label}</span>
+        {item.badge > 0 && (
+          <span aria-label={`${item.badge} unread`}
+            className="absolute -top-1 -right-1 md:static md:ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none flex items-center justify-center tabular-nums ring-2 ring-white md:ring-0">
+            {item.badge > 99 ? '99+' : item.badge}
+          </span>
+        )}
       </button>
     )
   }
