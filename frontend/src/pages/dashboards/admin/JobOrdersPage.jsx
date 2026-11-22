@@ -713,11 +713,10 @@ export default function JobOrdersPage() {
             <div className="hidden lg:block">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[25%] xl:w-[22%]" />
-                  <col className="w-[17%] xl:w-[15%]" />
-                  <col className="w-[17%] xl:w-[15%]" />
-                  <col className="hidden xl:table-column xl:w-[9%]" />
-                  <col className="w-[19%] xl:w-[17%]" />
+                  <col className="w-[32%] xl:w-[28%]" />
+                  <col className="w-[22%] xl:w-[19%]" />
+                  <col className="w-[22%] xl:w-[19%]" />
+                  <col className="hidden xl:table-column xl:w-[12%]" />
                   <col />
                   <col className="w-[56px] xl:w-[104px]" />
                 </colgroup>
@@ -727,7 +726,7 @@ export default function JobOrdersPage() {
                     <SortHeader label="Client"    sortKey="client_name"    sort={sort} onSort={onSort} />
                     <SortHeader label="Worker"    sortKey="worker_name"    sort={sort} onSort={onSort} />
                     <SortHeader label="Contract"  sortKey="contract_type"  sort={sort} onSort={onSort} className="hidden xl:table-cell" />
-                    <SortHeader label="Period"    sortKey="start_date"     sort={sort} onSort={onSort} />
+
                     <SortHeader label="Status"    sortKey="status"         sort={sort} onSort={onSort} />
                     <th className="px-3 py-2.5 pr-4 font-medium text-right"><span className="sr-only xl:not-sr-only">Actions</span></th>
                   </tr>
@@ -768,7 +767,7 @@ export default function JobOrdersPage() {
                       <td className="hidden xl:table-cell px-3 py-3">
                         {jo.contract_type ? <span className="block truncate text-slate-700" title={jo.contract_type}>{jo.contract_type}</span> : <span className="text-slate-400">—</span>}
                       </td>
-                      <td className="px-3 py-3">{jo.start_date && jo.end_date ? <PeriodCell jo={jo} today={today} /> : <span className="text-slate-400">Not scheduled</span>}</td>
+
                       <td className="px-3 py-3"><StatusBadge status={jo.status} /></td>
                       <td className="px-3 pr-4 py-3">
                         <div className="flex items-center justify-end">
