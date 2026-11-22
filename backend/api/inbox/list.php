@@ -39,7 +39,7 @@ try {
               WHERE m.user_id = :u2 AND m.type = 'job_offer' AND m.response IS NULL
                 AND jo.worker_user_id IS NULL AND jo.offered_at IS NOT NULL
                 AND jo.offered_at > :cut
-                AND jo.status_id NOT IN (18, 23)) AS open_offers"
+                AND jo.status_id = 20) AS open_offers"
     );
     $sum->execute([':u1' => $uid, ':u2' => $uid, ':cut' => $cut]);
     $counts = $sum->fetch(PDO::FETCH_ASSOC) ?: ['unread' => 0, 'open_offers' => 0];
@@ -89,7 +89,7 @@ try {
             $state = 'declined';
         } elseif ($r['job_order_id'] === null || $r['worker_user_id'] !== null) {
             $state = 'taken';
-        } elseif (empty($r['offered_at']) || in_array((int)$r['status_id'], jobOfferClosedStatuses(), true)) {
+        } elseif (empty($r['offered_at']) || (int)$r['status_id'] !== JOB_OFFER_REVIEW_STATUS) {
             $state = 'withdrawn';
         } elseif ($r['offered_at'] <= $cut) {
             $state = 'expired';

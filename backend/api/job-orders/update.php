@@ -236,16 +236,18 @@ try {
             ->execute([$id]);
     }
 
-    if (in_array($nowStatus, jobOfferClosedStatuses(), true)) {
-        // Complete / Cancelled: close any open offer
+    $enteredReview = (int)$before['status_id'] !== JOB_OFFER_REVIEW_STATUS && $nowStatus === JOB_OFFER_REVIEW_STATUS;
+
+    if ($nowStatus !== JOB_OFFER_REVIEW_STATUS) {
+        // Offers only stay open while the job is Under Review
         if (!$row['worker_user_id'] && $row['offered_at']) {
             $pdo->prepare("UPDATE job_orders SET offered_at = NULL WHERE id = ?")->execute([$id]);
         }
     } elseif (!$newWorker
         && !empty($row['contract_type_id']) && !empty($row['start_date']) && !empty($row['end_date'])
-        && (empty($row['offered_at']) || $termsChanged || $workerRemoved)
+        && (empty($row['offered_at']) || $termsChanged || $workerRemoved || $enteredReview)
     ) {
-        // No worker yet and the terms are agreed: send to every eligible worker
+        // Under Review, no worker yet and the dates are agreed: send to every eligible worker
         $offerResult = jobOfferSend($pdo, $id, true);
 
         $code = $before['job_order_code'] ?? ('#' . $id);

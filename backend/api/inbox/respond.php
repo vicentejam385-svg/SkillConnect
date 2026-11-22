@@ -74,7 +74,7 @@ try {
     if (!empty($jo['worker_user_id'])) {
         respondFail('Sorry, another worker already took this job.', 409, ['code' => 'taken']);
     }
-    if (empty($jo['offered_at']) || in_array((int)$jo['status_id'], jobOfferClosedStatuses(), true)) {
+    if (empty($jo['offered_at']) || (int)$jo['status_id'] !== JOB_OFFER_REVIEW_STATUS) {
         respondFail('This job is no longer available.', 409, ['code' => 'withdrawn']);
     }
     $expires = (new DateTime($jo['offered_at'], jobOfferTz()))->modify('+' . JOB_OFFER_HOURS . ' hours')->format('Y-m-d H:i:s');

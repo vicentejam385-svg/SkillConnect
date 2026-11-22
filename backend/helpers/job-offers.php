@@ -28,6 +28,9 @@ if (!defined('JOB_OFFER_HOURS')) {
     // Job order statuses that keep a worker busy for their dates
     define('JOB_OFFER_BUSY_STATUSES', '16,17,20,21,22'); // Pending, Under Review, Active, Scheduled, In Progress
     define('JOB_OFFER_WORKER_ACTIVE', 1);
+    // Offers are only sent while the job order is Under Review
+    // (the admin agrees the dates with the customer during this stage)
+    define('JOB_OFFER_REVIEW_STATUS', 20);
 }
 
 /** Job order statuses where the job is over and no offer should stay open. */
@@ -381,7 +384,7 @@ function jobOfferCounts(PDO $pdo, int $jobOrderId): array
  *
  *   assigned      a worker has the job
  *   closed        Complete / Cancelled
- *   not_sent      not sent yet (contract type or dates missing)
+ *   not_sent      not sent (not Under Review yet, or contract type / dates missing)
  *   no_match      sent, but no worker qualified        -> admin can assign
  *   all_declined  every worker said Not interested      -> admin can assign
  *   expired       24 hours passed with no accept        -> admin can assign
@@ -402,6 +405,7 @@ function jobOfferState(array $row): array
 
     if (!empty($row['worker_user_id']))                                   $state = 'assigned';
     elseif (in_array((int)($row['status_id'] ?? 0), jobOfferClosedStatuses(), true)) $state = 'closed';
+    elseif ((int)($row['status_id'] ?? 0) !== JOB_OFFER_REVIEW_STATUS)    $state = 'not_sent';
     elseif (empty($row['offered_at']))                                    $state = 'not_sent';
     elseif ($sent === 0)                                                  $state = 'no_match';
     elseif ($declined >= $sent)                                           $state = 'all_declined';

@@ -158,7 +158,7 @@ function offerView(jo) {
         text: 'No worker matches this job right now (same specialization, Active, valid license and free on these dates). You can pick a worker now.' }
     case 'not_sent':
       return { key: 'not_sent', icon: Send, tone: 'text-slate-500', short: 'Not sent yet',
-        text: 'Choose the contract type and dates, then save. The job will be sent to every matching worker.' }
+        text: 'Move this job to Under Review, agree the dates with the customer, then set the contract and dates and save. It will be sent to every matching worker.' }
     default:
       return null
   }
@@ -986,35 +986,45 @@ function JobOrderModal({
   // Requirements: a worker, contract and dates are needed before the status can move forward
   const locked = !form.worker_contact_id
 
+  // Without a worker, a job can only go to Under Review, On Hold or Cancelled.
+  // Contract and dates are agreed with the customer during Under Review.
+  const NO_WORKER_OK = [20, 19, 23]
+  const statusNum   = Number(form.status_id)
+  const datesLocked = !!editTarget && !form.worker_contact_id && statusNum === 16
+
   // Job offers: while workers still have time to accept, the worker picker is locked
   // (unless the admin chooses "Assign now anyway")
   const offer    = editTarget && !editTarget.worker_name ? offerView(editTarget) : null
   const canPick  = !editTarget || !!editTarget.worker_name || editTarget.offer_can_assign !== false || !!form.assign_now
-  const isClosed = [18, 23].includes(Number(form.status_id))
   const termsChanged = !!editTarget && (
     String(form.contract_type_id || '') !== String(editTarget.contract_type_id || '') ||
     String(form.start_date || '')       !== String(editTarget.start_date || '') ||
     String(form.end_date || '')         !== String(editTarget.end_date || ''))
-  const willSend = !!editTarget && !form.worker_contact_id && !isClosed &&
+  // Offers go out only from Under Review, once the contract and dates are set
+  const willSend = !!editTarget && !form.worker_contact_id && statusNum === 20 &&
     !!(form.contract_type_id && form.start_date && form.end_date) &&
-    (!editTarget.offered_at || termsChanged || !!editTarget.worker_name)
+    (!editTarget.offered_at || termsChanged || !!editTarget.worker_name || savedId !== 20)
 
-  // Requirements: contract and dates always; a worker on a new job order or when the status changes
-  const statusChanged = Number(form.status_id) !== savedId
+  // Requirements
+  const statusChanged = statusNum !== savedId
+  const anyTerm  = !!(form.contract_type_id || form.start_date || form.end_date)
+  const needTerms = !datesLocked && (!editTarget || !!form.worker_contact_id || anyTerm || !NO_WORKER_OK.includes(statusNum))
   const missing = {}
   if (!editTarget && !form.client_contact_id) missing.client = 'Select a client.'
-  if ((!editTarget || statusChanged) && !form.worker_contact_id) missing.worker = 'Assign a worker.'
-  if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
-  if (!form.start_date)        missing.start    = 'Pick a start date.'
-  if (!form.end_date)          missing.end      = 'Pick an end date.'
-  else if (form.start_date && form.end_date <= form.start_date) missing.end = 'End date must be after the start date.'
+  if ((!editTarget || (statusChanged && !NO_WORKER_OK.includes(statusNum))) && !form.worker_contact_id) missing.worker = 'Assign a worker.'
+  if (needTerms) {
+    if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
+    if (!form.start_date)        missing.start    = 'Pick a start date.'
+    if (!form.end_date)          missing.end      = 'Pick an end date.'
+    else if (form.start_date && form.end_date <= form.start_date) missing.end = 'End date must be after the start date.'
+  }
   const err = key => (tried ? missing[key] : null)
   const errCls = '!border-red-300 bg-red-50'
   const fieldError = msg => msg ? <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1"><AlertCircle size={12} {...ICON} />{msg}</p> : null
 
   // If the worker is removed after picking a new status, put the status back
   useEffect(() => {
-    if (locked && Number(form.status_id) !== savedId) f('status_id', savedId)
+    if (locked && Number(form.status_id) !== savedId && !NO_WORKER_OK.includes(Number(form.status_id))) f('status_id', savedId)
   }, [locked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const trySave = () => {
@@ -1168,11 +1178,17 @@ function JobOrderModal({
           {/* Contract & dates */}
           <fieldset>
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><CalendarDays size={16} {...ICON} className="text-slate-400" />Contract period</legend>
+            {datesLocked && (
+              <p className="-mt-1.5 mb-3 text-xs text-slate-500 flex items-center gap-1.5">
+                <Lock size={12} {...ICON} className="text-slate-400 flex-shrink-0" />
+                Move this job to Under Review first, then set the dates you agreed with the customer.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className={labelCls}>Contract type</label>
                 <div className="relative">
-                  <select className={`${selectCls} ${err('contract') ? errCls : ''}`} value={form.contract_type_id} onChange={e => {
+                  <select disabled={datesLocked} className={`${selectCls} ${err('contract') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`} value={form.contract_type_id} onChange={e => {
                     const id = e.target.value
                     f('contract_type_id', id)
                     f('_contract_suggested', false)
@@ -1188,8 +1204,8 @@ function JobOrderModal({
               </div>
               <div>
                 <label className={labelCls}>Start date</label>
-                <input type="date"
-                  className={`${inputCls} ${startBusy || err('start') ? errCls : ''}`}
+                <input type="date" disabled={datesLocked}
+                  className={`${inputCls} ${startBusy || err('start') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
                   value={form.start_date}
                   min={nextAvail || (today ? today.toISOString().slice(0, 10) : undefined)}
                   onChange={e => {
@@ -1202,8 +1218,8 @@ function JobOrderModal({
               </div>
               <div>
                 <label className={labelCls}>End date</label>
-                <input type="date"
-                  className={`${inputCls} ${endBusy || err('end') ? errCls : ''}`}
+                <input type="date" disabled={datesLocked}
+                  className={`${inputCls} ${endBusy || err('end') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
                   value={form.end_date}
                   min={form.start_date || (today ? today.toISOString().slice(0, 10) : undefined)}
                   onChange={e => f('end_date', e.target.value)} />
@@ -1234,7 +1250,10 @@ function JobOrderModal({
             <legend className="text-sm font-semibold text-slate-900 mb-1">Status</legend>
             <p className="text-xs text-slate-500 mb-3 flex flex-wrap items-center gap-1.5">
               {locked && statusOptions.length > 1 && <Lock size={12} {...ICON} className="text-slate-400 flex-shrink-0" />}
-              {statusOptions.length <= 1 ? 'This job is at its final stage.' : locked ? 'Assign a worker to unlock the next stage.' : 'Move this job to its next stage.'}
+              {statusOptions.length <= 1 ? 'This job is at its final stage.'
+                : locked && savedId === 16 ? 'Move to Under Review to agree the dates with the customer.'
+                : locked ? 'Assign a worker to unlock Active and later stages.'
+                : 'Move this job to its next stage.'}
               {editTarget && Number(form.status_id) === 21 && ' Saving as Scheduled opens Scheduling so you can plan the site visit.'}
             </p>
 
@@ -1244,8 +1263,8 @@ function JobOrderModal({
                 const current = s.id === savedId
                 return (
                   <button key={s.id} type="button" onClick={() => f('status_id', s.id)} aria-pressed={on}
-                    disabled={locked && !current}
-                    title={locked && !current ? 'Assign a worker first' : undefined}
+                    disabled={locked && !current && !NO_WORKER_OK.includes(s.id)}
+                    title={locked && !current && !NO_WORKER_OK.includes(s.id) ? 'Assign a worker first' : undefined}
                     className={`inline-flex items-center gap-2 h-9 px-3.5 rounded-lg text-sm font-medium border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed
                       ${on ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 disabled:hover:bg-white disabled:hover:border-slate-200'}`}>
                     <span className={`w-2 h-2 rounded-full ${STATUS[s.l]?.[1]}`} />
