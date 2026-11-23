@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   RefreshCw, CheckCircle2, AlertCircle, Calendar, X, Clock, User, FileText, Eye, CalendarClock,
-  MapPin, Briefcase, Smartphone, ChevronDown, ClipboardCheck, Hammer, Hourglass,
+  MapPin, Briefcase, Smartphone, ChevronDown, ClipboardCheck, Hammer, Hourglass, Check, CalendarDays, History,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 
@@ -48,6 +48,7 @@ const OPEN = ['Pending', 'Scheduled', 'In Progress']
 
 function visitPhase(v) {
   if (v.status === 'Cancelled') return 'Cancelled'
+  if (v.waiting_for) return v.my_turn ? 'To confirm' : 'Waiting'
   if (v.status === 'Complete') return 'Done'
   const s = toDate(v.start_time), e = toDate(v.end_time), now = new Date()
   if (e && now > e) return 'Past'
@@ -61,6 +62,8 @@ const PHASE = {
   Past:      'bg-slate-50 text-slate-500 ring-slate-200',
   Done:      'bg-blue-50 text-blue-700 ring-blue-200',
   Cancelled: 'bg-red-50 text-red-700 ring-red-200',
+  'To confirm': 'bg-amber-50 text-amber-700 ring-amber-200',
+  Waiting:   'bg-slate-50 text-slate-600 ring-slate-200',
 }
 const PhaseBadge = ({ name }) => (
   <span className={`inline-flex items-center px-2.5 py-1 rounded-full ring-1 ring-inset text-xs font-medium whitespace-nowrap ${PHASE[name] || PHASE.Past}`}>{name}</span>
@@ -134,6 +137,7 @@ export default function MySchedules() {
   const [toast,   setToast]   = useState(null)
   const [open,    setOpen]    = useState(null)   // visit details
   const [moving,  setMoving]  = useState(null)   // visit to reschedule
+  const [suggesting, setSuggesting] = useState(null)   // visit to suggest another date for
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3800) }
 
@@ -228,14 +232,14 @@ export default function MySchedules() {
           <div className="ss-fadein bg-white rounded-2xl border border-dashed border-slate-300 py-14 flex flex-col items-center text-center px-6">
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center"><Calendar size={24} {...ICON} /></div>
             <p className="mt-4 text-sm font-semibold text-slate-900">{view === 'upcoming' ? 'No upcoming site visits' : 'No past visits'}</p>
-            <p className="text-sm text-slate-500 mt-1 max-w-xs">When the admin plans a visit for you, it shows here and in your Inbox.</p>
+            <p className="text-sm text-slate-500 mt-1 max-w-xs">When a site visit is planned for you, it shows here and in your Inbox.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {shown.map((v, i) => {
               const ph = visitPhase(v)
               const start = toDate(v.start_time)
-              const canMove = OPEN.includes(v.status) && start > now && !Number(v.pending_requests)
+              const canMove = OPEN.includes(v.status) && !v.waiting_for && start > now && !Number(v.pending_requests)
               return (
                 <article key={v.id} style={{ animationDelay: `${i * 80}ms` }}
                   className={`ss-rise bg-white rounded-2xl border border-slate-200 p-5 ${['Past', 'Done', 'Cancelled'].includes(ph) ? 'opacity-80' : ''}`}>
@@ -256,6 +260,10 @@ export default function MySchedules() {
                         <InfoItem icon={Clock} label="When" value={start ? `${start.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(v.start_time)} – ${fmtTime(v.end_time)}` : '—'} />
                         <InfoItem icon={MapPin} label="Address" value={v.address} />
                       </div>
+                      {v.waiting_for && (
+                        <DateAgreement visit={v} onSuggest={() => setSuggesting(v)}
+                          onDone={(msg, type) => { showToast(msg, type); if (type !== 'error') load().catch(() => {}) }} />
+                      )}
                       {Number(v.pending_requests) > 0 && (
                         <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-600"><Hourglass size={13} {...ICON} className="text-amber-500" />You asked to move this visit. Waiting for the admin.</p>
                       )}
@@ -290,6 +298,7 @@ export default function MySchedules() {
               <InfoItem icon={Smartphone} label="Client mobile" value={open.client_mobile} />
               <InfoItem icon={MapPin}     label="Address" value={open.address} />
             </div>
+            <DateHistory items={open.proposals} />
             {open.description && (
               <div className="mt-5">
                 <p className="text-sm font-semibold text-slate-900 mb-1.5 flex items-center gap-1.5"><FileText size={14} {...ICON} className="text-emerald-600" />Notes from the admin</p>
@@ -301,6 +310,11 @@ export default function MySchedules() {
             <button onClick={() => setOpen(null)} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50">Close</button>
           </div>
         </Modal>
+      )}
+
+      {suggesting && (
+        <SuggestDateModal visit={suggesting} onClose={() => setSuggesting(null)}
+          onSent={msg => { setSuggesting(null); showToast(msg); load().catch(() => {}) }} />
       )}
 
       {moving && (
@@ -376,6 +390,133 @@ function RescheduleModal({ visit, onClose, onSent }) {
         <button onClick={send} disabled={busy} className="inline-flex items-center justify-center gap-2 h-9 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white text-[13px] font-semibold">
           {busy && <RefreshCw size={14} {...ICON} className="animate-spin" />}
           {busy ? 'Sending…' : 'Send request'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Date agreement with the customer ───────────────────────────
+const WHO = { system: 'SkillConnect', customer: 'Customer', worker: 'You', admin: 'Admin' }
+const ACTION = { propose: 'proposed', accept: 'accepted', counter: 'suggested', escalate: 'asked the admin to decide', final: 'set the final date' }
+
+function DateAgreement({ visit, onSuggest, onDone }) {
+  const [busy, setBusy] = useState(null)
+  const answer = async (action) => {
+    setBusy(action)
+    try {
+      const res = await apiPost('/api/schedules/propose.php', { schedule_id: visit.id, action })
+      if (res?.success === false) throw new Error(res.error)
+      onDone(res?.message || 'Saved.', 'success')
+    } catch (e) { onDone(e?.message || 'Could not save your answer.', 'error') }
+    setBusy(null)
+  }
+
+  if (!visit.my_turn) {
+    return (
+      <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-600">
+        <Hourglass size={13} {...ICON} className="text-slate-400" />
+        {visit.waiting_for === 'admin' ? 'The admin will choose the date and let you know.' : 'Waiting for the customer to answer this date.'}
+      </p>
+    )
+  }
+  const last = (visit.proposals || []).filter(p => p.action !== 'escalate').slice(-1)[0]
+  const fromCustomer = last && last.by === 'customer'
+  return (
+    <div className="mt-3.5 rounded-xl ring-1 ring-emerald-200 bg-emerald-50/60 p-3.5">
+      <p className="text-[13px] font-semibold text-emerald-900">Can you go on this date?</p>
+      <p className="text-xs text-emerald-800/80 mt-0.5">
+        {fromCustomer ? (last.action === 'accept' ? 'The customer agreed to this date.' : 'The customer suggested this date.') : 'Please confirm the date for this visit.'}
+        {' '}Visits are 9:00–11:00 AM.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={() => answer('accept')} disabled={!!busy}
+          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white text-[13px] font-semibold">
+          {busy === 'accept' ? <RefreshCw size={14} {...ICON} className="animate-spin" /> : <Check size={15} {...ICON} />} Accept date
+        </button>
+        {visit.can_suggest ? (
+          <button onClick={onSuggest} disabled={!!busy}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            <CalendarDays size={15} {...ICON} /> Suggest another date
+          </button>
+        ) : (
+          <button onClick={() => answer('escalate')} disabled={!!busy}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            {busy === 'escalate' && <RefreshCw size={14} {...ICON} className="animate-spin" />} Let the admin decide
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DateHistory({ items }) {
+  if (!items || items.length < 2) return null
+  return (
+    <div className="mt-5">
+      <p className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-1.5"><History size={14} {...ICON} className="text-emerald-600" />Date history</p>
+      <ol className="space-y-1.5">
+        {items.map((p, i) => (
+          <li key={i} className="flex items-baseline justify-between gap-3 text-[13px]">
+            <span className="text-slate-700"><span className="font-medium">{WHO[p.by] || p.by}</span> {ACTION[p.action] || p.action}
+              {p.action !== 'escalate' && p.start_time ? <> · {fmtDate(p.start_time, { weekday: 'short', month: 'short', day: 'numeric' })}</> : null}</span>
+            <span className="text-xs text-slate-400 whitespace-nowrap">{fmtDate(p.created_at, { month: 'short', day: 'numeric' })}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function SuggestDateModal({ visit, onClose, onSent }) {
+  const tomorrow = dayKey(new Date(Date.now() + 86400000))
+  const min = [tomorrow, (visit.job_start_date || '').slice(0, 10)].filter(Boolean).sort().pop()
+  const max = (visit.job_end_date || '').slice(0, 10) || undefined
+  const [date,  setDate]  = useState('')
+  const [error, setError] = useState(null)
+  const [shake, setShake] = useState(0)
+  const [busy,  setBusy]  = useState(false)
+  const fail = msg => { setError(msg); setShake(k => k + 1) }
+  const left = Number(visit.suggests_left ?? 0)
+
+  const send = async () => {
+    if (!date) return fail('Pick a date.')
+    if (isWeekend(date)) return fail('Site visits are Monday to Friday only.')
+    if (date < min) return fail(`Pick ${fmtDate(min)} or later.`)
+    if (max && date > max) return fail(`Pick ${fmtDate(max)} or earlier (the job end date).`)
+    setBusy(true); setError(null)
+    try {
+      const res = await apiPost('/api/schedules/propose.php', { schedule_id: visit.id, action: 'counter', date })
+      if (res?.success === false) throw new Error(res.error)
+      onSent(res?.message || 'Date sent.')
+    } catch (err) { fail(err?.message || 'Could not send the date.') }
+    setBusy(false)
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <ModalHeader icon={CalendarDays} title="Suggest another date" sub={`${typeLabel(visit.visit_type)} · now ${fmtDate(visit.start_time)}`} onClose={onClose} />
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <div>
+          <label htmlFor="sg-date" className="block text-xs font-medium text-slate-600 mb-1.5">Date</label>
+          <input id="sg-date" type="date" min={min} max={max} className={inputCls} value={date} onChange={ev => setDate(ev.target.value)} />
+          {date && isWeekend(date) && <p className="text-xs text-red-600 mt-1.5">Weekends aren't allowed.</p>}
+          <p className="text-xs text-slate-500 mt-1.5">
+            Monday to Friday, 9:00–11:00 AM{max ? `, between ${fmtDate(min, { month: 'short', day: 'numeric' })} and ${fmtDate(max)}` : ''}.
+            {' '}{left <= 1 ? 'This is the last time a new date can be suggested.' : `A new date can be suggested ${left} more times.`}
+          </p>
+        </div>
+        {error && (
+          <p key={shake} className="ss-shake flex items-center gap-1.5 text-xs text-red-600 bg-red-50 ring-1 ring-red-200 rounded-lg px-3 py-2">
+            <AlertCircle size={13} {...ICON} className="flex-shrink-0" /> {error}
+          </p>
+        )}
+      </div>
+      <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex gap-3 justify-end">
+        <button onClick={onClose} disabled={busy} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+        <button onClick={send} disabled={busy} className="inline-flex items-center justify-center gap-2 h-9 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white text-[13px] font-semibold">
+          {busy && <RefreshCw size={14} {...ICON} className="animate-spin" />}
+          {busy ? 'Sending…' : 'Send to the customer'}
         </button>
       </div>
     </Modal>

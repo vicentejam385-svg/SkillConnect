@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-offers.php';
 require_once __DIR__ . '/../../helpers/job-order-status.php';
+require_once __DIR__ . '/../../helpers/site-visits.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -138,12 +139,14 @@ try {
 
     // A worker picked by the admin is auto-accepted; tell the worker (Inbox + email).
     // Never let this break creating the job order.
+    $visitResult = null;
     if ($workerId) {
         try {
             $pdo->prepare("UPDATE job_orders SET accepted_at = ?, assigned_by = 'admin' WHERE id = ?")
                 ->execute([jobOfferNow(), $joId]);
             jobOfferNotifyAssigned($pdo, $joId, $workerId);
-            jobOrderAutoSchedule($pdo, $joId);
+            // Scheduled: ask the customer about a date for the ocular visit
+            if (jobOrderAutoSchedule($pdo, $joId)) $visitResult = svAutoOcular($pdo, $joId);
         } catch (Throwable $e) {
             error_log('[job-offers] create.php notify failed for job order ' . $joId . ': ' . $e->getMessage());
         }
@@ -193,6 +196,7 @@ try {
         'success'   => true,
         'message'   => $isAutoCreated ? 'Job order auto-created from Won inquiry.' : 'Job order created.',
         'job_order' => $jo,
+        'visit'     => $visitResult,
     ]);
 } catch (PDOException $e) {
     http_response_code(500);

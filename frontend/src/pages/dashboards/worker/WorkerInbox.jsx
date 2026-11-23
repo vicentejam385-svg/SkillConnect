@@ -63,6 +63,7 @@ const STATE = {
   info:       { label: 'Update',          cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   visit:      { label: 'Site visit',      cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   visit_done: { label: 'Visit done',      cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  visit_answer: { label: 'Confirm the date', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
 }
 const VISIT_TYPES = { ocular: 'Ocular inspection', progress: 'Progress inspection', other: 'Site visit' }
 const isVisitMsg = m => m.type === 'site_visit' || m.type === 'visit_update'
@@ -318,7 +319,9 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
     { icon: Clock,         label: 'When',    value: fmtSlot(visit) },
     { icon: MapPin,        label: visit.is_mine ? 'Address' : 'Area', value: visit.is_mine ? (job.address || job.area) : job.area },
     { icon: Hammer,        label: 'Job',     value: job.code ? `${job.code}${job.service ? ` · ${job.service}` : ''}` : null },
-    { icon: Briefcase,     label: 'Visit status', value: visit.status === 'Scheduled' ? 'Planned' : visit.status },
+    { icon: Briefcase,     label: 'Visit status', value: visit.waiting_for
+        ? ({ worker: 'Waiting for your answer', customer: 'Waiting for the customer', admin: 'The admin will set the date' }[visit.waiting_for])
+        : visit.status === 'Scheduled' ? 'Planned' : visit.status },
   ].filter(r => r.value) : [
     { icon: Hammer,       label: 'Service',  value: job.service },
     { icon: FileText,     label: 'Contract', value: job.contract_type },
@@ -339,8 +342,11 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
     expired:    'This offer has ended. The admin will choose a worker.',
     withdrawn:  'This job is no longer available.',
     reassigned: msg.type === 'site_visit' ? 'This visit was given to another worker. You no longer need to go.' : 'This job is now assigned to another worker.',
-    visit:      'Please be on time. If you can\'t make it, ask to move the visit from your Schedule page.',
+    visit:      visit?.waiting_for
+      ? 'The date is not final yet. You will get a message when it is.'
+      : 'Please be on time. If you can\'t make it, ask to move the visit from your Schedule page.',
     visit_done: 'This visit is marked as done.',
+    visit_answer: 'Site visits are 9:00–11:00 AM, Monday to Friday.',
   }[msg.state]
 
   return (
@@ -402,7 +408,7 @@ function Detail({ msg, busy, confirm, setConfirm, onBack, onAccept, onDecline, o
           ) : (
             <div className="flex justify-end">
               {visit?.is_mine
-                ? <button onClick={onOpenSchedule} className={btnSecondary}><CalendarClock size={16} {...ICON} />Open my schedule</button>
+                ? <button onClick={onOpenSchedule} className={msg.state === 'visit_answer' ? btnPrimary : btnSecondary}><CalendarClock size={16} {...ICON} />{msg.state === 'visit_answer' ? 'Answer in my schedule' : 'Open my schedule'}</button>
                 : <button onClick={onOpenJobs} className={btnSecondary}><ClipboardList size={16} {...ICON} />Open My Job Orders</button>}
             </div>
           )}

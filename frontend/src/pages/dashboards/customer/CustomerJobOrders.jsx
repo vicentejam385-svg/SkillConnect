@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   RefreshCw, ClipboardList, MapPin, Calendar, Clock,
-  DollarSign, X, CheckCircle, AlertCircle, Image as ImageIcon, Flag,
+  DollarSign, X, CheckCircle, AlertCircle, Image as ImageIcon, Flag, CalendarCheck, Hourglass,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 
@@ -84,6 +84,7 @@ export default function CustomerJobOrdersPage() {
   const [loading,      setLoading]      = useState(true)
   const [toast,        setToast]        = useState(null)
   const [selected,     setSelected]     = useState(null)
+  const [visits,       setVisits]       = useState([])
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -94,8 +95,12 @@ export default function CustomerJobOrdersPage() {
     setLoading(true)
     try {
       // The server only returns this customer's own job orders
-      const data = await apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 })
+      const [data, vData] = await Promise.all([
+        apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 }),
+        apiGet('/api/schedules/list.php', { per_page: 200, mine: 1 }).catch(() => ({ schedules: [] })),
+      ])
       setJobOrders(data.job_orders || [])
+      setVisits(vData.schedules || [])
     } catch {
       showToast('Failed to load job orders.', 'error')
     }
@@ -204,6 +209,10 @@ export default function CustomerJobOrdersPage() {
                 )}
               </div>
 
+              {visitsFor(visits, jo.id).map(v => (
+                <VisitCard key={v.id} visit={v} isMobile={isMobile}
+                  onDone={(msg, type) => { showToast(msg, type); if (type !== 'error') load() }} />
+              ))}
               {jo.finished_at && jo.status === 'In Progress' && (
                 <ConfirmCard jo={jo} isMobile={isMobile} onDone={(msg, type) => { showToast(msg, type); if (type !== 'error') load() }} />
               )}
@@ -273,6 +282,111 @@ export default function CustomerJobOrdersPage() {
     </div>
   )
 }
+// ── Site visit date (agree with the worker) ────────────────────
+const VISIT_LABEL = { ocular: 'Site visit (ocular inspection)', progress: 'Progress check', other: 'Site visit' }
+const fmtVisitDay = s => {
+  if (!s) return '—'
+  const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
+  return isNaN(d) ? s : d.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+}
+const fmtVisitTime = s => {
+  const d = new Date(String(s).replace(' ', 'T'))
+  return isNaN(d) ? '' : d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
+}
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const weekend = s => { const d = new Date(s + 'T00:00:00'); return d.getDay() === 0 || d.getDay() === 6 }
+
+// Visits the customer should see on a job card: being agreed, or planned and not yet over
+function visitsFor(visits, jobId) {
+  const now = new Date()
+  return visits.filter(v => String(v.job_order_id) === String(jobId) && (
+    v.waiting_for || (v.status === 'Scheduled' && new Date(String(v.end_time).replace(' ', 'T')) >= now)
+  ))
+}
+
+function VisitCard({ visit, isMobile, onDone }) {
+  const [mode, setMode] = useState(null)   // null | 'suggest'
+  const [date, setDate] = useState('')
+  const [busy, setBusy] = useState(null)
+  const tomorrow = ymd(new Date(Date.now() + 86400000))
+  const min = [tomorrow, (visit.job_start_date || '').slice(0, 10)].filter(Boolean).sort().pop()
+  const max = (visit.job_end_date || '').slice(0, 10) || undefined
+  const left = Number(visit.suggests_left ?? 0)
+
+  const send = async (action) => {
+    if (action === 'counter') {
+      if (!date) return onDone('Please pick a date.', 'error')
+      if (weekend(date)) return onDone('Site visits are Monday to Friday only.', 'error')
+      if (date < min || (max && date > max)) return onDone('Please pick a date within your job order dates.', 'error')
+    }
+    setBusy(action)
+    try {
+      const res = await apiPost('/api/schedules/propose.php', { schedule_id: visit.id, action, date: action === 'counter' ? date : undefined })
+      if (res?.success === false) throw new Error(res.error)
+      onDone(res?.message || 'Thank you!', 'success')
+    } catch (e) { onDone(e.message || 'Something went wrong. Please try again.', 'error') }
+    setBusy(null)
+  }
+
+  const btn = (primary) => ({
+    padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
+    border: primary ? 'none' : `1px solid ${C.border}`, background: primary ? C.green : '#fff',
+    color: primary ? '#fff' : C.textMid, opacity: busy ? 0.7 : 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  })
+
+  const planned = !visit.waiting_for
+  const myTurn  = visit.my_turn
+  const lastBy  = (visit.proposals || []).filter(p => p.action !== 'escalate').slice(-1)[0]?.by
+  const when    = `${fmtVisitDay(visit.start_time)} · ${fmtVisitTime(visit.start_time)} – ${fmtVisitTime(visit.end_time)}`
+
+  return (
+    <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 10, background: myTurn ? '#ecfdf5' : '#f9fafb', border: `1px solid ${myTurn ? '#a7f3d0' : C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        {planned ? <CalendarCheck size={16} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} />
+                 : myTurn ? <Calendar size={16} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} />
+                 : <Hourglass size={16} color={C.textFaint} style={{ flexShrink: 0, marginTop: 1 }} />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: myTurn ? '#065f46' : C.text }}>
+            {planned ? `${VISIT_LABEL[visit.visit_type] || 'Site visit'} is confirmed`
+              : myTurn ? 'Please confirm the date of your site visit'
+              : `${VISIT_LABEL[visit.visit_type] || 'Site visit'}: date not final yet`}
+          </div>
+          <div style={{ fontSize: 12, color: myTurn ? '#047857' : C.textMid, marginTop: 3 }}>{when}</div>
+          <div style={{ fontSize: 12, color: myTurn ? '#047857' : C.textSub, marginTop: 6 }}>
+            {planned ? `${visit.worker_name ? visit.worker_name : 'Our worker'} will visit you on this date.`
+              : myTurn ? (lastBy === 'worker' ? 'The worker suggested this date. Is it okay for you?' : 'Our worker will visit to check the site before the work starts. Is this date okay for you?')
+              : visit.waiting_for === 'admin' ? 'Our admin will choose the date and let you know by email.'
+              : 'Waiting for the worker to confirm. We will email you when the date is final.'}
+          </div>
+        </div>
+      </div>
+
+      {myTurn && (mode === 'suggest' ? (
+        <div style={{ marginTop: 12 }}>
+          <label style={{ display: 'block', fontSize: 12, color: '#065f46', fontWeight: 600, marginBottom: 6 }}>Pick a date that works for you</label>
+          <input type="date" min={min} max={max} value={date} onChange={e => setDate(e.target.value)}
+            style={{ width: isMobile ? '100%' : 220, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, background: '#fff', boxSizing: 'border-box' }} />
+          <div style={{ fontSize: 11, color: '#047857', marginTop: 6 }}>
+            Monday to Friday, 9:00–11:00 AM{max ? `, until ${fmtDate(max)}` : ''}. {left <= 1 ? 'This is the last time you can suggest a date.' : `You can suggest a date ${left} more times.`}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button onClick={() => send('counter')} disabled={!!busy} style={btn(true)}>{busy === 'counter' ? 'Sending…' : 'Send this date'}</button>
+            <button onClick={() => { setMode(null); setDate('') }} disabled={!!busy} style={btn(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+          <button onClick={() => send('accept')} disabled={!!busy} style={btn(true)}><CheckCircle size={13} />{busy === 'accept' ? 'Saving…' : 'Accept this date'}</button>
+          {visit.can_suggest
+            ? <button onClick={() => setMode('suggest')} disabled={!!busy} style={btn(false)}>Suggest another date</button>
+            : <button onClick={() => send('escalate')} disabled={!!busy} style={btn(false)}>{busy === 'escalate' ? 'Sending…' : 'Let the admin choose'}</button>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Confirm the finished work ──────────────────────────────────
 function ConfirmCard({ jo, isMobile, onDone }) {
   const [mode, setMode] = useState(null)   // null | 'confirm' | 'issue'

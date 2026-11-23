@@ -41,6 +41,15 @@ try {
     if ((int)$v['worker_user_id'] !== $uid) rrFail('You can only ask to move your own site visits.', 403);
     if (!in_array((int)$v['status_id'], svOpenStatuses(), true)) rrFail('This visit is no longer open.');
     if ($v['start_time'] <= jobOrderNow()) rrFail('This visit has already started.');
+    if ($v['prop_turn'] !== null && (int)$v['status_id'] === SV_PENDING) {
+        rrFail('The date of this visit is still being agreed. Use "Suggest another date" instead.');
+    }
+    // An ocular visit stays inside the job order dates
+    if ($v['visit_type'] === 'ocular' && $v['job_order_id']) {
+        $day = substr($start, 0, 10);
+        if ($v['job_start_date'] && $day < substr($v['job_start_date'], 0, 10)) rrFail('Pick a date on or after the job start date (' . svFmtDay($v['job_start_date']) . ').');
+        if ($v['job_end_date'] && $day > substr($v['job_end_date'], 0, 10)) rrFail('Pick a date on or before the job end date (' . svFmtDay($v['job_end_date']) . ').');
+    }
 
     $dup = $pdo->prepare("SELECT 1 FROM reschedule_requests WHERE schedule_id = ? AND status = 'pending' LIMIT 1");
     $dup->execute([$scheduleId]);

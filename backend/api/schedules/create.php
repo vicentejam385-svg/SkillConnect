@@ -45,8 +45,15 @@ try {
     if (!$allowed) svFail('Site visits can be planned when the job order is Under Review, Scheduled or In Progress.');
     if (!in_array($type, $allowed, true)) {
         svFail($type === 'ocular'
-            ? 'An ocular inspection is only for job orders that are Under Review.'
+            ? 'An ocular inspection is only for job orders that are Under Review or Scheduled.'
             : 'A progress inspection is only for job orders that are Scheduled or In Progress.');
+    }
+    if ($type === 'ocular') {
+        // One ocular visit per job order (the system usually plans it already)
+        $ex = $pdo->prepare("SELECT COALESCE(schedule_code, CONCAT('#', id)) FROM schedules
+                             WHERE job_order_id = ? AND visit_type = 'ocular' AND status_id IN (?, ?, ?)");
+        $ex->execute([$jobId, SV_PENDING, SV_SCHEDULED, SV_IN_PROGRESS]);
+        if ($dup = $ex->fetchColumn()) svFail('This job order already has an ocular visit (' . $dup . '). Open it instead.');
     }
     if ($err = svCheckWorker($pdo, $jo, $type, $workerId)) svFail($err);
     if ($clash = svWorkerClash($pdo, $workerId, $start, $end)) svFail('This worker already has visit ' . $clash . ' at that time.');

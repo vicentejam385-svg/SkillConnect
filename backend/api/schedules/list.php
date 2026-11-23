@@ -1,6 +1,8 @@
 <?php
 // backend/api/schedules/list.php
-// Site visits. Admins see all; workers only their own (also with ?mine=1).
+// Site visits. Admins see all; workers and customers only their own (also with ?mine=1).
+// Workers don't see an ocular visit while only the customer has been asked about the date.
+// Each visit comes with its date agreement history (proposals).
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
@@ -35,8 +37,12 @@ try {
 
     $isAdmin = isAdminUser($auth);
     if ($mine || !$isAdmin) {
-        if ($role === 'worker') { $where[] = 'sc.worker_user_id = ?'; $params[] = $uid; }
-        else {
+        if ($role === 'worker') {
+            $where[] = 'sc.worker_user_id = ?'; $params[] = $uid;
+            $where[] = "NOT (sc.prop_turn <=> 'customer' AND sc.prop_worker_ok = 0)";
+        } elseif ($role === 'client') {
+            $where[] = '(sc.client_user_id = ? OR jo.client_user_id = ?)'; $params[] = $uid; $params[] = $uid;
+        } else {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => 'Not allowed.']);
             exit;
@@ -86,6 +92,8 @@ try {
                 s.label  AS status,
                 jo.job_order_code,
                 jo.status_id AS job_status_id,
+                jo.start_date AS job_start_date,
+                jo.end_date AS job_end_date,
                 js.label AS job_status,
                 sp.name  AS service,
                 (SELECT COUNT(*) FROM reschedule_requests rr
@@ -95,8 +103,19 @@ try {
     );
     $dataStmt->execute($params);
     $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+    $history = svProposalHistory($pdo, array_column($rows, 'id'));
+    $lateAt  = (new DateTime('now', jobOrderTz()))->modify('-' . SV_ANSWER_DAYS . ' days')->format('Y-m-d H:i:s');
+    $me      = $role === 'client' ? 'customer' : ($role === 'worker' ? 'worker' : null);
     foreach ($rows as &$r) {
         $r['visit_label'] = svTypeLabel($r['visit_type']);
+        $r['proposals']   = $history[(int)$r['id']] ?? [];
+        $turn = $r['prop_turn'] ?? null;
+        $r['waiting_for']   = ((int)$r['status_id'] === SV_PENDING) ? $turn : null;
+        $r['my_turn']       = $r['waiting_for'] !== null && $me !== null && $r['waiting_for'] === $me && ($mine || !$isAdmin);
+        $r['can_suggest']   = (int)($r['prop_round'] ?? 0) < SV_MAX_ROUNDS;
+        $r['suggests_left'] = max(0, SV_MAX_ROUNDS - (int)($r['prop_round'] ?? 0));
+        $r['answer_late']   = $r['waiting_for'] !== null && $r['waiting_for'] !== 'admin'
+                              && !empty($r['prop_at']) && $r['prop_at'] <= $lateAt;
     }
     unset($r);
 

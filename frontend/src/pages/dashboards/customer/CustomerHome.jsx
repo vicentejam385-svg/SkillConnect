@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, CheckCircle, Clock, Zap, RefreshCw, ArrowRight } from 'lucide-react'
+import { ClipboardList, CheckCircle, Clock, Zap, RefreshCw, ArrowRight, CalendarCheck } from 'lucide-react'
 import { apiGet } from '../../../utils/api'
 
 // ── Responsive Hook ────────────────────────────────────────────
@@ -79,14 +79,19 @@ export default function CustomerHome() {
   const isMobile  = useWindowWidth() < 640
   const [jobOrders, setJobOrders] = useState([])
   const [loading,   setLoading]   = useState(true)
+  const [visits,    setVisits]    = useState([])
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       try {
         // The server only returns this customer's own job orders
-        const joData = await apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 })
+        const [joData, vData] = await Promise.all([
+          apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 }),
+          apiGet('/api/schedules/list.php', { per_page: 200, mine: 1 }).catch(() => ({ schedules: [] })),
+        ])
         setJobOrders(joData.job_orders || [])
+        setVisits(vData.schedules || [])
       } catch {}
       setLoading(false)
     }
@@ -98,6 +103,7 @@ export default function CustomerHome() {
   const completed = jobOrders.filter(jo => jo.status === 'Complete').length
   const pending   = jobOrders.filter(jo => jo.status === 'Pending').length
   const toConfirm = jobOrders.filter(jo => jo.finished_at && jo.status === 'In Progress')
+  const dateToAnswer = visits.filter(v => v.my_turn)
   const recent    = [...jobOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6)
 
   // Matches screenshot stat order: Total Projects | In Projects | Completed | Too Projects
@@ -114,6 +120,26 @@ export default function CustomerHome() {
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {stats.map(s => <StatCard key={s.label} {...s} />)}
       </div>
+
+      {/* A site visit date waiting for the customer's answer */}
+      {dateToAnswer.length > 0 && (
+        <button onClick={() => navigate('/customer/job-orders')} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+          background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 12,
+          padding: '14px 18px', marginBottom: 20, cursor: 'pointer',
+        }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: '#fff', border: '1px solid #a7f3d0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <CalendarCheck size={17} color={C.green} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>
+              {dateToAnswer.length === 1 ? 'Please confirm the date of your site visit' : `Please confirm ${dateToAnswer.length} site visit dates`}
+            </div>
+            <div style={{ fontSize: 12, color: '#047857', marginTop: 2 }}>Accept the date or suggest another one that works for you.</div>
+          </div>
+          <ArrowRight size={16} color={C.green} />
+        </button>
+      )}
 
       {/* Finished work waiting for the customer's confirmation */}
       {toConfirm.length > 0 && (

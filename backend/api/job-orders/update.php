@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-order-status.php';
 require_once __DIR__ . '/../../helpers/job-offers.php';
+require_once __DIR__ . '/../../helpers/site-visits.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -259,6 +260,21 @@ try {
             ->execute([$id]);
     }
 
+    // ── Site visits follow the job ─────────────────────────────────────────
+    if ($oldWorker && $newWorker !== $oldWorker) {
+        // Worker removed or changed: the old worker's visits are cancelled
+        svCancelJobVisits($pdo, $id,
+            'You are no longer the worker on this job, so you don’t need to go on this visit.',
+            'The worker for your job order changed. We will send you a new date for the site visit soon.',
+            $oldWorker);
+    }
+    if (array_key_exists('status', $chgNew) && in_array($nowStatus, [JO_STATUS_ON_HOLD, JO_STATUS_CANCELLED], true)) {
+        $what = $nowStatus === JO_STATUS_ON_HOLD ? 'on hold' : 'cancelled';
+        svCancelJobVisits($pdo, $id,
+            'The job order is ' . $what . ', so this site visit is cancelled.',
+            'Your job order is ' . $what . ', so the site visit is cancelled. Please contact us if you have questions.');
+    }
+
     $enteredReview = (int)$before['status_id'] !== JOB_OFFER_REVIEW_STATUS && $nowStatus === JOB_OFFER_REVIEW_STATUS;
 
     if ($nowStatus !== JOB_OFFER_REVIEW_STATUS) {
@@ -289,8 +305,14 @@ try {
     error_log('[job-offers] update.php offer step failed for job order ' . $id . ': ' . $e->getMessage());
 }
 
-// A worker and agreed dates: move to Scheduled automatically
-jobOrderAutoSchedule($pdo, $id);
+// A worker and agreed dates: move to Scheduled automatically,
+// then ask the customer about a date for the ocular visit
+$visitResult = null;
+$nowScheduled = jobOrderAutoSchedule($pdo, $id);
+if ($nowScheduled || $directAssign) {
+    $visitResult = svAutoOcular($pdo, $id);
+    if (!$visitResult['ok'] && $visitResult['reason'] === 'not_scheduled') $visitResult = null;
+}
 
 $rowStmt->execute([$id]);
 $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
@@ -305,4 +327,5 @@ echo json_encode([
     'message'   => 'Job order updated.',
     'job_order' => $row,
     'offer'     => $offerResult,
+    'visit'     => $visitResult,
 ]);

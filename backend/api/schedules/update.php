@@ -2,6 +2,8 @@
 // backend/api/schedules/update.php
 // Admin changes a site visit: time, worker, notes, or status (complete / cancel / reopen).
 //   PUT { id, start_time?, end_time?, worker_user_id?, description?, visit_type?, status_id? }
+// Saving a visit whose date is still being agreed sets it as the final date (Planned),
+// and both the worker and the customer are told.
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
@@ -51,11 +53,16 @@ try {
     if (!in_array($new['status_id'], [SV_PENDING, SV_SCHEDULED, SV_IN_PROGRESS, SV_COMPLETE, SV_CANCELLED], true)) svFail('Invalid status.');
     if ($new['visit_type'] !== null && !in_array($new['visit_type'], ['ocular', 'progress', 'other'], true)) svFail('Invalid visit type.');
 
+    // The admin's save ends the date agreement
+    $wasAgreeing = $before['prop_turn'] !== null && (int)$before['status_id'] === SV_PENDING;
+    $finalizes   = $wasAgreeing && in_array($new['status_id'], [SV_PENDING, SV_SCHEDULED], true);
+    if ($finalizes) $new['status_id'] = SV_SCHEDULED;
+
     $timeChanged   = $new['start_time'] !== $before['start_time'] || $new['end_time'] !== $before['end_time'];
     $workerChanged = (string)$new['worker_user_id'] !== (string)$before['worker_user_id'];
     $stillOpen     = in_array($new['status_id'], svOpenStatuses(), true);
 
-    if ($stillOpen && ($timeChanged || $workerChanged || !in_array((int)$before['status_id'], svOpenStatuses(), true))) {
+    if ($stillOpen && ($timeChanged || $workerChanged || $finalizes || !in_array((int)$before['status_id'], svOpenStatuses(), true))) {
         if ($err = svCheckSlot($new['start_time'], $new['end_time'])) svFail($err);
         if (!$new['worker_user_id']) svFail('Choose who goes on the visit.');
         if (!empty($before['job_order_id']) && $workerChanged) {
@@ -70,6 +77,12 @@ try {
     $pdo->prepare(
         "UPDATE schedules SET start_time = ?, end_time = ?, worker_user_id = ?, description = ?, visit_type = ?, status_id = ? WHERE id = ?"
     )->execute([$new['start_time'], $new['end_time'], $new['worker_user_id'], $new['description'], $new['visit_type'], $new['status_id'], $id]);
+    if ($wasAgreeing) {
+        // Planned, cancelled or done: nobody needs to answer the date any more
+        $pdo->prepare("UPDATE schedules SET prop_turn = NULL, prop_customer_ok = 1, prop_worker_ok = 1, prop_at = ? WHERE id = ?")
+            ->execute([jobOrderNow(), $id]);
+        if ($finalizes) svLogProposal($pdo, $id, 'admin', 'final', $new['start_time'], $new['end_time'], (int)($auth['sub'] ?? 0) ?: null);
+    }
 
     $after = svLoad($pdo, $id);
     $code  = $before['schedule_code'] ?? ('#' . $id);
@@ -98,17 +111,26 @@ try {
         ]));
     }
 
-    // Tell the workers
-    $label = svTypeLabel($after['visit_type']);
+    // Tell the workers (and the customer for visits they agreed on)
+    $label       = svTypeLabel($after['visit_type']);
+    $workerSaw   = svWorkerCanSee($before);
+    $customerToo = !empty($before['auto_created']);
     if ($new['status_id'] === SV_CANCELLED && (int)$before['status_id'] !== SV_CANCELLED) {
-        if ($before['worker_user_id']) svNotify($pdo, $id, 'visit_update', $label . ' cancelled', 'This site visit was cancelled.', (int)$before['worker_user_id']);
+        if ($before['worker_user_id'] && $workerSaw) svNotify($pdo, $id, 'visit_update', $label . ' cancelled', 'This site visit was cancelled.', (int)$before['worker_user_id']);
+        if ($customerToo) svMailCustomer($pdo, $id, 'Your site visit is cancelled', ['The site visit below is cancelled. We will contact you if a new visit is needed.']);
+    } elseif ($finalizes && !$workerChanged) {
+        svAnnounceFinal($pdo, $id, $workerSaw, 'The admin set the date of this site visit.');
     } elseif ($stillOpen) {
         if ($workerChanged) {
-            if ($before['worker_user_id']) svNotify($pdo, $id, 'visit_update', $label . ' reassigned', 'This site visit was given to another worker. You no longer need to go.', (int)$before['worker_user_id'], false);
+            if ($before['worker_user_id'] && $workerSaw) svNotify($pdo, $id, 'visit_update', $label . ' reassigned', 'This site visit was given to another worker. You no longer need to go.', (int)$before['worker_user_id'], false);
             if ($new['worker_user_id'])    svNotify($pdo, $id, 'site_visit', 'Site visit: ' . $label, $new['description'] ?: 'You are scheduled to visit this site.');
         } elseif ($timeChanged) {
             svNotify($pdo, $id, 'visit_update', $label . ' moved to ' . (new DateTime($new['start_time'], jobOrderTz()))->format('M j, g:i A'),
                 'The date or time of this site visit changed.');
+        }
+        if ($customerToo && ($timeChanged || $finalizes)) {
+            svMailCustomer($pdo, $id, $finalizes ? 'Your site visit is confirmed' : 'Your site visit was moved',
+                [$finalizes ? 'The admin set the date of your site visit.' : 'The date or time of your site visit changed. Here is the new schedule.']);
         }
     }
 

@@ -75,6 +75,11 @@ try {
     if ($action === 'approve') {
         svNotify($pdo, (int)$v['id'], 'visit_update', 'Reschedule approved: ' . $label . ' moved to ' . $when,
             $note !== '' ? $note : 'Your request was approved.', (int)$req['requested_by_user_id']);
+        // The customer agreed on the old date, so they need to know the new one
+        if (!empty($v['auto_created'])) {
+            svMailCustomer($pdo, (int)$v['id'], 'Your site visit was moved',
+                ['Our worker can’t come on the date you agreed, so the site visit was moved. Here is the new schedule. Please contact us if this date doesn’t work for you.']);
+        }
     } else {
         svNotify($pdo, (int)$v['id'], 'visit_update', 'Reschedule not approved: ' . $label . ' stays as planned',
             $note !== '' ? $note : 'Please go at the original time, or contact the admin.', (int)$req['requested_by_user_id']);
@@ -82,7 +87,9 @@ try {
 
     echo json_encode([
         'success' => true,
-        'message' => $action === 'approve' ? 'Visit moved and the worker has been told.' : 'Request rejected. The worker has been told.',
+        'message' => $action === 'approve'
+            ? (!empty($v['auto_created']) ? 'Visit moved. The worker and the customer have been told.' : 'Visit moved and the worker has been told.')
+            : 'Request rejected. The worker has been told.',
         'status'  => $action === 'approve' ? 'approved' : 'rejected',
     ]);
 } catch (PDOException $e) {

@@ -106,6 +106,11 @@ try {
                 fp.file_path AS finish_photo_path,
                 (SELECT COUNT(*) FROM job_order_progress_photos p WHERE p.job_order_id = jo.id) AS photos_count,
                 (SELECT MAX(p.upload_date) FROM job_order_progress_photos p WHERE p.job_order_id = jo.id) AS last_photo_date,
+                -- Ocular visit: '' = none, else '<status id>:<whose turn to answer the date>'
+                COALESCE((SELECT CONCAT(v.status_id, ':', COALESCE(v.prop_turn, ''))
+                            FROM schedules v
+                           WHERE v.job_order_id = jo.id AND v.visit_type = 'ocular' AND v.status_id IN (11, 12, 13, 14)
+                           ORDER BY v.id DESC LIMIT 1), '') AS ocular_state,
                 -- Job offers: how many workers got it and how many said Not interested
                 (SELECT COUNT(*) FROM worker_inbox m
                   WHERE m.job_order_id = jo.id AND m.type = 'job_offer') AS offers_sent,

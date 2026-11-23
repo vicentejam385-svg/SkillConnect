@@ -58,6 +58,7 @@ try {
                 jo.start_date, jo.end_date, jo.description,
                 v.id AS visit_id, v.schedule_code AS visit_code, v.visit_type, v.start_time AS visit_start,
                 v.end_time AS visit_end, v.worker_user_id AS visit_worker_id, vs.label AS visit_status,
+                v.prop_turn AS visit_turn, v.status_id AS visit_status_id,
                 s.label  AS job_status,
                 ct.name  AS contract_type,
                 sp.name  AS service,
@@ -92,7 +93,9 @@ try {
         } elseif ($r['type'] === 'site_visit') {
             $state = !$myVisit ? 'reassigned'
                    : ($r['visit_status'] === 'Cancelled' ? 'withdrawn'
-                   : ($r['visit_status'] === 'Complete' ? 'visit_done' : 'visit'));
+                   : ($r['visit_status'] === 'Complete' ? 'visit_done'
+                   // The date still needs the worker's answer
+                   : (($r['visit_turn'] === 'worker' && (int)$r['visit_status_id'] === 11) ? 'visit_answer' : 'visit')));
         } elseif ($r['type'] !== 'job_offer') {
             $state = 'info';   // updates and notices: nothing to answer
         } elseif ($r['response'] === 'accepted') {
@@ -148,6 +151,7 @@ try {
                 'start_time' => $r['visit_start'],
                 'end_time'   => $r['visit_end'],
                 'status'     => $r['visit_status'],
+                'waiting_for'=> (int)$r['visit_status_id'] === 11 ? $r['visit_turn'] : null,
                 'is_mine'    => $myVisit,
             ],
         ];

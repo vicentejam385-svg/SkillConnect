@@ -119,6 +119,8 @@ function jobOrderAutoSchedule(PDO $pdo, int $jobOrderId): bool
  *   awaiting_confirm    worker reported finished, waiting for the customer / admin
  *   customer_slow       ...for more than 3 days
  *   issue               the customer or admin said it is not done yet
+ *   visit_to_plan       Scheduled, not started, and no ocular visit (no free day was found) - needs ocular_state
+ *   visit_pick_date     the customer and worker could not agree: the admin picks the ocular date
  */
 function jobOrderFlags(array $row, ?string $today = null): array
 {
@@ -141,6 +143,15 @@ function jobOrderFlags(array $row, ?string $today = null): array
     }
     if ($open && empty($row['finished_at']) && !empty($row['issue_note'])) {
         $flags[] = 'issue';
+    }
+    if (array_key_exists('ocular_state', $row)) {
+        // ocular_state: '' = no ocular visit, otherwise "<schedule status id>:<whose turn>"
+        $ocular = (string)$row['ocular_state'];
+        if ($status === JO_STATUS_SCHEDULED && $ocular === '' && empty($row['started_at'])
+            && !empty($row['end_date']) && $row['end_date'] >= $today) {
+            $flags[] = 'visit_to_plan';
+        }
+        if (str_ends_with($ocular, ':admin')) $flags[] = 'visit_pick_date';
     }
     return $flags;
 }

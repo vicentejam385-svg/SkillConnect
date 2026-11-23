@@ -8,6 +8,7 @@ require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-offers.php';
 require_once __DIR__ . '/../../helpers/job-order-status.php';
+require_once __DIR__ . '/../../helpers/site-visits.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -103,8 +104,12 @@ try {
         ->execute([$now, $now, $id]);
     $pdo->commit();
 
-    // A worker and agreed dates: the job moves to Scheduled
-    jobOrderAutoSchedule($pdo, $joId);
+    // A worker and agreed dates: the job moves to Scheduled,
+    // and the customer is asked about a date for the ocular visit
+    $visit = null;
+    if (jobOrderAutoSchedule($pdo, $joId)) {
+        $visit = svAutoOcular($pdo, $joId);
+    }
 
     auditLog(array_merge(auditActor($auth), [
         'action'         => 'UPDATE',
@@ -118,7 +123,13 @@ try {
         'new_values'     => ['worker' => $workerName, 'offer_response' => 'accepted'],
     ]));
 
-    echo json_encode(['success' => true, 'message' => 'The job is yours. You can find it under My Job Orders.', 'state' => 'accepted']);
+    echo json_encode([
+        'success' => true,
+        'message' => ($visit['ok'] ?? false)
+            ? 'The job is yours. We asked the customer about a date for the site visit; you will get a message to confirm it.'
+            : 'The job is yours. You can find it under My Job Orders.',
+        'state'   => 'accepted',
+    ]);
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);

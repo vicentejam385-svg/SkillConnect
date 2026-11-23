@@ -3,7 +3,7 @@ import { useLocation, useNavigate as useRouterNavigate } from 'react-router-dom'
 import {
   CalendarDays, CalendarClock, Plus, Search, CheckCircle2, AlertCircle, X, ChevronLeft, ChevronRight,
   ChevronDown, Clock, HardHat, User, Briefcase, Loader2, RotateCcw, Info, MapPin, Pencil, Ban,
-  ClipboardCheck, Eye, Smartphone, FileText, CalendarX2,
+  ClipboardCheck, Eye, Smartphone, FileText, CalendarX2, Hourglass, History,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -69,7 +69,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 const TYPES = {
-  ocular:   { label: 'Ocular inspection',   short: 'Ocular',   hint: 'Check the site before agreeing the dates with the customer.', cls: 'bg-violet-50 text-violet-700 ring-violet-200', chip: 'bg-violet-50 text-violet-800 border-violet-400' },
+  ocular:   { label: 'Ocular inspection',   short: 'Ocular',   hint: 'Check the site before the work starts.', cls: 'bg-violet-50 text-violet-700 ring-violet-200', chip: 'bg-violet-50 text-violet-800 border-violet-400' },
   progress: { label: 'Progress inspection', short: 'Progress', hint: 'Check the work while the job is running.',                     cls: 'bg-sky-50 text-sky-700 ring-sky-200',          chip: 'bg-sky-50 text-sky-800 border-sky-400' },
   other:    { label: 'Other visit',         short: 'Visit',    hint: 'Any other reason to go to the site.',                          cls: 'bg-slate-100 text-slate-600 ring-slate-200',   chip: 'bg-slate-50 text-slate-700 border-slate-400' },
 }
@@ -108,6 +108,24 @@ function StatusBadge({ status }) {
     </span>
   )
 }
+// Visits whose date is still being agreed between the customer and the worker
+const WAITING = {
+  customer: ['Waiting for customer', 'bg-slate-50 text-slate-600 ring-slate-200', 'bg-slate-400'],
+  worker:   ['Waiting for worker',   'bg-slate-50 text-slate-600 ring-slate-200', 'bg-slate-400'],
+  admin:    ['Pick the date',        'bg-amber-50 text-amber-700 ring-amber-200', 'bg-amber-500'],
+}
+function VisitBadge({ visit }) {
+  const w = visit.waiting_for && WAITING[visit.waiting_for]
+  if (!w) return <StatusBadge status={visit.status} />
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md ring-1 ring-inset text-xs font-medium whitespace-nowrap ${w[1]}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${w[2]}`} />{w[0]}
+    </span>
+  )
+}
+const WHO = { system: 'SkillConnect', customer: 'Customer', worker: 'Worker', admin: 'Admin' }
+const ACTION = { propose: 'proposed', accept: 'accepted', counter: 'suggested', escalate: 'asked the admin to decide', final: 'set the final date' }
+
 function EmptyState({ icon: Icon, title, text, action }) {
   return (
     <div className="py-12 flex flex-col items-center justify-center text-center px-6">
@@ -245,6 +263,7 @@ export default function SchedulesPage() {
   }, [visits, selectedDay, listView, q])
 
   const pendingRequests = visits.filter(v => Number(v.pending_requests) > 0).length
+  const toPick = visits.filter(v => v.waiting_for === 'admin')
 
   const changeStatus = async (visit, status_id, msg) => {
     try {
@@ -264,7 +283,7 @@ export default function SchedulesPage() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Site visits</h1>
-          <p className="text-sm text-slate-500 mt-1">Ocular and progress inspections, Monday to Friday. The worker gets an Inbox message and an email.</p>
+          <p className="text-sm text-slate-500 mt-1">Monday to Friday. When a worker takes a job, the ocular visit date is sent to the customer and the worker to agree on.</p>
         </div>
         <button onClick={() => setForm({})} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> Plan site visit</button>
       </div>
@@ -274,6 +293,14 @@ export default function SchedulesPage() {
           <CalendarClock size={16} {...ICON} className="text-slate-400 flex-shrink-0" />
           <p className="flex-1">{pendingRequests} visit{pendingRequests > 1 ? 's have' : ' has'} a reschedule request from the worker. Answer it on the dashboard.</p>
           <button onClick={() => navigate('/admin/dashboard')} className="text-sm font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap">Open dashboard</button>
+        </div>
+      )}
+
+      {toPick.length > 0 && (
+        <div className="flex items-center gap-2.5 px-3.5 py-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700">
+          <Hourglass size={16} {...ICON} className="text-amber-500 flex-shrink-0" />
+          <p className="flex-1">The customer and the worker couldn't agree on {toPick.length === 1 ? 'a visit date' : `${toPick.length} visit dates`}. Please pick the date.</p>
+          <button onClick={() => setViewId(toPick[0].id)} className="text-sm font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap">Pick date</button>
         </div>
       )}
 
@@ -314,7 +341,7 @@ export default function SchedulesPage() {
                     ${isToday ? 'bg-emerald-600 text-white font-semibold' : weekend ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>{day}</span>
                   <span className="hidden sm:flex flex-col gap-0.5 mt-1 min-w-0">
                     {events.slice(0, 2).map(ev => (
-                      <span key={ev.id} className={`block truncate text-[11px] leading-4 px-1.5 py-px rounded border-l-2 ${typeOf(ev.visit_type).chip} ${ev.status === 'Cancelled' ? 'line-through opacity-60' : ''}`}>
+                      <span key={ev.id} className={`block truncate text-[11px] leading-4 px-1.5 py-px rounded border-l-2 ${typeOf(ev.visit_type).chip} ${ev.status === 'Cancelled' ? 'line-through opacity-60' : ''} ${ev.waiting_for ? 'border-dashed opacity-70' : ''}`}>
                         <span className="font-medium">{fmtTime(ev._start).replace(':00', '')}</span> {ev.worker_name?.split(' ')[0] || 'Visit'}
                       </span>
                     ))}
@@ -392,12 +419,13 @@ export default function SchedulesPage() {
                           <p className={`text-sm font-medium text-slate-900 line-clamp-1 ${v.status === 'Cancelled' ? 'line-through text-slate-500' : ''}`}>
                             {typeOf(v.visit_type).label}{v.service ? ` · ${v.service}` : ''}
                           </p>
-                          <StatusBadge status={v.status} />
+                          <VisitBadge visit={v} />
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                           <Clock size={12} {...ICON} />{fmtTime(v._start)} – {fmtTime(v._end)}
                           {v.job_order_code && <span className="text-emerald-700 font-medium">· {v.job_order_code}</span>}
                           {Number(v.pending_requests) > 0 && <span className="text-amber-700">· reschedule asked</span>}
+                          {v.answer_late && <span className="text-amber-700">· no answer for 2+ days</span>}
                         </p>
                         <p className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5 min-w-0">
                           <Avatar name={v.worker_name} size="w-5 h-5" text="text-[9px]" />
@@ -417,7 +445,8 @@ export default function SchedulesPage() {
       {viewVisit && (
         <VisitDetails visit={viewVisit} onClose={() => setViewId(null)}
           onEdit={() => { setViewId(null); setForm({ visit: viewVisit }) }}
-          onStatus={changeStatus} onOpenJob={() => navigate('/admin/job-orders')} />
+          onStatus={changeStatus} onOpenJob={() => navigate('/admin/job-orders')}
+          onFinal={msg => { setViewId(null); showToast(msg); load() }} onError={msg => showToast(msg, 'error')} />
       )}
 
       {form && (
@@ -429,9 +458,23 @@ export default function SchedulesPage() {
 }
 
 // ── Visit details ──────────────────────────────────────────────
-function VisitDetails({ visit, onClose, onEdit, onStatus, onOpenJob }) {
-  const [confirm, setConfirm] = useState(null) // 'cancel' | 'complete'
+function VisitDetails({ visit, onClose, onEdit, onStatus, onOpenJob, onFinal, onError }) {
+  const [confirm, setConfirm] = useState(null) // 'cancel' | 'complete' | 'final'
   const [busy, setBusy] = useState(false)
+  const [finalDate, setFinalDate] = useState(visit._start ? dayKey(visit._start) : '')
+  const agreeing = !!visit.waiting_for
+
+  const setFinal = async () => {
+    if (!finalDate) return onError('Pick the date.')
+    if (isWeekend(finalDate)) return onError('Site visits are Monday to Friday only.')
+    setBusy(true)
+    try {
+      const res = await apiPost('/api/schedules/propose.php', { schedule_id: visit.id, action: 'final', date: finalDate })
+      if (res?.success === false) throw new Error(res.error)
+      onFinal('Date set. The worker and the customer have been told.')
+    } catch (e) { onError(errText(e)) }
+    setBusy(false)
+  }
   const open = OPEN.includes(visit.status)
   const legacy = !visit.job_order_id
 
@@ -455,7 +498,7 @@ function VisitDetails({ visit, onClose, onEdit, onStatus, onOpenJob }) {
 
   return (
     <Modal onClose={onClose}>
-      <ModalHeader icon={ClipboardCheck} title={typeOf(visit.visit_type).label} subtitle={visit.schedule_code} onClose={onClose} badge={<StatusBadge status={visit.status} />} />
+      <ModalHeader icon={ClipboardCheck} title={typeOf(visit.visit_type).label} subtitle={visit.schedule_code} onClose={onClose} badge={<VisitBadge visit={visit} />} />
       <div className="px-6 py-5 overflow-y-auto flex-1 custom-scroll space-y-4">
         {legacy && (
           <p className="flex items-start gap-2 text-sm text-slate-600 rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3.5 py-3">
@@ -469,6 +512,19 @@ function VisitDetails({ visit, onClose, onEdit, onStatus, onOpenJob }) {
             The worker asked to move this visit. Answer the request on the dashboard.
           </p>
         )}
+        {agreeing && (
+          <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3.5 py-3 text-sm text-slate-700">
+            <p className="flex items-start gap-2">
+              <Hourglass size={16} {...ICON} className={`${visit.waiting_for === 'admin' ? 'text-amber-500' : 'text-slate-400'} flex-shrink-0 mt-0.5`} />
+              <span>
+                {visit.waiting_for === 'admin'
+                  ? 'The customer and the worker couldn’t agree. Pick the date below.'
+                  : `The date isn't final yet. Waiting for the ${visit.waiting_for} to answer${visit.answer_late ? ' (no answer for 2+ days)' : ''}. You can set the final date any time.`}
+                <span className="block text-xs text-slate-500 mt-1">Another date was suggested {visit.prop_round || 0} of 3 times. Visits are 9:00–11:00 AM.</span>
+              </span>
+            </p>
+          </div>
+        )}
         <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
           {rows.map(({ icon: Icon, label, value }) => (
             <div key={label} className="flex items-start gap-3 px-4 py-3">
@@ -480,10 +536,34 @@ function VisitDetails({ visit, onClose, onEdit, onStatus, onOpenJob }) {
             </div>
           ))}
         </dl>
+        {(visit.proposals || []).length > 1 && (
+          <div>
+            <p className="text-sm font-medium text-slate-900 mb-2 flex items-center gap-1.5"><History size={15} {...ICON} className="text-slate-400" />Date history</p>
+            <ol className="space-y-1.5">
+              {visit.proposals.map((p, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-slate-700"><span className="font-medium">{WHO[p.by] || p.by}</span> {ACTION[p.action] || p.action}
+                    {p.action !== 'escalate' && p.start_time ? ` · ${fmtDate(parseDT(p.start_time), { weekday: 'short', month: 'short', day: 'numeric' })}` : ''}</span>
+                  <span className="text-xs text-slate-400 whitespace-nowrap">{fmtDate(parseDT(p.created_at), { month: 'short', day: 'numeric' })}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
       </div>
 
       <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
-        {confirm ? (
+        {confirm === 'final' ? (
+          <div className="sc-pop flex flex-wrap items-center gap-x-3 gap-y-2">
+            <label htmlFor="final-date" className="text-sm text-slate-700">Final date</label>
+            <input id="final-date" type="date" min={dayKey(new Date(Date.now() + 86400000))} value={finalDate} onChange={e => setFinalDate(e.target.value)}
+              className={`${inputCls} !w-auto flex-1 min-w-[150px]`} />
+            <button onClick={() => setConfirm(null)} disabled={busy} className={btnSecondary}>Back</button>
+            <button onClick={setFinal} disabled={busy} className={btnPrimary}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}Set date
+            </button>
+          </div>
+        ) : confirm ? (
           <div className="sc-pop flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-sm text-slate-700 flex-1 min-w-[180px]">
               {confirm === 'cancel' ? 'Cancel this visit? The worker will be told.' : 'Mark this visit as done?'}
@@ -501,7 +581,9 @@ function VisitDetails({ visit, onClose, onEdit, onStatus, onOpenJob }) {
             <button onClick={() => setConfirm('cancel')} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg"><Ban size={15} {...ICON} />Cancel visit</button>
             <span className="flex-1" />
             {!legacy && <button onClick={onEdit} className={btnSecondary}><Pencil size={15} {...ICON} />Edit</button>}
-            <button onClick={() => setConfirm('complete')} className={btnPrimary}><CheckCircle2 size={16} {...ICON} />Mark as done</button>
+            {agreeing
+              ? <button onClick={() => setConfirm('final')} className={btnPrimary}><CalendarDays size={16} {...ICON} />Set final date</button>
+              : <button onClick={() => setConfirm('complete')} className={btnPrimary}><CheckCircle2 size={16} {...ICON} />Mark as done</button>}
           </div>
         ) : (
           <div className="flex flex-wrap gap-2 justify-end">
@@ -594,7 +676,8 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
         ? await apiPut('/api/schedules/update.php', { id: editing.id, ...payload })
         : await apiPost('/api/schedules/create.php', payload)
       if (res?.success === false) throw new Error(res.error)
-      onSaved(editing ? 'Visit updated. The worker has been told.' : 'Site visit planned. The worker has been notified.')
+      onSaved(editing?.waiting_for ? 'Date set. The worker and the customer have been told.'
+        : editing ? 'Visit updated. The worker has been told.' : 'Site visit planned. The worker has been notified.')
     } catch (e) { onError(errText(e)) }
     setSaving(false)
   }
@@ -602,7 +685,8 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
   return (
     <Modal onClose={() => !saving && onClose()} width="max-w-xl">
       <ModalHeader icon={CalendarClock} title={editing ? `Edit ${editing.schedule_code || 'visit'}` : 'Plan site visit'}
-        subtitle="Monday to Friday. The worker gets an Inbox message and an email." onClose={() => !saving && onClose()} />
+        subtitle={editing?.waiting_for ? 'Saving sets this as the final date. The worker and the customer are told.' : 'Monday to Friday. The worker gets an Inbox message and an email.'}
+        onClose={() => !saving && onClose()} />
 
       <div className="px-6 py-6 overflow-y-auto flex-1 custom-scroll space-y-5">
         {/* Job order */}
@@ -716,7 +800,7 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
           <button onClick={onClose} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
           <button onClick={save} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
             {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Plan visit'}
+            {saving ? 'Saving…' : editing?.waiting_for ? 'Save as final date' : editing ? 'Save changes' : 'Plan visit'}
           </button>
         </div>
       </div>
