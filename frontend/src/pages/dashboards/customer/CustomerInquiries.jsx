@@ -1,69 +1,46 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  RefreshCw, MessageSquare, MapPin, Calendar, Phone, FileText,
-  X, CheckCircle, AlertCircle
+  MessageSquare, MapPin, Calendar, Phone, Mail, FileText, Plus, Search, Eye, User, Wrench, ClipboardList, Hash, RefreshCw, AlertCircle, ChevronDown,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
+import {
+  ICON, MIN_SKELETON_MS, Skel, Toast, useToast, Modal, ModalHeader, PageHeader, EmptyState, Pill,
+  inputCls, labelCls, btnPrimary, btnSecondary, btnSmSecondary, fmtDate, getCustomerInfo,
+} from './CustomerUI'
 
-// ── Responsive Hook ────────────────────────────────────────────
-function useWindowWidth() {
-  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
-  return width
+// Customer-friendly names and colors for the inquiry statuses
+const STATUS = {
+  New:       ['Under review', 'bg-violet-50 text-violet-700 ring-violet-200',    'bg-violet-500'],
+  Pending:   ['Under review', 'bg-violet-50 text-violet-700 ring-violet-200',    'bg-violet-500'],
+  Reviewed:  ['Under review', 'bg-violet-50 text-violet-700 ring-violet-200',    'bg-violet-500'],
+  Won:       ['Accepted',     'bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500'],
+  Converted: ['Accepted',     'bg-emerald-50 text-emerald-700 ring-emerald-200', 'bg-emerald-500'],
+  Lost:      ['Closed',       'bg-slate-50 text-slate-600 ring-slate-200',       'bg-slate-400'],
+  Closed:    ['Closed',       'bg-slate-50 text-slate-600 ring-slate-200',       'bg-slate-400'],
+  Cancelled: ['Cancelled',    'bg-red-50 text-red-700 ring-red-200',             'bg-red-500'],
+}
+const statusLabel = s => STATUS[s]?.[0] || s || '—'
+function InquiryBadge({ status }) {
+  const [label, cls, dot] = STATUS[status] || [status || '—', 'bg-slate-50 text-slate-600 ring-slate-200', 'bg-slate-400']
+  return <Pill label={label} cls={cls} dot={dot} />
 }
 
-// ── Design Tokens ──────────────────────────────────────────────
-const C = {
-  green: '#16a34a', greenLight: '#dcfce7', greenDark: '#15803d',
-  blue: '#2563eb', blueLight: '#dbeafe',
-  purpleLight: '#f3e8ff',
-  red: '#dc2626', redLight: '#fee2e2',
-  bg: '#f3f4f6', card: '#ffffff', border: '#e5e7eb',
-  text: '#111827', textMid: '#374151', textSub: '#6b7280', textFaint: '#9ca3af',
-}
+const NCR_CODE = '1300000000'
+const EMPTY_INQUIRY = { first_name: '', last_name: '', email: '', mobile: '', province: '', city: '', barangay: '', house_street: '', reason: '', description: '' }
 
-// Customer-friendly names for the inquiry statuses
-const STATUS_LABEL = { New: 'Under review', Won: 'Accepted', Lost: 'Closed' }
-const statusLabel = s => STATUS_LABEL[s] || s || '—'
-function getCustomerInfo() {
-  try { return JSON.parse(localStorage.getItem('sc_user') || '{}') }
-  catch { return {} }
-}
-
-function Toast({ toast }) {
-  if (!toast) return null
-  return (
-    <div style={{
-      position: 'fixed', top: 20, right: 20, zIndex: 9999,
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-      background: toast.type === 'success' ? C.greenLight : C.redLight,
-      color:      toast.type === 'success' ? C.greenDark  : C.red,
-      border:     `1px solid ${toast.type === 'success' ? '#86efac' : '#fca5a5'}`,
-    }}>
-      {toast.type === 'success' ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-      {toast.msg}
-    </div>
-  )
-}
 export default function CustomerInquiriesPage() {
-  const navigate  = useNavigate()
-  const customer  = getCustomerInfo()
-  const isMobile  = useWindowWidth() < 640
+  const navigate = useNavigate()
+  const location = useLocation()
+  const customer = getCustomerInfo()
   const [inquiries,    setInquiries]    = useState([])
   const [loading,      setLoading]      = useState(true)
-  const [toast,        setToast]        = useState(null)
   const [search,       setSearch]       = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [selected,     setSelected]     = useState(null)
   const [services,     setServices]     = useState([])
+  const [toast, showToast] = useToast()
 
   // Services = the company's specializations
   useEffect(() => {
@@ -72,31 +49,26 @@ export default function CustomerInquiriesPage() {
       .catch(() => {})
   }, [])
 
-  const showToast = (msg, type = 'success') => {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
-  }
+  // ── New inquiry form ──
+  const [showForm,    setShowForm]    = useState(false)
+  const [formLoading, setFormLoading] = useState(false)
+  const [form,        setForm]        = useState(EMPTY_INQUIRY)
+  const [tried,       setTried]       = useState(false)
 
-  // ── New Inquiry form ──
-  const EMPTY_INQUIRY = { first_name: '', last_name: '', email: '', mobile: '', province: '', city: '', barangay: '', house_street: '', reason: '', description: '' }
-  const NCR_CODE = '1300000000'
-  const [showInquiryForm, setShowInquiryForm] = useState(false)
-  const [inquiryLoading,  setInquiryLoading]  = useState(false)
-  const [inquiryForm,     setInquiryForm]     = useState(EMPTY_INQUIRY)
+  const cities       = form.province ? getMunicipalitiesByProvince(form.province) : []
+  const barangays    = form.city     ? getBarangaysByMunicipality(form.city)      : []
+  const provinceName = form.province === NCR_CODE ? 'Metro Manila' : getAllProvinces().find(p => p.psgcCode === form.province)?.name ?? ''
+  const cityName     = cities.find(c => c.psgcCode === form.city)?.name ?? ''
+  const buildAddress = () => [form.house_street, form.barangay, cityName, provinceName].filter(Boolean).join(', ')
+  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const inqCities       = inquiryForm.province ? getMunicipalitiesByProvince(inquiryForm.province) : []
-  const inqBarangays    = inquiryForm.city     ? getBarangaysByMunicipality(inquiryForm.city)      : []
-  const inqProvinceName = inquiryForm.province === NCR_CODE ? 'Metro Manila' : getAllProvinces().find(p => p.psgcCode === inquiryForm.province)?.name ?? ''
-  const inqCityName     = inqCities.find(c => c.psgcCode === inquiryForm.city)?.name ?? ''
-  const buildInquiryAddress = () => [inquiryForm.house_street, inquiryForm.barangay, inqCityName, inqProvinceName].filter(Boolean).join(', ')
-
-  const openInquiryForm = async () => {
+  const openForm = async () => {
     // Use the latest saved address; fall back to the login info
     let savedAddress = customer?.address || ''
     try {
       const cData = await apiGet('/api/contacts/list.php', { per_page: 1 })
       savedAddress = cData.contacts?.[0]?.address || savedAddress
-    } catch {}
+    } catch { /* keep the login info */ }
 
     const parts = savedAddress.split(', ').filter(Boolean)
     const total = parts.length
@@ -111,7 +83,7 @@ export default function CustomerInquiriesPage() {
     const allCities   = matchedProv ? getMunicipalitiesByProvince(matchedProv) : []
     const matchedCity = allCities.find(c => c.name.toLowerCase() === savedCityName.toLowerCase())?.psgcCode || ''
 
-    setInquiryForm({
+    setForm({
       ...EMPTY_INQUIRY,
       first_name:   customer?.first_name || customer?.name?.split(' ')[0] || '',
       last_name:    customer?.last_name  || customer?.name?.split(' ').slice(1).join(' ') || '',
@@ -122,378 +94,278 @@ export default function CustomerInquiriesPage() {
       barangay:     savedBarangay,
       house_street: savedStreet,
     })
-    setShowInquiryForm(true)
+    setTried(false)
+    setShowForm(true)
   }
 
-  const closeInquiryForm = () => { setShowInquiryForm(false); setInquiryForm(EMPTY_INQUIRY) }
+  const closeForm = () => { if (formLoading) return; setShowForm(false); setForm(EMPTY_INQUIRY); setTried(false) }
 
-  const handleSubmitInquiry = async () => {
-    if (!inquiryForm.first_name.trim() || !inquiryForm.last_name.trim()) { showToast('First and last name are required.', 'error'); return }
-    if (!inquiryForm.province || !inquiryForm.city || !inquiryForm.barangay || !inquiryForm.house_street.trim()) { showToast('Complete address is required.', 'error'); return }
-    if (!inquiryForm.reason) { showToast('Please choose a service.', 'error'); return }
-    if (inquiryLoading) return
-    setInquiryLoading(true)
+  const missing = {
+    first_name:   !form.first_name.trim(),
+    last_name:    !form.last_name.trim(),
+    province:     !form.province,
+    city:         !form.city,
+    barangay:     !form.barangay,
+    house_street: !form.house_street.trim(),
+    reason:       !form.reason,
+  }
+  const hasMissing = Object.values(missing).some(Boolean)
+  const bad = k => tried && missing[k] ? '!border-red-300 focus:!ring-red-500/10' : ''
+
+  const submit = async () => {
+    setTried(true)
+    if (hasMissing || formLoading) return
+    setFormLoading(true)
     try {
-      const res = await apiPost('/api/inquiries/create.php', { ...inquiryForm, address: buildInquiryAddress() })
+      const res = await apiPost('/api/inquiries/create.php', { ...form, address: buildAddress() })
       if (!res.success) throw new Error(res.error)
-      showToast('Inquiry submitted successfully!')
-      closeInquiryForm()
-      loadInquiries()
-    } catch (err) { showToast(err.message || 'Failed to submit inquiry.', 'error') }
-    setInquiryLoading(false)
+      showToast('Inquiry sent. We will get back to you soon.')
+      setShowForm(false); setForm(EMPTY_INQUIRY); setTried(false)
+      loadInquiries(true)
+    } catch (err) { showToast(err.message || 'Could not send your inquiry.', 'error') }
+    setFormLoading(false)
   }
 
-  const INQUIRY_STATUS_COLORS = {
-    'New':         { bg: C.purpleLight, color: '#6b21a8', border: '#d8b4fe' },
-    'Won':         { bg: C.greenLight,  color: C.greenDark, border: '#86efac' },
-    'Lost':        { bg: '#f3f4f6',     color: '#374151', border: '#d1d5db' },
-    'Pending':     { bg: '#fef9c3',     color: '#854d0e', border: '#fde047' },
-    'Reviewed':    { bg: C.purpleLight, color: '#6b21a8', border: '#d8b4fe' },
-    'Converted':   { bg: C.greenLight,  color: C.greenDark, border: '#86efac' },
-    'Cancelled':   { bg: C.redLight,    color: C.red,     border: '#fca5a5' },
-    'Closed':      { bg: '#f3f4f6',     color: '#374151', border: '#d1d5db' },
-  }
-
-  function InquiryStatusBadge({ status }) {
-    const s = INQUIRY_STATUS_COLORS[status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center',
-        padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-        letterSpacing: '0.02em', background: s.bg, color: s.color,
-        border: `1px solid ${s.border}`,
-      }}>
-        {status || '—'}
-      </span>
-    )
-  }
-
-  const loadInquiries = async () => {
-    setLoading(true)
+  const loadInquiries = async (quiet = false) => {
+    if (!quiet) setLoading(true)
+    const started = Date.now()
     try {
       const data = await apiGet('/api/inquiries/list.php', { per_page: 100 })
       setInquiries(data.inquiries || [])
     } catch {
-      showToast('Failed to load inquiries.', 'error')
+      showToast('Could not load your inquiries.', 'error')
     }
-    setLoading(false)
+    if (!quiet) {
+      const wait = MIN_SKELETON_MS - (Date.now() - started)
+      if (wait > 0) await new Promise(r => setTimeout(r, wait))
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { loadInquiries() }, [])
+  useEffect(() => { loadInquiries() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const statuses = [...new Set(inquiries.map(i => i.status).filter(Boolean))]
+  // Opened from the dashboard's "New inquiry" button
+  useEffect(() => {
+    if (location.state?.newInquiry) {
+      openForm()
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const labels = [...new Set(inquiries.map(i => statusLabel(i.status)))]
 
   const filtered = inquiries.filter(inq => {
-    const matchSearch = !search ||
-      inq.inquiry_code?.toLowerCase().includes(search.toLowerCase()) ||
-      inq.reason?.toLowerCase().includes(search.toLowerCase()) ||
-      inq.description?.toLowerCase().includes(search.toLowerCase()) ||
-      inq.address?.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = !filterStatus || inq.status === filterStatus
+    const q = search.trim().toLowerCase()
+    const matchSearch = !q || [inq.inquiry_code, inq.reason, inq.description, inq.address].some(v => v?.toLowerCase().includes(q))
+    const matchStatus = !filterStatus || statusLabel(inq.status) === filterStatus
     return matchSearch && matchStatus
   })
-  return (
-    <div style={{ padding: isMobile ? '16px 14px' : '24px 28px', maxWidth: 860, margin: '0 auto' }}>
-      <Toast toast={toast} />
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 10 }}>
-        <div>
-          <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: C.text, margin: 0 }}>My Inquiries</h2>
-          <p style={{ fontSize: 12, color: C.textSub, margin: '3px 0 0' }}>All your submitted inquiries and their current status</p>
+  return (
+    <div className="space-y-6">
+      <Toast toast={toast} />
+      <PageHeader title="My inquiries" sub="Everything you asked us about, and where it stands."
+        action={<button onClick={openForm} className={btnPrimary}><Plus size={16} {...ICON} />New inquiry</button>} />
+
+      {/* Search + filter */}
+      <div className="cx-rise flex flex-col sm:flex-row gap-3" style={{ animationDelay: '60ms' }}>
+        <div className="relative flex-1">
+          <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search code, service or address"
+            aria-label="Search inquiries" className={`${inputCls} pl-9 bg-white`} />
         </div>
-        <button
-          onClick={openInquiryForm}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: isMobile ? '8px 12px' : '9px 18px', borderRadius: 8,
-            flexShrink: 0, border: 'none', background: C.green,
-            fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(22,163,74,0.25)', transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = C.greenDark}
-          onMouseLeave={e => e.currentTarget.style.background = C.green}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Inquiry
-        </button>
-      </div>
-      {/* Search + Filter */}
-      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 10, marginBottom: 18 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textFaint }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by code, reason, address..."
-            style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, outline: 'none', boxSizing: 'border-box', background: '#fff' }}
-          />
+        <div className="relative sm:w-48">
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} aria-label="Filter by status"
+            className={`${inputCls} bg-white appearance-none pr-9 cursor-pointer`}>
+            <option value="">All statuses</option>
+            {labels.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <ChevronDown size={16} {...ICON} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, outline: 'none', background: '#fff', minWidth: 140 }}
-        >
-          <option value="">All Statuses</option>
-          {statuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
-        </select>
       </div>
 
       {/* List */}
       {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 64, gap: 12, color: C.textSub }}>
-          <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
-          Loading your inquiries...
+        <div className="space-y-3">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 flex gap-3.5">
+              <Skel className="w-11 h-11 rounded-xl" />
+              <div className="flex-1 space-y-2.5"><Skel className="h-4 w-1/3" /><Skel className="h-3 w-1/4" /><Skel className="h-3 w-2/3" /></div>
+            </div>
+          ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 64, color: C.textSub }}>
-          <MessageSquare size={36} style={{ color: C.textFaint, margin: '0 auto 12px', display: 'block' }} />
-          No inquiries found.
+        <div className="bg-white rounded-2xl border border-slate-200">
+          <EmptyState icon={MessageSquare}
+            title={inquiries.length ? 'No inquiries match' : 'No inquiries yet'}
+            text={inquiries.length ? 'Try another search or filter.' : 'Tell us what you need and our team will get back to you.'}
+            action={inquiries.length
+              ? <button onClick={() => { setSearch(''); setFilterStatus('') }} className={btnSecondary}>Clear filters</button>
+              : <button onClick={openForm} className={btnPrimary}><Plus size={16} {...ICON} />New inquiry</button>} />
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {filtered.map(inq => (
-            <div key={inq.id} style={{
-              background: C.card, borderRadius: 12,
-              border: `1px solid ${C.border}`,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-              padding: '16px 20px',
-              transition: 'box-shadow 0.15s, border-color 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = '#d1d5db' }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = C.border }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 8, background: C.blueLight, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <MessageSquare size={13} color={C.blue} />
+        <div className="space-y-3">
+          {filtered.map((inq, i) => (
+            <article key={inq.id} className="cx-rise bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 hover:border-slate-300 transition-colors"
+              style={{ animationDelay: `${Math.min(i, 6) * 50}ms` }}>
+              <div className="flex items-start gap-3.5">
+                <span className="hidden sm:flex w-11 h-11 rounded-xl bg-slate-50 ring-1 ring-slate-200 text-slate-500 items-center justify-center flex-shrink-0"><MessageSquare size={18} {...ICON} /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-[15px] font-semibold text-slate-900">{inq.inquiry_code || `INQ-${inq.id}`}</h2>
+                        <InquiryBadge status={inq.status} />
+                      </div>
+                      <p className="text-sm text-slate-600 mt-0.5">
+                        {inq.reason || 'General inquiry'}
+                        {inq.status === 'Won' && inq.job_order_code && (
+                          <button onClick={() => navigate('/customer/job-orders')}
+                            className="ml-2 inline-flex items-center gap-1 text-[13px] font-medium text-emerald-700 hover:underline underline-offset-2">
+                            <ClipboardList size={13} {...ICON} />Job order {inq.job_order_code}
+                          </button>
+                        )}
+                      </p>
                     </div>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{inq.inquiry_code || `INQ-${inq.id}`}</span>
-                    {/* Use InquiryStatusBadge inline since it's defined inside the component */}
-                    {(() => {
-                      const s = INQUIRY_STATUS_COLORS[inq.status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
-                      return (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-                          {statusLabel(inq.status)}
-                        </span>
-                      )
-                    })()}
+                    <button onClick={() => setSelected(inq)} className={`${btnSmSecondary} flex-shrink-0`}>
+                      <Eye size={15} {...ICON} /><span className="hidden sm:inline">Details</span>
+                    </button>
                   </div>
-                  <div style={{ fontSize: 12, color: C.textSub, marginLeft: 38 }}>
-                    {inq.reason || 'General Inquiry'}
-                    {inq.status === 'Won' && inq.job_order_code && (
-                      <button onClick={() => navigate('/customer/job-orders')}
-                        style={{ marginLeft: 8, border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: C.green, fontWeight: 600, fontSize: 12 }}>
-                        · Job order {inq.job_order_code}
-                      </button>
-                    )}
+                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-slate-600">
+                    {inq.address && <span className="flex items-center gap-1.5 min-w-0"><MapPin size={13} {...ICON} className="text-slate-400 flex-shrink-0" /><span className="truncate">{inq.address}</span></span>}
+                    {inq.created_at && <span className="flex items-center gap-1.5"><Calendar size={13} {...ICON} className="text-slate-400" />Sent {fmtDate(inq.created_at)}</span>}
+                    {inq.mobile && <span className="flex items-center gap-1.5"><Phone size={13} {...ICON} className="text-slate-400" />{inq.mobile}</span>}
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelected(inq)}
-                  style={{
-                    padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.border}`,
-                    background: '#fff', fontSize: 11, fontWeight: 600, color: C.blue,
-                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                    transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.blueLight}
-                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-                >
-                  View Details
-                </button>
               </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', marginLeft: 38 }}>
-                {inq.address && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <MapPin size={11} color={C.textFaint} />
-                    {inq.address}
-                  </div>
-                )}
-                {inq.created_at && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <Calendar size={11} color={C.textFaint} />
-                    <span style={{ fontSize: 10, color: C.textFaint }}>Submitted</span>
-                    <span>{inq.created_at?.slice(0, 10)}</span>
-                  </div>
-                )}
-                {inq.mobile && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <Phone size={11} color={C.textFaint} />
-                    {inq.mobile}
-                  </div>
-                )}
-              </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
 
-      {/* New Inquiry Modal */}
-      {showInquiryForm && (() => {
-        const lbl = { display: 'block', fontSize: 11, fontWeight: 600, color: C.textSub, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }
-        const inp = { width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, background: '#fff', outline: 'none', boxSizing: 'border-box' }
-        const twoCol = window.innerWidth < 480 ? '1fr' : '1fr 1fr'
-        const setF = (k, v) => setInquiryForm(f => ({ ...f, [k]: v }))
-        return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
-            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: `1px solid ${C.border}`, background: '#f9fafb' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: C.greenLight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <FileText size={16} color={C.green} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>New Inquiry</div>
-                    <div style={{ fontSize: 11, color: C.textSub }}>Tell us what you need</div>
-                  </div>
-                </div>
-                <button onClick={closeInquiryForm} style={{ border: 'none', background: 'none', cursor: 'pointer', color: C.textSub, padding: 4 }}>
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: twoCol, gap: 12 }}>
-                  <div>
-                    <label style={lbl}>First Name *</label>
-                    <input value={inquiryForm.first_name} onChange={e => setF('first_name', e.target.value)} placeholder="Juan" style={inp} />
-                  </div>
-                  <div>
-                    <label style={lbl}>Last Name *</label>
-                    <input value={inquiryForm.last_name} onChange={e => setF('last_name', e.target.value)} placeholder="dela Cruz" style={inp} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: twoCol, gap: 12 }}>
-                  <div>
-                    <label style={lbl}>Email</label>
-                    <input type="email" value={inquiryForm.email} onChange={e => setF('email', e.target.value)} placeholder="juan@email.com" style={inp} />
-                  </div>
-                  <div>
-                    <label style={lbl}>Mobile</label>
-                    <input value={inquiryForm.mobile} onChange={e => setF('mobile', e.target.value)} placeholder="+639XXXXXXXXX" style={inp} />
-                  </div>
-                </div>
-
+      {/* New inquiry */}
+      {showForm && (
+        <Modal onClose={closeForm} maxW="max-w-xl">
+          <ModalHeader icon={FileText} title="New inquiry" sub="Tell us what you need and our team will get back to you." onClose={closeForm} />
+          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900">Your details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label style={lbl}>Province *</label>
-                  <select value={inquiryForm.province} onChange={e => setInquiryForm(f => ({ ...f, province: e.target.value, city: '', barangay: '' }))} style={inp}>
-                    <option value="">Select province...</option>
-                    <option value="1300000000">Metro Manila</option>
-                  </select>
+                  <label htmlFor="iq-first" className={labelCls}>First name <span className="text-red-500">*</span></label>
+                  <input id="iq-first" value={form.first_name} onChange={e => setF('first_name', e.target.value)} placeholder="Juan" className={`${inputCls} ${bad('first_name')}`} />
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: twoCol, gap: 12 }}>
-                  <div>
-                    <label style={lbl}>City / Municipality *</label>
-                    <select value={inquiryForm.city} disabled={!inquiryForm.province}
-                      onChange={e => setInquiryForm(f => ({ ...f, city: e.target.value, barangay: '' }))}
-                      style={{ ...inp, background: inquiryForm.province ? '#fff' : '#f9fafb', opacity: inquiryForm.province ? 1 : 0.6 }}>
-                      <option value="">Select city...</option>
-                      {inqCities.map(c => <option key={c.psgcCode} value={c.psgcCode}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={lbl}>Barangay *</label>
-                    <select value={inquiryForm.barangay} disabled={!inquiryForm.city}
-                      onChange={e => setF('barangay', e.target.value)}
-                      style={{ ...inp, background: inquiryForm.city ? '#fff' : '#f9fafb', opacity: inquiryForm.city ? 1 : 0.6 }}>
-                      <option value="">Select barangay...</option>
-                      {inqBarangays.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-
                 <div>
-                  <label style={lbl}>House No. &amp; Street *</label>
-                  <input value={inquiryForm.house_street} onChange={e => setF('house_street', e.target.value)} placeholder="e.g. 123 Rizal Street" style={inp} />
+                  <label htmlFor="iq-last" className={labelCls}>Last name <span className="text-red-500">*</span></label>
+                  <input id="iq-last" value={form.last_name} onChange={e => setF('last_name', e.target.value)} placeholder="Dela Cruz" className={`${inputCls} ${bad('last_name')}`} />
                 </div>
-
                 <div>
-                  <label style={lbl}>Service *</label>
-                  <select value={inquiryForm.reason} onChange={e => setF('reason', e.target.value)} style={inp}>
-                    <option value="">{services.length ? 'Select a service...' : 'Loading services...'}</option>
-                    {services.map(sv => <option key={sv} value={sv}>{sv}</option>)}
-                  </select>
+                  <label htmlFor="iq-email" className={labelCls}>Email</label>
+                  <input id="iq-email" type="email" value={form.email} onChange={e => setF('email', e.target.value)} placeholder="juan@email.com" className={inputCls} />
                 </div>
-
                 <div>
-                  <label style={lbl}>Details (optional)</label>
-                  <textarea value={inquiryForm.description} onChange={e => setF('description', e.target.value)} rows={3} maxLength={1000}
-                    placeholder="Tell us a little about the work you need..." style={{ ...inp, resize: 'none' }} />
+                  <label htmlFor="iq-mobile" className={labelCls}>Mobile</label>
+                  <input id="iq-mobile" value={form.mobile} onChange={e => setF('mobile', e.target.value)} placeholder="+639XXXXXXXXX" className={inputCls} />
                 </div>
               </div>
+            </section>
 
-              <div style={{ display: 'flex', gap: 10, padding: '16px 24px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
-                <button onClick={closeInquiryForm}
-                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', fontSize: 13, fontWeight: 600, color: C.textMid, cursor: 'pointer' }}>
-                  Cancel
-                </button>
-                <button onClick={handleSubmitInquiry} disabled={inquiryLoading}
-                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: C.green, fontSize: 13, fontWeight: 700, color: '#fff', cursor: inquiryLoading ? 'not-allowed' : 'pointer', opacity: inquiryLoading ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                  {inquiryLoading ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : 'Submit Inquiry'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Detail Modal */}
-      {selected && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: C.bg, overflowY: 'auto' }}>
-          <div style={{ background: C.card, minHeight: '100vh', maxWidth: 900, margin: '0 auto', boxShadow: '0 0 40px rgba(0,0,0,0.1)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <section className="space-y-4 pt-5 border-t border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-900">Where is the work?</h3>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{selected.inquiry_code || `INQ-${selected.id}`}</span>
-                  {(() => {
-                    const s = INQUIRY_STATUS_COLORS[selected.status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
-                    return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>{statusLabel(selected.status)}</span>
-                  })()}
-                </div>
-                <p style={{ fontSize: 11, color: C.textSub, margin: 0 }}>Inquiry Details</p>
+                <label htmlFor="iq-prov" className={labelCls}>Province <span className="text-red-500">*</span></label>
+                <select id="iq-prov" value={form.province} onChange={e => setForm(f => ({ ...f, province: e.target.value, city: '', barangay: '' }))} className={`${inputCls} ${bad('province')}`}>
+                  <option value="">Select province…</option>
+                  <option value={NCR_CODE}>Metro Manila</option>
+                </select>
               </div>
-              <button onClick={() => setSelected(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: C.textSub, padding: 4 }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ padding: '8px 0' }}>
-              {[
-                { label: 'Inquiry Code',  value: selected.inquiry_code },
-                { label: 'Full Name',     value: `${selected.first_name || ''} ${selected.last_name || ''}`.trim() || '—' },
-                { label: 'Email',         value: selected.email        },
-                { label: 'Mobile',        value: selected.mobile       },
-                { label: 'Address',       value: selected.address      },
-                { label: 'Service',       value: selected.reason       },
-                { label: 'Details',       value: selected.description  },
-                { label: 'Status',        value: statusLabel(selected.status) },
-                { label: 'Job order',     value: selected.job_order_code },
-                { label: 'Submitted',     value: selected.created_at?.slice(0, 10) },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', gap: 16, padding: '12px 24px', borderBottom: `1px solid ${C.border}` }}>
-                  <span style={{ fontSize: 12, color: C.textSub, width: 130, flexShrink: 0 }}>{label}</span>
-                  <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{value || '—'}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="iq-city" className={labelCls}>City / municipality <span className="text-red-500">*</span></label>
+                  <select id="iq-city" value={form.city} disabled={!form.province} onChange={e => setForm(f => ({ ...f, city: e.target.value, barangay: '' }))} className={`${inputCls} ${bad('city')}`}>
+                    <option value="">Select city…</option>
+                    {cities.map(c => <option key={c.psgcCode} value={c.psgcCode}>{c.name}</option>)}
+                  </select>
                 </div>
-              ))}
-            </div>
+                <div>
+                  <label htmlFor="iq-brgy" className={labelCls}>Barangay <span className="text-red-500">*</span></label>
+                  <select id="iq-brgy" value={form.barangay} disabled={!form.city} onChange={e => setF('barangay', e.target.value)} className={`${inputCls} ${bad('barangay')}`}>
+                    <option value="">Select barangay…</option>
+                    {barangays.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="iq-street" className={labelCls}>House no. &amp; street <span className="text-red-500">*</span></label>
+                <input id="iq-street" value={form.house_street} onChange={e => setF('house_street', e.target.value)} placeholder="e.g. 123 Rizal Street" className={`${inputCls} ${bad('house_street')}`} />
+              </div>
+            </section>
 
-            <div style={{ padding: '16px 24px' }}>
-              <button onClick={() => setSelected(null)} style={{ width: '100%', padding: '10px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', fontSize: 13, fontWeight: 600, color: C.textMid, cursor: 'pointer' }}>
-                Close
+            <section className="space-y-4 pt-5 border-t border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-900">What do you need?</h3>
+              <div>
+                <label htmlFor="iq-svc" className={labelCls}>Service <span className="text-red-500">*</span></label>
+                <select id="iq-svc" value={form.reason} onChange={e => setF('reason', e.target.value)} className={`${inputCls} ${bad('reason')}`}>
+                  <option value="">{services.length ? 'Select a service…' : 'Loading services…'}</option>
+                  {services.map(sv => <option key={sv} value={sv}>{sv}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="iq-desc" className={labelCls}>Details <span className="text-slate-400 font-normal">(optional)</span></label>
+                <textarea id="iq-desc" value={form.description} onChange={e => setF('description', e.target.value)} rows={3} maxLength={1000}
+                  placeholder="Tell us a little about the work you need…" className={`${inputCls} h-auto py-2.5 resize-none`} />
+                <p className="text-[11px] text-slate-400 mt-1 text-right tabular-nums">{form.description.length}/1000</p>
+              </div>
+            </section>
+          </div>
+          <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col-reverse sm:flex-row sm:items-center gap-3 flex-shrink-0">
+            {tried && hasMissing
+              ? <p className="cx-shake flex items-center gap-1.5 text-xs text-red-600 sm:mr-auto"><AlertCircle size={14} {...ICON} />Please fill in the fields marked in red.</p>
+              : <p className="text-xs text-slate-400 sm:mr-auto"><span className="text-red-500">*</span> Required</p>}
+            <div className="flex gap-3">
+              <button onClick={closeForm} disabled={formLoading} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
+              <button onClick={submit} disabled={formLoading} className={`${btnPrimary} flex-1 sm:flex-none`}>
+                {formLoading && <RefreshCw size={15} {...ICON} className="animate-spin" />}{formLoading ? 'Sending…' : 'Send inquiry'}
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      {/* Details */}
+      {selected && (
+        <Modal onClose={() => setSelected(null)} maxW="max-w-xl">
+          <ModalHeader icon={MessageSquare} title={selected.inquiry_code || `INQ-${selected.id}`} sub="Inquiry details"
+            badge={<InquiryBadge status={selected.status} />} onClose={() => setSelected(null)} />
+          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5">
+            <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+              {[
+                { icon: User,          label: 'Name',      value: `${selected.first_name || ''} ${selected.last_name || ''}`.trim() },
+                { icon: Mail,          label: 'Email',     value: selected.email },
+                { icon: Phone,         label: 'Mobile',    value: selected.mobile },
+                { icon: MapPin,        label: 'Address',   value: selected.address },
+                { icon: Wrench,        label: 'Service',   value: selected.reason },
+                { icon: FileText,      label: 'Details',   value: selected.description },
+                { icon: ClipboardList, label: 'Job order', value: selected.job_order_code },
+                { icon: Hash,          label: 'Code',      value: selected.inquiry_code },
+                { icon: Calendar,      label: 'Sent',      value: selected.created_at ? fmtDate(selected.created_at, { month: 'long', day: 'numeric', year: 'numeric' }) : null },
+              ].filter(r => r.value).map(({ icon: Icon, label, value }) => (
+                <div key={label} className="flex items-start gap-3 px-4 py-3">
+                  <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                  <dt className="text-xs text-slate-500 w-20 flex-shrink-0 pt-0.5">{label}</dt>
+                  <dd className="text-sm text-slate-900 min-w-0 break-words whitespace-pre-line">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex justify-end gap-3 flex-shrink-0">
+            {selected.status === 'Won' && selected.job_order_code && (
+              <button onClick={() => navigate('/customer/job-orders')} className={btnSecondary}><ClipboardList size={16} {...ICON} />Open job order</button>
+            )}
+            <button onClick={() => setSelected(null)} className={btnSecondary}>Close</button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

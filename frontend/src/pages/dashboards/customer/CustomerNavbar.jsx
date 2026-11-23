@@ -1,167 +1,115 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ListChecks, MessageSquare, UserCircle } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, UserCircle, LogOut, HardHat, ChevronDown } from 'lucide-react'
+import { ICON, getCustomerInfo } from './CustomerUI'
 
-// ── Responsive Hook ────────────────────────────────────────────
-function useWindowWidth() {
-  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
-  return width
-}
+const LINKS = [
+  { path: '/customer/dashboard',  label: 'Dashboard',     icon: LayoutDashboard },
+  { path: '/customer/job-orders', label: 'My job orders', short: 'Job orders', icon: ClipboardList },
+  { path: '/customer/inquiries',  label: 'My inquiries',  short: 'Inquiries',  icon: MessageSquare },
+]
 
-// ── Design Tokens ──────────────────────────────────────────────
-const C = {
-  green: '#16a34a', greenLight: '#dcfce7', greenDark: '#15803d',
-  red: '#dc2626', redLight: '#fee2e2',
-  card: '#ffffff', border: '#e5e7eb',
-  text: '#111827', textMid: '#374151', textSub: '#6b7280',
-}
-
-function getCustomerInfo() {
-  try { return JSON.parse(localStorage.getItem('sc_user') || '{}') }
-  catch { return {} }
-}
-// ── Top Navigation Bar ─────────────────────────────────────────
+// ── Top navigation (bottom tab bar on phones) ──────────────────
 export default function TopNav() {
-  const navigate      = useNavigate()
-  const location      = useLocation()
-  const customer      = getCustomerInfo()
-  const initial       = (customer?.first_name?.[0] || customer?.name?.[0] || 'U').toUpperCase()
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef   = useRef(null)
-  const isMobile      = useWindowWidth() < 640
+  const navigate = useNavigate()
+  const location = useLocation()
+  const customer = getCustomerInfo()
+  const fullName = customer?.first_name ? `${customer.first_name} ${customer.last_name || ''}`.trim() : (customer?.name || 'Customer')
+  const initials = fullName.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'C'
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef(null)
 
-   const links = [
-    { path: '/customer/dashboard',  label: 'Dashboard',     icon: LayoutDashboard },
-    { path: '/customer/job-orders', label: 'My Job Order',  icon: ListChecks      },
-    { path: '/customer/inquiries',  label: 'My Inquiries',  icon: MessageSquare   },
-  ]
-
-  const isActive = (path) => location.pathname.startsWith(path)
+  const isActive = path => location.pathname.startsWith(path)
 
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    const onDown = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false) }
+    const onKey  = e => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
   }, [])
 
-  const handleLogout = () => {
+  const logout = () => {
     localStorage.removeItem('sc_user')
     localStorage.removeItem('sc_token')
     navigate('/login')
   }
 
   return (
-    <nav style={{
-      position: 'sticky', top: 0, zIndex: 100,
-      background: '#fff', borderBottom: `1px solid ${C.border}`,
-      display: 'flex', alignItems: 'center',
-      padding: isMobile ? '0 12px' : '0 24px', height: 52,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-    }}>
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: isMobile ? 0 : 32 }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 6, background: C.green,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 900, fontSize: 11, color: '#fff', letterSpacing: '-0.5px',
-        }}>EB</div>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>SkillConnect</div>
-          <div style={{ fontSize: 9, color: C.textSub, lineHeight: 1 }}>Client App</div>
-        </div>
-      </div>
+    <>
+      <header className="cx-nav sticky top-0 z-[100] bg-white/90 backdrop-blur border-b border-slate-200">
+        <div className="max-w-5xl mx-auto h-16 px-4 sm:px-6 lg:px-8 flex items-center gap-6">
+          {/* Logo */}
+          <button onClick={() => navigate('/customer/dashboard')} className="flex items-center gap-2.5 flex-shrink-0">
+            <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm"><HardHat size={18} {...ICON} /></span>
+            <span className="text-left leading-tight">
+              <span className="block text-[15px] font-semibold text-slate-900 tracking-tight">SkillConnect</span>
+              <span className="block text-[11px] text-slate-500">Emerald Builders</span>
+            </span>
+          </button>
 
-      {/* Spacer to push content right */}
-<div style={{ flex: 1 }} />
+          {/* Links (desktop) */}
+          <nav className="hidden sm:flex items-center gap-1 ml-2" aria-label="Main">
+            {LINKS.map(({ path, label, icon: Icon }) => {
+              const on = isActive(path)
+              return (
+                <button key={path} onClick={() => navigate(path)} aria-current={on ? 'page' : undefined}
+                  className={`inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm font-medium transition-colors
+                    ${on ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}>
+                  <Icon size={16} {...ICON} />{label}
+                </button>
+              )
+            })}
+          </nav>
 
-{/* Nav Links — icon-only on mobile */}
-<div style={{ display: 'flex', gap: isMobile ? 2 : 4, marginRight: isMobile ? 8 : 16 }}>
-  {links.map(({ path, label, icon: Icon }) => (
-    <button key={path} onClick={() => navigate(path)} style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: isMobile ? '6px 8px' : '5px 14px',
-      borderRadius: 6, border: 'none', cursor: 'pointer',
-      fontSize: 12, fontWeight: 600,
-      background: isActive(path) ? C.green : 'transparent',
-      color: isActive(path) ? '#fff' : C.textMid,
-      transition: 'all 0.15s',
-    }}>
-      <Icon size={13} />
-      {!isMobile && label}
-    </button>
-  ))}
-</div>
+          <div className="flex-1" />
 
-{/* Right: Customer label + Avatar */}
-<div ref={dropdownRef} style={{ position: 'relative' }}>
-        <div
-          onClick={() => setDropdownOpen(o => !o)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-            padding: '4px 6px', borderRadius: 8, transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          {!isMobile && <span style={{ fontSize: 12, color: C.textSub, fontWeight: 500 }}>Client User</span>}
-          <div style={{
-            width: 30, height: 30, borderRadius: '50%', background: C.green,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: 12, color: '#fff',
-          }}>{initial}</div>
-        </div>
+          {/* Account */}
+          <div ref={menuRef} className="relative">
+            <button onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open}
+              className="flex items-center gap-2.5 h-10 pl-1 pr-2 rounded-lg hover:bg-slate-50 transition-colors">
+              <span className="w-8 h-8 rounded-full bg-emerald-50 ring-1 ring-emerald-200 text-emerald-700 text-xs font-semibold flex items-center justify-center">{initials}</span>
+              <span className="hidden md:block text-left leading-tight">
+                <span className="block text-sm font-medium text-slate-900 max-w-[160px] truncate">{fullName}</span>
+                <span className="block text-[11px] text-slate-500">Customer</span>
+              </span>
+              <ChevronDown size={15} {...ICON} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
 
-        {/* Dropdown */}
-        {dropdownOpen && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-            background: C.card, border: `1px solid ${C.border}`,
-            borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            minWidth: 200, overflow: 'hidden', zIndex: 999,
-          }}>
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid #f3f4f6` }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                {customer?.first_name ? `${customer.first_name} ${customer.last_name || ''}`.trim() : 'Client User'}
+            {open && (
+              <div role="menu" className="cx-pop absolute right-0 top-[calc(100%+8px)] w-60 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{fullName}</p>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">{customer?.email || 'Customer account'}</p>
+                </div>
+                <div className="p-1.5">
+                  <button role="menuitem" onClick={() => { setOpen(false); navigate('/customer/profile') }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50">
+                    <UserCircle size={16} {...ICON} className="text-slate-400" />My profile
+                  </button>
+                  <button role="menuitem" onClick={logout}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50">
+                    <LogOut size={16} {...ICON} />Log out
+                  </button>
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: C.textSub, marginTop: 1 }}>
-                {customer?.email || 'Client Account'}
-              </div>
-            </div>
-            <div
-              onClick={() => { setDropdownOpen(false); navigate('/customer/profile') }}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', fontSize: 13, color: C.textMid, cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <UserCircle size={15} color={C.textSub} />
-              My Profile
-            </div>
-            <div style={{ height: 1, background: '#f3f4f6' }} />
-            <div
-              onClick={handleLogout}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', fontSize: 13, color: C.red, cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.background = C.redLight}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-              Logout
-            </div>
+            )}
           </div>
-        )}
-      </div>
-    </nav>
+        </div>
+      </header>
+
+      {/* Bottom tab bar (phones) */}
+      <nav className="cx-nav sm:hidden fixed bottom-0 inset-x-0 z-[100] bg-white border-t border-slate-200 grid grid-cols-3 pb-[env(safe-area-inset-bottom)]" aria-label="Main">
+        {LINKS.map(({ path, label, short, icon: Icon }) => {
+          const on = isActive(path)
+          return (
+            <button key={path} onClick={() => navigate(path)} aria-current={on ? 'page' : undefined}
+              className={`flex flex-col items-center justify-center gap-1 h-14 text-[11px] font-medium ${on ? 'text-emerald-700' : 'text-slate-500'}`}>
+              <Icon size={20} {...ICON} />{short || label}
+            </button>
+          )
+        })}
+      </nav>
+    </>
   )
 }

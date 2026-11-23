@@ -1,98 +1,36 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
-  RefreshCw, ClipboardList, MapPin, Calendar, Clock,
-  DollarSign, X, CheckCircle, AlertCircle, Image as ImageIcon, Flag, CalendarCheck, Hourglass,
+  ClipboardList, MapPin, Calendar, Search, CheckCircle2, Image as ImageIcon, Flag,
+  CalendarCheck, CalendarDays, Hourglass, HardHat, FileText, Hash, Wallet, ChevronDown, AlertCircle, RefreshCw, Eye,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+import {
+  ICON, MIN_SKELETON_MS, Skel, Toast, useToast, Modal, ModalHeader, PageHeader, EmptyState, StatusBadge,
+  inputCls, btnSecondary, btnSmPrimary, btnSmSecondary, fmtDate, fmtTime, ymd, isWeekend,
+} from './CustomerUI'
 
 const HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
-const fmtDate = s => {
-  if (!s) return '—'
-  const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
-  return isNaN(d) ? s : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
-// ── Responsive Hook ────────────────────────────────────────────
-function useWindowWidth() {
-  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
-  return width
-}
+const FILTERS = [
+  { key: '',         label: 'All' },
+  { key: 'waiting',  label: 'Waiting',   match: s => ['Pending', 'Under Review', 'On Hold'].includes(s) },
+  { key: 'ongoing',  label: 'Ongoing',   match: s => ['Scheduled', 'In Progress', 'Active'].includes(s) },
+  { key: 'complete', label: 'Completed', match: s => s === 'Complete' },
+  { key: 'cancelled', label: 'Cancelled', match: s => s === 'Cancelled' },
+]
 
-// ── Design Tokens ──────────────────────────────────────────────
-const C = {
-  green: '#16a34a', greenLight: '#dcfce7', greenDark: '#15803d',
-  blue: '#2563eb', blueLight: '#dbeafe',
-  purpleLight: '#f3e8ff',
-  red: '#dc2626', redLight: '#fee2e2',
-  cyanLight: '#cffafe',
-  bg: '#f3f4f6', card: '#ffffff', border: '#e5e7eb',
-  text: '#111827', textMid: '#374151', textSub: '#6b7280', textFaint: '#9ca3af',
-}
-
-function Toast({ toast }) {
-  if (!toast) return null
-  return (
-    <div style={{
-      position: 'fixed', top: 20, right: 20, zIndex: 9999,
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-      background: toast.type === 'success' ? C.greenLight : C.redLight,
-      color:      toast.type === 'success' ? C.greenDark  : C.red,
-      border:     `1px solid ${toast.type === 'success' ? '#86efac' : '#fca5a5'}`,
-    }}>
-      {toast.type === 'success' ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-      {toast.msg}
-    </div>
-  )
-}
-
-const STATUS_COLORS = {
-  'Pending':      { bg: '#fef9c3', color: '#854d0e',  border: '#fde047' },
-  'Active':       { bg: C.greenLight, color: C.greenDark, border: '#86efac' },
-  'Complete':     { bg: C.greenLight, color: C.greenDark, border: '#86efac' },
-  'On Hold':      { bg: '#ffedd5', color: '#9a3412',  border: '#fdba74' },
-  'Under Review': { bg: C.purpleLight, color: '#6b21a8', border: '#d8b4fe' },
-  'Scheduled':    { bg: C.cyanLight, color: '#164e63', border: '#67e8f9' },
-  'In Progress':  { bg: C.blueLight, color: '#1e40af', border: '#93c5fd' },
-  'Cancelled':    { bg: C.redLight, color: C.red, border: '#fca5a5' },
-}
-
-function StatusBadge({ status }) {
-  const s = STATUS_COLORS[status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-      letterSpacing: '0.02em', background: s.bg, color: s.color,
-      border: `1px solid ${s.border}`,
-    }}>
-      {status || '—'}
-    </span>
-  )
-}
 export default function CustomerJobOrdersPage() {
-  const isMobile       = useWindowWidth() < 640
-  const [jobOrders,    setJobOrders]    = useState([])
-  const [search,       setSearch]       = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [loading,      setLoading]      = useState(true)
-  const [toast,        setToast]        = useState(null)
-  const [selected,     setSelected]     = useState(null)
-  const [visits,       setVisits]       = useState([])
+  const [jobOrders, setJobOrders] = useState([])
+  const [visits,    setVisits]    = useState([])
+  const [search,    setSearch]    = useState('')
+  const [filter,    setFilter]    = useState('')
+  const [loading,   setLoading]   = useState(true)
+  const [selected,  setSelected]  = useState(null)
+  const [toast, showToast] = useToast()
 
-  const showToast = (msg, type = 'success') => {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
-  }
-
-  const load = async () => {
-    setLoading(true)
+  const load = async (quiet = false) => {
+    if (!quiet) setLoading(true)
+    const started = Date.now()
     try {
       // The server only returns this customer's own job orders
       const [data, vData] = await Promise.all([
@@ -102,199 +40,172 @@ export default function CustomerJobOrdersPage() {
       setJobOrders(data.job_orders || [])
       setVisits(vData.schedules || [])
     } catch {
-      showToast('Failed to load job orders.', 'error')
+      showToast('Could not load your job orders.', 'error')
     }
-    setLoading(false)
+    if (!quiet) {
+      const wait = MIN_SKELETON_MS - (Date.now() - started)
+      if (wait > 0) await new Promise(r => setTimeout(r, wait))
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const counts = useMemo(() => Object.fromEntries(FILTERS.map(f => [f.key, f.match ? jobOrders.filter(j => f.match(j.status)).length : jobOrders.length])), [jobOrders])
 
   const filtered = jobOrders.filter(jo => {
-    const matchSearch = !search ||
-      jo.job_order_code?.toLowerCase().includes(search.toLowerCase()) ||
-      jo.description?.toLowerCase().includes(search.toLowerCase()) ||
-      jo.worker_name?.toLowerCase().includes(search.toLowerCase()) ||
-      jo.contract_type?.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = !filterStatus || jo.status === filterStatus
-    return matchSearch && matchStatus
+    const q = search.trim().toLowerCase()
+    const matchSearch = !q || [jo.job_order_code, jo.description, jo.service, jo.worker_name, jo.contract_type]
+      .some(v => v?.toLowerCase().includes(q))
+    const f = FILTERS.find(x => x.key === filter)
+    return matchSearch && (!f?.match || f.match(jo.status))
   })
 
-  return (
-    <div style={{ padding: isMobile ? '16px 14px' : '24px 28px', maxWidth: 860, margin: '0 auto' }}>
-      <Toast toast={toast} />
+  const done = (msg, type) => { showToast(msg, type); if (type !== 'error') load(true) }
 
-      {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: C.text, margin: 0 }}>My Job Orders</h2>
-        <p style={{ fontSize: 12, color: C.textSub, margin: '3px 0 0' }}>Track your active and past projects</p>
+  return (
+    <div className="space-y-6">
+      <Toast toast={toast} />
+      <PageHeader title="My job orders" sub="Follow your projects, site visits and finished work." />
+
+      {/* Filters */}
+      <div className="cx-rise flex flex-col sm:flex-row gap-3" style={{ animationDelay: '60ms' }}>
+        <div className="relative flex-1">
+          <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search job order, service or worker"
+            aria-label="Search job orders" className={`${inputCls} pl-9 bg-white`} />
+        </div>
+        <div className="flex gap-1 p-1 bg-white border border-slate-200 rounded-lg overflow-x-auto">
+          {FILTERS.filter(f => !f.match || counts[f.key] > 0 || filter === f.key).map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)} aria-pressed={filter === f.key}
+              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium whitespace-nowrap transition-colors
+                ${filter === f.key ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+              {f.label}<span className={`text-[11px] tabular-nums ${filter === f.key ? 'text-emerald-600' : 'text-slate-400'}`}>{counts[f.key]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 64, gap: 12, color: C.textSub }}>
-          <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
-          Loading your orders...
+        <div className="space-y-4">
+          {[0, 1].map(i => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div className="flex justify-between"><Skel className="h-5 w-40" /><Skel className="h-9 w-24" /></div>
+              <Skel className="h-3.5 w-1/3" /><Skel className="h-14 w-full" />
+            </div>
+          ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 64, color: C.textSub }}>
-          <ClipboardList size={36} style={{ color: C.textFaint, margin: '0 auto 12px', display: 'block' }} />
-          No job orders found.
+        <div className="bg-white rounded-2xl border border-slate-200">
+          <EmptyState icon={ClipboardList}
+            title={jobOrders.length ? 'No job orders match' : 'No job orders yet'}
+            text={jobOrders.length ? 'Try another search or filter.' : 'When your inquiry is accepted, your job order shows up here.'}
+            action={jobOrders.length ? <button onClick={() => { setSearch(''); setFilter('') }} className={btnSecondary}>Clear filters</button> : null} />
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {filtered.map(jo => (
-            <div key={jo.id} style={{
-              background: C.card, borderRadius: 12,
-              border: `1px solid ${C.border}`,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-              padding: '18px 22px',
-              transition: 'box-shadow 0.15s, border-color 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = '#d1d5db' }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = C.border }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6, gap: 8, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{jo.job_order_code}</span>
-                    <StatusBadge status={jo.status} />
+        <div className="space-y-4">
+          {filtered.map((jo, i) => (
+            <article key={jo.id} className="cx-rise bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 hover:border-slate-300 transition-colors"
+              style={{ animationDelay: `${Math.min(i, 6) * 50}ms` }}>
+              <div className="flex items-start gap-3.5">
+                <span className="hidden sm:flex w-11 h-11 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 items-center justify-center flex-shrink-0"><ClipboardList size={19} {...ICON} /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-[15px] font-semibold text-slate-900">{jo.job_order_code}</h2>
+                        <StatusBadge status={jo.status} />
+                      </div>
+                      <p className="text-sm text-slate-600 mt-0.5 truncate">{jo.service || jo.description || jo.contract_type || 'Project'}</p>
+                    </div>
+                    <button onClick={() => setSelected(jo)} className={`${btnSmSecondary} flex-shrink-0`}>
+                      <Eye size={15} {...ICON} /><span className="hidden sm:inline">Details</span>
+                    </button>
                   </div>
-                  <div style={{ fontSize: 12, color: C.textSub, fontWeight: 400 }}>
-                    {jo.description || jo.contract_type || 'Construction Project'}
-                  </div>
-                </div>
 
-                <button
-                  onClick={() => setSelected(jo)}
-                  style={{
-                    padding: '5px 12px', borderRadius: 6,
-                    border: `1px solid ${C.border}`,
-                    background: '#fff', fontSize: 11, fontWeight: 600, color: C.green,
-                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                    transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.greenLight}
-                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-                >
-                  View Details
-                </button>
+                  <dl className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                    <Meta icon={MapPin} label="Address" value={jo.client_address || jo.location} wide />
+                    <Meta icon={Calendar} label="Dates" value={jo.start_date ? `${fmtDate(jo.start_date, { month: 'short', day: 'numeric' })} – ${fmtDate(jo.end_date)}` : null} />
+                    <Meta icon={HardHat} label="Worker" value={jo.worker_name} />
+                  </dl>
+
+                  {visitsFor(visits, jo.id).map(v => <VisitCard key={v.id} visit={v} onDone={done} />)}
+                  {jo.finished_at && jo.status === 'In Progress' && <ConfirmCard jo={jo} onDone={done} />}
+                  {!jo.finished_at && jo.issue_note && jo.status === 'In Progress' && (
+                    <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3.5 py-3 text-[13px] text-amber-800">
+                      <AlertCircle size={16} {...ICON} className="flex-shrink-0 mt-0.5" />
+                      <span>Still to do: “{jo.issue_note}”. The worker is working on it.</span>
+                    </p>
+                  )}
+                  {jo.status === 'Complete' && jo.completed_at && (
+                    <p className="mt-4 flex items-center gap-2 text-[13px] text-emerald-700">
+                      <CheckCircle2 size={16} {...ICON} />Completed on {fmtDate(jo.completed_at)}
+                    </p>
+                  )}
+                </div>
               </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', marginBottom: 2, marginTop: 8 }}>
-                {(jo.client_address || jo.location) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <MapPin size={11} color={C.textFaint} />
-                    {jo.client_address || jo.location}
-                  </div>
-                )}
-                {jo.start_date && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <Calendar size={11} color={C.textFaint} />
-                    <span style={{ fontSize: 10, color: C.textFaint }}>Start Date</span>
-                    <span>{jo.start_date}</span>
-                  </div>
-                )}
-                {jo.end_date && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <Clock size={11} color={C.textFaint} />
-                    <span style={{ fontSize: 10, color: C.textFaint }}>Completion</span>
-                    <span>{jo.end_date}</span>
-                  </div>
-                )}
-                {jo.budget && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.textSub }}>
-                    <DollarSign size={11} color={C.textFaint} />
-                    <span style={{ fontSize: 10, color: C.textFaint }}>Budget</span>
-                    <span>{Number(jo.budget).toLocaleString()}</span>
-                  </div>
-                )}
-              </div>
-
-              {visitsFor(visits, jo.id).map(v => (
-                <VisitCard key={v.id} visit={v} isMobile={isMobile}
-                  onDone={(msg, type) => { showToast(msg, type); if (type !== 'error') load() }} />
-              ))}
-              {jo.finished_at && jo.status === 'In Progress' && (
-                <ConfirmCard jo={jo} isMobile={isMobile} onDone={(msg, type) => { showToast(msg, type); if (type !== 'error') load() }} />
-              )}
-              {!jo.finished_at && jo.issue_note && jo.status === 'In Progress' && (
-                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e' }}>
-                  Still to do: “{jo.issue_note}”. The worker is working on it.
-                </div>
-              )}
-              {jo.status === 'Complete' && jo.completed_at && (
-                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.greenDark }}>
-                  <CheckCircle size={13} /> Completed on {fmtDate(jo.completed_at)}
-                </div>
-              )}
-            </div>
+            </article>
           ))}
         </div>
       )}
 
-      {/* Detail Modal - FULLSCREEN */}
-      {selected && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: C.bg, overflowY: 'auto' }}>
-          <div style={{ background: C.card, minHeight: '100vh', maxWidth: 900, margin: '0 auto', boxShadow: '0 0 40px rgba(0,0,0,0.1)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{selected.job_order_code}</span>
-                  <StatusBadge status={selected.status} />
-                </div>
-                <p style={{ fontSize: 11, color: C.textSub, margin: 0 }}>Job Order Details</p>
-              </div>
-              <button onClick={() => setSelected(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: C.textSub, padding: 4 }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ padding: '8px 0' }}>
-              {[
-                { label: 'Description',     value: selected.description    },
-                { label: 'Contract Type',   value: selected.contract_type  },
-                { label: 'Assigned Worker', value: selected.worker_name    },
-                { label: 'Start Date',      value: selected.start_date     },
-                { label: 'End Date',        value: selected.end_date       },
-                { label: 'Inquiry Ref',     value: selected.inquiry_code   },
-                { label: 'Created',         value: selected.created_at?.slice(0, 10) },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', gap: 16, padding: '12px 24px', borderBottom: `1px solid ${C.border}` }}>
-                  <span style={{ fontSize: 12, color: C.textSub, width: 130, flexShrink: 0 }}>{label}</span>
-                  <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{value || '—'}</span>
-                </div>
-              ))}
-            </div>
-
-            <ProgressPhotos jobId={selected.id} />
-
-            <div style={{ padding: '16px 24px' }}>
-              <button onClick={() => setSelected(null)} style={{
-                width: '100%', padding: '10px', borderRadius: 8,
-                border: `1px solid ${C.border}`, background: '#fff',
-                fontSize: 13, fontWeight: 600, color: C.textMid, cursor: 'pointer',
-              }}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      {selected && <JobDetails jo={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
+
+function Meta({ icon: Icon, label, value }) {
+  if (!value) return null
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 text-slate-500">
+      <Icon size={13} {...ICON} className="flex-shrink-0 text-slate-400" />
+      <dt className="sr-only">{label}</dt>
+      <dd className="truncate text-slate-600">{value}</dd>
+    </div>
+  )
+}
+
+// ── Details ────────────────────────────────────────────────────
+function JobDetails({ jo, onClose }) {
+  const rows = [
+    { icon: FileText,  label: 'Service',       value: jo.service || jo.description },
+    { icon: FileText,  label: 'Contract',      value: jo.contract_type },
+    { icon: HardHat,   label: 'Worker',        value: jo.worker_name },
+    { icon: MapPin,    label: 'Address',       value: jo.client_address || jo.location },
+    { icon: Calendar,  label: 'Start date',    value: jo.start_date ? fmtDate(jo.start_date, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }) : null },
+    { icon: Calendar,  label: 'End date',      value: jo.end_date ? fmtDate(jo.end_date, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }) : null },
+    { icon: Wallet,    label: 'Budget',        value: jo.budget ? `₱${Number(jo.budget).toLocaleString('en-PH')}` : null },
+    { icon: Hash,      label: 'Inquiry',       value: jo.inquiry_code },
+    { icon: Calendar,  label: 'Created',       value: jo.created_at ? fmtDate(jo.created_at) : null },
+  ].filter(r => r.value)
+
+  return (
+    <Modal onClose={onClose} maxW="max-w-2xl">
+      <ModalHeader icon={ClipboardList} title={jo.job_order_code} sub="Job order details" badge={<StatusBadge status={jo.status} />} onClose={onClose} />
+      <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-6">
+        {jo.description && jo.service && jo.description !== jo.service && (
+          <p className="text-sm text-slate-700 leading-relaxed">{jo.description}</p>
+        )}
+        <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+          {rows.map(({ icon: Icon, label, value }) => (
+            <div key={label} className="flex items-start gap-3 px-4 py-3">
+              <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
+              <dt className="text-xs text-slate-500 w-24 flex-shrink-0 pt-0.5">{label}</dt>
+              <dd className="text-sm text-slate-900 min-w-0 break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <ProgressPhotos jobId={jo.id} />
+      </div>
+      <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex justify-end flex-shrink-0">
+        <button onClick={onClose} className={btnSecondary}>Close</button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Site visit date (agree with the worker) ────────────────────
 const VISIT_LABEL = { ocular: 'Site visit (ocular inspection)', progress: 'Progress check', other: 'Site visit' }
-const fmtVisitDay = s => {
-  if (!s) return '—'
-  const d = new Date(String(s).slice(0, 10) + 'T00:00:00')
-  return isNaN(d) ? s : d.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-}
-const fmtVisitTime = s => {
-  const d = new Date(String(s).replace(' ', 'T'))
-  return isNaN(d) ? '' : d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
-}
-const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-const weekend = s => { const d = new Date(s + 'T00:00:00'); return d.getDay() === 0 || d.getDay() === 6 }
 
 // Visits the customer should see on a job card: being agreed, or planned and not yet over
 function visitsFor(visits, jobId) {
@@ -304,20 +215,22 @@ function visitsFor(visits, jobId) {
   ))
 }
 
-function VisitCard({ visit, isMobile, onDone }) {
+function VisitCard({ visit, onDone }) {
   const [mode, setMode] = useState(null)   // null | 'suggest'
   const [date, setDate] = useState('')
   const [busy, setBusy] = useState(null)
+  const [error, setError] = useState(null)
   const tomorrow = ymd(new Date(Date.now() + 86400000))
   const min = [tomorrow, (visit.job_start_date || '').slice(0, 10)].filter(Boolean).sort().pop()
   const max = (visit.job_end_date || '').slice(0, 10) || undefined
   const left = Number(visit.suggests_left ?? 0)
 
   const send = async (action) => {
+    setError(null)
     if (action === 'counter') {
-      if (!date) return onDone('Please pick a date.', 'error')
-      if (weekend(date)) return onDone('Site visits are Monday to Friday only.', 'error')
-      if (date < min || (max && date > max)) return onDone('Please pick a date within your job order dates.', 'error')
+      if (!date) return setError('Please pick a date.')
+      if (isWeekend(date)) return setError('Site visits are Monday to Friday only.')
+      if (date < min || (max && date > max)) return setError('Please pick a date within your job order dates.')
     }
     setBusy(action)
     try {
@@ -328,73 +241,74 @@ function VisitCard({ visit, isMobile, onDone }) {
     setBusy(null)
   }
 
-  const btn = (primary) => ({
-    padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
-    border: primary ? 'none' : `1px solid ${C.border}`, background: primary ? C.green : '#fff',
-    color: primary ? '#fff' : C.textMid, opacity: busy ? 0.7 : 1,
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  })
-
   const planned = !visit.waiting_for
   const myTurn  = visit.my_turn
   const lastBy  = (visit.proposals || []).filter(p => p.action !== 'escalate').slice(-1)[0]?.by
-  const when    = `${fmtVisitDay(visit.start_time)} · ${fmtVisitTime(visit.start_time)} – ${fmtVisitTime(visit.end_time)}`
+  const label   = VISIT_LABEL[visit.visit_type] || 'Site visit'
+  const Icon    = planned ? CalendarCheck : myTurn ? CalendarDays : Hourglass
 
   return (
-    <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 10, background: myTurn ? '#ecfdf5' : '#f9fafb', border: `1px solid ${myTurn ? '#a7f3d0' : C.border}` }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        {planned ? <CalendarCheck size={16} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} />
-                 : myTurn ? <Calendar size={16} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} />
-                 : <Hourglass size={16} color={C.textFaint} style={{ flexShrink: 0, marginTop: 1 }} />}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: myTurn ? '#065f46' : C.text }}>
-            {planned ? `${VISIT_LABEL[visit.visit_type] || 'Site visit'} is confirmed`
-              : myTurn ? 'Please confirm the date of your site visit'
-              : `${VISIT_LABEL[visit.visit_type] || 'Site visit'}: date not final yet`}
-          </div>
-          <div style={{ fontSize: 12, color: myTurn ? '#047857' : C.textMid, marginTop: 3 }}>{when}</div>
-          <div style={{ fontSize: 12, color: myTurn ? '#047857' : C.textSub, marginTop: 6 }}>
-            {planned ? `${visit.worker_name ? visit.worker_name : 'Our worker'} will visit you on this date.`
+    <div className={`mt-4 rounded-xl p-3.5 sm:p-4 ring-1 ${myTurn ? 'bg-emerald-50/70 ring-emerald-200' : 'bg-slate-50 ring-slate-200'}`}>
+      <div className="flex items-start gap-3">
+        <span className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ring-1 bg-white ${myTurn || planned ? 'text-emerald-600 ring-emerald-200' : 'text-slate-400 ring-slate-200'}`}>
+          <Icon size={17} {...ICON} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-semibold ${myTurn ? 'text-emerald-900' : 'text-slate-900'}`}>
+            {planned ? `${label} is confirmed` : myTurn ? 'Please confirm the date of your site visit' : `${label}: date not final yet`}
+          </p>
+          <p className={`text-[13px] mt-0.5 ${myTurn ? 'text-emerald-800' : 'text-slate-700'}`}>
+            {fmtDate(visit.start_time, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · {fmtTime(visit.start_time)} – {fmtTime(visit.end_time)}
+          </p>
+          <p className={`text-xs mt-1.5 ${myTurn ? 'text-emerald-800/80' : 'text-slate-500'}`}>
+            {planned ? `${visit.worker_name || 'Our worker'} will visit you on this date.`
               : myTurn ? (lastBy === 'worker' ? 'The worker suggested this date. Is it okay for you?' : 'Our worker will visit to check the site before the work starts. Is this date okay for you?')
               : visit.waiting_for === 'admin' ? 'Our admin will choose the date and let you know by email.'
               : 'Waiting for the worker to confirm. We will email you when the date is final.'}
-          </div>
+          </p>
+
+          {myTurn && (mode === 'suggest' ? (
+            <div className="cx-pop mt-3.5">
+              <label htmlFor={`sg-${visit.id}`} className="block text-xs font-medium text-emerald-900 mb-1.5">Pick a date that works for you</label>
+              <input id={`sg-${visit.id}`} type="date" min={min} max={max} value={date} onChange={e => { setDate(e.target.value); setError(null) }}
+                className={`${inputCls} bg-white sm:max-w-[240px]`} />
+              <p className="text-xs text-emerald-800/80 mt-1.5">
+                Monday to Friday, 9:00–11:00 AM{max ? `, until ${fmtDate(max)}` : ''}. {left <= 1 ? 'This is the last time you can suggest a date.' : `You can suggest a date ${left} more times.`}
+              </p>
+              {error && <p className="cx-shake mt-2 flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={13} {...ICON} />{error}</p>}
+              <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                <button onClick={() => send('counter')} disabled={!!busy} className={btnSmPrimary}>
+                  {busy === 'counter' && <RefreshCw size={14} {...ICON} className="animate-spin" />}{busy === 'counter' ? 'Sending…' : 'Send this date'}
+                </button>
+                <button onClick={() => { setMode(null); setDate(''); setError(null) }} disabled={!!busy} className={btnSmSecondary}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-2 mt-3.5">
+              <button onClick={() => send('accept')} disabled={!!busy} className={btnSmPrimary}>
+                {busy === 'accept' ? <RefreshCw size={14} {...ICON} className="animate-spin" /> : <CheckCircle2 size={15} {...ICON} />}{busy === 'accept' ? 'Saving…' : 'Accept this date'}
+              </button>
+              {visit.can_suggest
+                ? <button onClick={() => setMode('suggest')} disabled={!!busy} className={btnSmSecondary}><CalendarDays size={15} {...ICON} />Suggest another date</button>
+                : <button onClick={() => send('escalate')} disabled={!!busy} className={btnSmSecondary}>{busy === 'escalate' ? 'Sending…' : 'Let the admin choose'}</button>}
+            </div>
+          ))}
         </div>
       </div>
-
-      {myTurn && (mode === 'suggest' ? (
-        <div style={{ marginTop: 12 }}>
-          <label style={{ display: 'block', fontSize: 12, color: '#065f46', fontWeight: 600, marginBottom: 6 }}>Pick a date that works for you</label>
-          <input type="date" min={min} max={max} value={date} onChange={e => setDate(e.target.value)}
-            style={{ width: isMobile ? '100%' : 220, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, background: '#fff', boxSizing: 'border-box' }} />
-          <div style={{ fontSize: 11, color: '#047857', marginTop: 6 }}>
-            Monday to Friday, 9:00–11:00 AM{max ? `, until ${fmtDate(max)}` : ''}. {left <= 1 ? 'This is the last time you can suggest a date.' : `You can suggest a date ${left} more times.`}
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            <button onClick={() => send('counter')} disabled={!!busy} style={btn(true)}>{busy === 'counter' ? 'Sending…' : 'Send this date'}</button>
-            <button onClick={() => { setMode(null); setDate('') }} disabled={!!busy} style={btn(false)}>Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: isMobile ? 'column' : 'row' }}>
-          <button onClick={() => send('accept')} disabled={!!busy} style={btn(true)}><CheckCircle size={13} />{busy === 'accept' ? 'Saving…' : 'Accept this date'}</button>
-          {visit.can_suggest
-            ? <button onClick={() => setMode('suggest')} disabled={!!busy} style={btn(false)}>Suggest another date</button>
-            : <button onClick={() => send('escalate')} disabled={!!busy} style={btn(false)}>{busy === 'escalate' ? 'Sending…' : 'Let the admin choose'}</button>}
-        </div>
-      ))}
     </div>
   )
 }
 
 // ── Confirm the finished work ──────────────────────────────────
-function ConfirmCard({ jo, isMobile, onDone }) {
+function ConfirmCard({ jo, onDone }) {
   const [mode, setMode] = useState(null)   // null | 'confirm' | 'issue'
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
 
   const send = async (action) => {
-    if (action === 'issue' && !note.trim()) return onDone('Tell us what still needs to be done.', 'error')
+    setError(null)
+    if (action === 'issue' && !note.trim()) return setError('Tell us what still needs to be done.')
     setBusy(true)
     try {
       const res = await apiPost('/api/job-orders/confirm.php', { id: jo.id, action, note: note.trim() })
@@ -404,52 +318,46 @@ function ConfirmCard({ jo, isMobile, onDone }) {
     setBusy(false)
   }
 
-  const btn = (primary) => ({
-    padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
-    border: primary ? 'none' : `1px solid ${C.border}`, background: primary ? C.green : '#fff',
-    color: primary ? '#fff' : C.textMid, opacity: busy ? 0.7 : 1,
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-  })
-
   return (
-    <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <Flag size={16} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>The worker finished this job on {fmtDate(jo.finished_at)}</div>
-          {jo.finish_note && <div style={{ fontSize: 12, color: '#047857', marginTop: 3 }}>“{jo.finish_note}”</div>}
+    <div className="mt-4 rounded-xl p-3.5 sm:p-4 bg-emerald-50/70 ring-1 ring-emerald-200">
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-lg bg-white ring-1 ring-emerald-200 text-emerald-600 flex items-center justify-center flex-shrink-0"><Flag size={17} {...ICON} /></span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-emerald-900">The worker finished this job on {fmtDate(jo.finished_at)}</p>
+          {jo.finish_note && <p className="text-[13px] text-emerald-800 mt-0.5">“{jo.finish_note}”</p>}
           {jo.finish_photo_path && (
             <a href={`${HOST}/${jo.finish_photo_path}`} target="_blank" rel="noreferrer"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, fontSize: 12, fontWeight: 600, color: C.greenDark }}>
-              <ImageIcon size={13} /> View final photo
+              className="inline-flex items-center gap-1.5 mt-2 text-[13px] font-medium text-emerald-700 hover:underline underline-offset-2">
+              <ImageIcon size={15} {...ICON} />View the final photo
             </a>
           )}
-          <div style={{ fontSize: 12, color: '#047857', marginTop: 6 }}>Please check the work. Is everything done?</div>
+          <p className="text-xs text-emerald-800/80 mt-1.5">Please check the work. Is everything done?</p>
+
+          {mode === 'issue' ? (
+            <div className="cx-pop mt-3.5">
+              <label htmlFor={`issue-${jo.id}`} className="sr-only">What still needs to be done?</label>
+              <textarea id={`issue-${jo.id}`} rows={3} maxLength={500} value={note} onChange={e => { setNote(e.target.value); setError(null) }}
+                placeholder="What still needs to be done?" className={`${inputCls} h-auto py-2.5 resize-none bg-white`} />
+              {error && <p className="cx-shake mt-2 flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={13} {...ICON} />{error}</p>}
+              <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                <button onClick={() => send('issue')} disabled={busy} className={btnSmPrimary}>{busy ? 'Sending…' : 'Send to the worker'}</button>
+                <button onClick={() => { setMode(null); setNote(''); setError(null) }} disabled={busy} className={btnSmSecondary}>Cancel</button>
+              </div>
+            </div>
+          ) : mode === 'confirm' ? (
+            <div className="cx-pop flex flex-col sm:flex-row sm:items-center gap-2 mt-3.5">
+              <span className="text-[13px] font-medium text-emerald-900 sm:mr-1">Confirm that the job is complete?</span>
+              <button onClick={() => send('confirm')} disabled={busy} className={btnSmPrimary}><CheckCircle2 size={15} {...ICON} />{busy ? 'Saving…' : 'Yes, confirm'}</button>
+              <button onClick={() => setMode(null)} disabled={busy} className={btnSmSecondary}>Cancel</button>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-2 mt-3.5">
+              <button onClick={() => setMode('confirm')} className={btnSmPrimary}><CheckCircle2 size={15} {...ICON} />Confirm it's done</button>
+              <button onClick={() => setMode('issue')} className={btnSmSecondary}>Report a problem</button>
+            </div>
+          )}
         </div>
       </div>
-
-      {mode === 'issue' ? (
-        <div style={{ marginTop: 12 }}>
-          <textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)}
-            placeholder="What still needs to be done?"
-            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, outline: 'none', boxSizing: 'border-box', resize: 'none', background: '#fff' }} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => send('issue')} disabled={busy} style={btn(true)}>{busy ? 'Sending…' : 'Send to the worker'}</button>
-            <button onClick={() => { setMode(null); setNote('') }} disabled={busy} style={btn(false)}>Cancel</button>
-          </div>
-        </div>
-      ) : mode === 'confirm' ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>Confirm that the job is complete?</span>
-          <button onClick={() => send('confirm')} disabled={busy} style={btn(true)}><CheckCircle size={13} />{busy ? 'Saving…' : 'Yes, confirm'}</button>
-          <button onClick={() => setMode(null)} disabled={busy} style={btn(false)}>Cancel</button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: isMobile ? 'column' : 'row' }}>
-          <button onClick={() => setMode('confirm')} style={{ ...btn(true), justifyContent: 'center' }}><CheckCircle size={13} />Confirm it's done</button>
-          <button onClick={() => setMode('issue')} style={{ ...btn(false), justifyContent: 'center' }}>Report a problem</button>
-        </div>
-      )}
     </div>
   )
 }
@@ -457,6 +365,7 @@ function ConfirmCard({ jo, isMobile, onDone }) {
 // ── Progress photos in the details view ────────────────────────
 function ProgressPhotos({ jobId }) {
   const [photos, setPhotos] = useState(null)
+  const [all, setAll] = useState(false)
   useEffect(() => {
     let alive = true
     apiGet('/api/job-orders/get-progress.php', { job_order_id: jobId })
@@ -465,21 +374,33 @@ function ProgressPhotos({ jobId }) {
     return () => { alive = false }
   }, [jobId])
 
-  if (!photos || photos.length === 0) return null
+  if (photos === null) {
+    return <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">{[0, 1, 2].map(i => <Skel key={i} className="h-24" />)}</div>
+  }
+  if (photos.length === 0) return null
+  const shown = all ? photos : photos.slice(0, 8)
   return (
-    <div style={{ padding: '16px 24px 0' }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>Progress photos ({photos.length})</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
-        {photos.map(p => (
+    <div>
+      <p className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-1.5">
+        <ImageIcon size={15} {...ICON} className="text-emerald-600" />Progress photos <span className="text-slate-400 font-normal">({photos.length})</span>
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {shown.map(p => (
           <a key={p.id} href={`${HOST}/${p.file_path}`} target="_blank" rel="noreferrer"
-            style={{ position: 'relative', display: 'block', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }}>
-            <img src={`${HOST}/${p.file_path}`} alt={`Progress ${p.upload_date}`} style={{ width: '100%', height: 96, objectFit: 'cover', display: 'block' }} />
-            <span style={{ position: 'absolute', left: 6, bottom: 6, padding: '1px 6px', borderRadius: 4, background: 'rgba(15,23,42,.65)', color: '#fff', fontSize: 10, fontWeight: 600 }}>
-              {p.is_final ? 'Final · ' : ''}{fmtDate(p.upload_date)}
+            className="group relative block rounded-lg overflow-hidden ring-1 ring-slate-200 bg-slate-100">
+            <img src={`${HOST}/${p.file_path}`} alt={`Progress photo from ${fmtDate(p.upload_date)}`} loading="lazy"
+              className="w-full h-28 object-cover transition-transform duration-300 group-hover:scale-105" />
+            <span className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded bg-slate-900/70 text-white text-[10px] font-medium">
+              {p.is_final ? 'Final · ' : ''}{fmtDate(p.upload_date, { month: 'short', day: 'numeric' })}
             </span>
           </a>
         ))}
       </div>
+      {photos.length > 8 && (
+        <button onClick={() => setAll(a => !a)} className="mt-3 inline-flex items-center gap-1 text-[13px] font-medium text-emerald-700 hover:underline underline-offset-2">
+          {all ? 'Show fewer' : `Show all ${photos.length} photos`}<ChevronDown size={15} {...ICON} className={all ? 'rotate-180' : ''} />
+        </button>
+      )}
     </div>
   )
 }

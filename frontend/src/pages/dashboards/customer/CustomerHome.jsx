@@ -1,228 +1,176 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, CheckCircle, Clock, Zap, RefreshCw, ArrowRight, CalendarCheck } from 'lucide-react'
+import { ClipboardList, CheckCircle2, Clock, Hammer, ArrowRight, CalendarCheck, Flag, Plus, ChevronRight, MapPin } from 'lucide-react'
 import { apiGet } from '../../../utils/api'
+import { ICON, MIN_SKELETON_MS, Skel, StatusBadge, EmptyState, btnPrimary, getCustomerInfo, fmtDate, fmtTime } from './CustomerUI'
 
-// ── Responsive Hook ────────────────────────────────────────────
-function useWindowWidth() {
-  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
-  return width
-}
-
-// ── Design Tokens ──────────────────────────────────────────────
-const C = {
-  green: '#16a34a', greenLight: '#dcfce7', greenDark: '#15803d',
-  blue: '#2563eb', blueLight: '#dbeafe',
-  purple: '#9333ea', purpleLight: '#f3e8ff',
-  red: '#dc2626', redLight: '#fee2e2',
-  cyanLight: '#cffafe',
-  card: '#ffffff', border: '#e5e7eb',
-  text: '#111827', textSub: '#6b7280', textFaint: '#9ca3af',
-}
-
-const STATUS_COLORS = {
-  'Pending':      { bg: '#fef9c3', color: '#854d0e',  border: '#fde047' },
-  'Active':       { bg: C.greenLight, color: C.greenDark, border: '#86efac' },
-  'Complete':     { bg: C.greenLight, color: C.greenDark, border: '#86efac' },
-  'On Hold':      { bg: '#ffedd5', color: '#9a3412',  border: '#fdba74' },
-  'Under Review': { bg: C.purpleLight, color: '#6b21a8', border: '#d8b4fe' },
-  'Scheduled':    { bg: C.cyanLight, color: '#164e63', border: '#67e8f9' },
-  'In Progress':  { bg: C.blueLight, color: '#1e40af', border: '#93c5fd' },
-  'Cancelled':    { bg: C.redLight, color: C.red, border: '#fca5a5' },
-}
-
-function StatusBadge({ status }) {
-  const s = STATUS_COLORS[status] || { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' }
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-      letterSpacing: '0.02em', background: s.bg, color: s.color,
-      border: `1px solid ${s.border}`,
-    }}>
-      {status || '—'}
-    </span>
-  )
-}
-// ── Stats Card ─────────────────────────────────────────────────
-function StatCard({ label, value, icon: Icon, iconBg, iconColor }) {
-  return (
-    <div style={{
-      background: C.card, borderRadius: 10, padding: '16px 18px',
-      border: `1px solid ${C.border}`,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    }}>
-      <div>
-        <div style={{ fontSize: 11, color: C.textSub, fontWeight: 500, marginBottom: 4 }}>{label}</div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: C.text, lineHeight: 1 }}>{value}</div>
-      </div>
-      <div style={{
-        width: 40, height: 40, borderRadius: 8,
-        background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        <Icon size={18} color={iconColor} strokeWidth={2.2} />
-      </div>
-    </div>
-  )
+const greeting = () => {
+  const h = new Date().getHours()
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
 }
 
 // ── Customer Dashboard Home ────────────────────────────────────
 export default function CustomerHome() {
   const navigate  = useNavigate()
-  const isMobile  = useWindowWidth() < 640
+  const customer  = getCustomerInfo()
+  const firstName = customer?.first_name || customer?.name?.split(' ')[0] || ''
   const [jobOrders, setJobOrders] = useState([])
-  const [loading,   setLoading]   = useState(true)
   const [visits,    setVisits]    = useState([])
+  const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
+    let alive = true
     const load = async () => {
-      setLoading(true)
+      const started = Date.now()
       try {
-        // The server only returns this customer's own job orders
+        // The server only returns this customer's own records
         const [joData, vData] = await Promise.all([
           apiGet('/api/job-orders/list.php', { per_page: 200, mine: 1 }),
           apiGet('/api/schedules/list.php', { per_page: 200, mine: 1 }).catch(() => ({ schedules: [] })),
         ])
+        if (!alive) return
         setJobOrders(joData.job_orders || [])
         setVisits(vData.schedules || [])
-      } catch {}
-      setLoading(false)
+      } catch { /* empty state */ }
+      const wait = MIN_SKELETON_MS - (Date.now() - started)
+      if (wait > 0) await new Promise(r => setTimeout(r, wait))
+      if (alive) setLoading(false)
     }
     load()
+    return () => { alive = false }
   }, [])
 
   const total     = jobOrders.length
   const active    = jobOrders.filter(jo => ['Active', 'In Progress', 'Scheduled'].includes(jo.status)).length
   const completed = jobOrders.filter(jo => jo.status === 'Complete').length
-  const pending   = jobOrders.filter(jo => jo.status === 'Pending').length
+  const pending   = jobOrders.filter(jo => ['Pending', 'Under Review'].includes(jo.status)).length
   const toConfirm = jobOrders.filter(jo => jo.finished_at && jo.status === 'In Progress')
   const dateToAnswer = visits.filter(v => v.my_turn)
-  const recent    = [...jobOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6)
+  const nextVisit = visits
+    .filter(v => v.status === 'Scheduled' && !v.waiting_for && new Date(String(v.start_time).replace(' ', 'T')) >= new Date())
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))[0]
+  const recent = [...jobOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5)
 
-  // Matches screenshot stat order: Total Projects | In Projects | Completed | Too Projects
   const stats = [
-  { label: 'Total Projects', value: total,     icon: ClipboardList, iconBg: C.blueLight,   iconColor: C.blue   },
-  { label: 'In Progress',    value: active,    icon: Zap,           iconBg: C.greenLight,  iconColor: C.green  },
-  { label: 'Completed',      value: completed, icon: CheckCircle,   iconBg: C.greenLight,  iconColor: C.green  },
- { label: 'Pending', value: pending, icon: Clock, iconBg: C.purpleLight, iconColor: C.purple },
-]
+    { label: 'All job orders', value: total,     icon: ClipboardList, tone: 'bg-slate-50 text-slate-600 ring-slate-200' },
+    { label: 'Ongoing',        value: active,    icon: Hammer,        tone: 'bg-emerald-50 text-emerald-600 ring-emerald-100' },
+    { label: 'Completed',      value: completed, icon: CheckCircle2,  tone: 'bg-blue-50 text-blue-600 ring-blue-100' },
+    { label: 'Waiting',        value: pending,   icon: Clock,         tone: 'bg-amber-50 text-amber-600 ring-amber-100' },
+  ]
 
   return (
-    <div style={{ padding: isMobile ? '16px 14px' : '24px 28px', maxWidth: 860, margin: '0 auto' }}>
-      {/* Stats Row — 2-col on mobile, 4-col on desktop */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-        {stats.map(s => <StatCard key={s.label} {...s} />)}
+    <div className="space-y-6">
+      <div className="cx-rise flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <p className="text-sm text-slate-500">{greeting()}{firstName ? ',' : ''}</p>
+          <h1 className="text-2xl sm:text-[30px] leading-tight font-semibold text-slate-900 tracking-tight">{firstName || 'Welcome back'}</h1>
+        </div>
+        <button onClick={() => navigate('/customer/inquiries', { state: { newInquiry: true } })} className={btnPrimary}>
+          <Plus size={16} {...ICON} />New inquiry
+        </button>
       </div>
 
-      {/* A site visit date waiting for the customer's answer */}
-      {dateToAnswer.length > 0 && (
-        <button onClick={() => navigate('/customer/job-orders')} style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-          background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 12,
-          padding: '14px 18px', marginBottom: 20, cursor: 'pointer',
-        }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: '#fff', border: '1px solid #a7f3d0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <CalendarCheck size={17} color={C.green} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>
-              {dateToAnswer.length === 1 ? 'Please confirm the date of your site visit' : `Please confirm ${dateToAnswer.length} site visit dates`}
+      {/* Stats */}
+      <div className="cx-rise grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" style={{ animationDelay: '60ms' }}>
+        {stats.map(({ label, value, icon: Icon, tone }) => (
+          <div key={label} className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs sm:text-sm text-slate-500">{label}</p>
+              {loading ? <Skel className="h-8 w-10 mt-2" /> : <p className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight mt-1 tabular-nums">{value}</p>}
             </div>
-            <div style={{ fontSize: 12, color: '#047857', marginTop: 2 }}>Accept the date or suggest another one that works for you.</div>
+            <span className={`w-10 h-10 rounded-xl ring-1 flex items-center justify-center flex-shrink-0 ${tone}`}><Icon size={18} {...ICON} /></span>
           </div>
-          <ArrowRight size={16} color={C.green} />
-        </button>
-      )}
+        ))}
+      </div>
 
-      {/* Finished work waiting for the customer's confirmation */}
-      {toConfirm.length > 0 && (
-        <button onClick={() => navigate('/customer/job-orders')} style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-          background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 12,
-          padding: '14px 18px', marginBottom: 20, cursor: 'pointer',
-        }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: '#fff', border: '1px solid #a7f3d0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <CheckCircle size={17} color={C.green} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>
-              {toConfirm.length === 1 ? `${toConfirm[0].job_order_code} is finished` : `${toConfirm.length} jobs are finished`}. Please confirm the work.
-            </div>
-            <div style={{ fontSize: 12, color: '#047857', marginTop: 2 }}>Check the final photo, then confirm or tell us what still needs fixing.</div>
-          </div>
-          <ArrowRight size={16} color={C.green} />
-        </button>
-      )}
-
-      {/* Recent Activity Card */}
-      <div style={{
-        background: C.card, borderRadius: 12,
-        border: `1px solid ${C.border}`,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-        overflow: 'hidden',
-      }}>
-        <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.border}` }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: C.text, margin: 0 }}>Recent Activity</h3>
+      {/* Things that need the customer */}
+      {!loading && (dateToAnswer.length > 0 || toConfirm.length > 0 || nextVisit) && (
+        <div className="cx-rise space-y-3" style={{ animationDelay: '120ms' }}>
+          {dateToAnswer.length > 0 && (
+            <ActionRow icon={CalendarCheck} onClick={() => navigate('/customer/job-orders')}
+              title={dateToAnswer.length === 1 ? 'Please confirm the date of your site visit' : `Please confirm ${dateToAnswer.length} site visit dates`}
+              text="Accept the date or suggest another one that works for you." cta="Answer" />
+          )}
+          {toConfirm.length > 0 && (
+            <ActionRow icon={Flag} onClick={() => navigate('/customer/job-orders')}
+              title={toConfirm.length === 1 ? `${toConfirm[0].job_order_code} is finished. Please check the work.` : `${toConfirm.length} jobs are finished. Please check the work.`}
+              text="Look at the final photo, then confirm or tell us what still needs fixing." cta="Check" />
+          )}
+          {nextVisit && (
+            <button onClick={() => navigate('/customer/job-orders')}
+              className="w-full flex items-center gap-3.5 text-left bg-white rounded-2xl border border-slate-200 px-4 sm:px-5 py-4 hover:border-slate-300 transition-colors">
+              <span className="w-11 h-11 rounded-xl bg-slate-50 ring-1 ring-slate-200 flex flex-col items-center justify-center flex-shrink-0 leading-none">
+                <span className="text-[10px] font-medium text-emerald-700 uppercase">{fmtDate(nextVisit.start_time, { month: 'short' })}</span>
+                <span className="text-base font-semibold text-slate-900 mt-0.5">{fmtDate(nextVisit.start_time, { day: 'numeric' })}</span>
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-slate-900">Next site visit</span>
+                <span className="block text-xs text-slate-500 mt-0.5 truncate">
+                  {fmtDate(nextVisit.start_time, { weekday: 'long', month: 'short', day: 'numeric' })} · {fmtTime(nextVisit.start_time)} – {fmtTime(nextVisit.end_time)}
+                  {nextVisit.worker_name ? ` · ${nextVisit.worker_name}` : ''}
+                </span>
+              </span>
+              <ChevronRight size={18} {...ICON} className="text-slate-300 flex-shrink-0" />
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Recent job orders */}
+      <section className="cx-rise bg-white rounded-2xl border border-slate-200 overflow-hidden" style={{ animationDelay: '160ms' }}>
+        <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900">Recent job orders</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Your latest projects with us.</p>
+          </div>
+          {total > 0 && (
+            <button onClick={() => navigate('/customer/job-orders')} className="text-[13px] font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap">View all</button>
+          )}
+        </header>
 
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: C.textSub }}>
-            <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', marginBottom: 8, display: 'block', margin: '0 auto 8px' }} />
-            Loading...
-          </div>
-        ) : recent.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: C.textSub }}>
-            <ClipboardList size={32} style={{ marginBottom: 8, color: C.textFaint, display: 'block', margin: '0 auto 8px' }} />
-            No job orders yet.
-          </div>
-        ) : (
-          <div>
-            {recent.map((jo, i) => (
-              <div key={jo.id}
-                onClick={() => navigate('/customer/job-orders')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '13px 22px',
-                  borderBottom: i < recent.length - 1 ? `1px solid ${C.border}` : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                {/* Green icon box */}
-                <div style={{
-                  width: 34, height: 34, borderRadius: 8, background: C.greenLight,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                  <ClipboardList size={15} color={C.green} />
-                </div>
-
-                {/* Text */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 2 }}>
-                    {jo.job_order_code} – {jo.description || jo.contract_type || 'Construction'}
-                  </div>
-                  <div style={{ fontSize: 11, color: C.textSub }}>
-                    {jo.client_address || jo.location || '—'}
-                  </div>
-                </div>
-
-                {/* Status badge — right aligned */}
-                <StatusBadge status={jo.status} />
-              </div>
+          <div className="p-5 space-y-4">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="flex items-center gap-3"><Skel className="w-10 h-10 rounded-xl" /><div className="flex-1 space-y-2"><Skel className="h-3.5 w-1/3" /><Skel className="h-3 w-1/2" /></div><Skel className="h-5 w-20" /></div>
             ))}
           </div>
+        ) : recent.length === 0 ? (
+          <EmptyState icon={ClipboardList} title="No job orders yet"
+            text="Send us an inquiry. Once it's accepted, your job order shows up here." />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {recent.map(jo => (
+              <li key={jo.id}>
+                <button onClick={() => navigate('/customer/job-orders')} className="w-full flex items-center gap-3.5 px-5 py-3.5 text-left hover:bg-slate-50/70 transition-colors">
+                  <span className="w-10 h-10 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0"><ClipboardList size={17} {...ICON} /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-slate-900 truncate">{jo.job_order_code} · {jo.service || jo.description || jo.contract_type || 'Project'}</span>
+                    <span className="flex items-center gap-1 text-xs text-slate-500 mt-0.5 truncate">
+                      <MapPin size={12} {...ICON} className="flex-shrink-0 text-slate-400" />{jo.client_address || jo.location || '—'}
+                    </span>
+                  </span>
+                  <StatusBadge status={jo.status} />
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </section>
     </div>
+  )
+}
+
+function ActionRow({ icon: Icon, title, text, cta, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-3.5 text-left rounded-2xl bg-emerald-50/70 ring-1 ring-emerald-200 px-4 sm:px-5 py-4 hover:bg-emerald-50 transition-colors">
+      <span className="w-11 h-11 rounded-xl bg-white ring-1 ring-emerald-200 text-emerald-600 flex items-center justify-center flex-shrink-0"><Icon size={19} {...ICON} /></span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-semibold text-emerald-900">{title}</span>
+        <span className="block text-xs text-emerald-800/80 mt-0.5">{text}</span>
+      </span>
+      <span className="hidden sm:inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-700">{cta}<ArrowRight size={15} {...ICON} /></span>
+      <ArrowRight size={16} {...ICON} className="sm:hidden text-emerald-600 flex-shrink-0" />
+    </button>
   )
 }
