@@ -893,13 +893,7 @@ export default function JobOrdersPage() {
 
                       <td className="px-3 py-3"><StatusBadge status={jo.status} /><FlagBadges jo={jo} /></td>
                       <td className="px-3 pr-4 py-3">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {['Under Review', 'Scheduled', 'In Progress', 'Active'].includes(jo.status) && (
-                            <button onClick={() => navigate('/admin/scheduling', { state: { planVisitFor: jo.id } })} aria-label={`Plan site visit for ${jo.job_order_code}`} title="Plan site visit"
-                              className="inline-flex items-center justify-center gap-1.5 h-8 w-8 xl:w-auto xl:px-2.5 rounded-lg border border-emerald-200 text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-                              <CalendarClock size={14} {...ICON} /> <span className="hidden xl:inline">Visit</span>
-                            </button>
-                          )}
+                        <div className="flex items-center justify-end">
                           <button onClick={() => openEdit(jo)} aria-label={`Edit ${jo.job_order_code}`} title="Edit"
                             className="inline-flex items-center justify-center gap-1.5 h-8 w-8 xl:w-auto xl:px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                             <Pencil size={14} {...ICON} /> <span className="hidden xl:inline">Edit</span>

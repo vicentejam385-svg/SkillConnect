@@ -614,6 +614,7 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
   const [opts,   setOpts]   = useState({ workers: [], allowed_types: [], service: null, loading: false })
   const [saving, setSaving] = useState(false)
   const [tried,  setTried]  = useState(false)
+  const [mode,   setMode]   = useState('auto')   // ocular on a Scheduled job: 'auto' (customer and worker agree) or 'manual'
 
   const job = jobs.find(j => String(j.id) === String(jobId)) || null
   const todayKey = dayKey(new Date())
@@ -652,6 +653,10 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
     (b.is_assigned - a.is_assigned) || (usable(b) - usable(a)) || (b.matches - a.matches) || a.full_name.localeCompare(b.full_name))
   const chosen = opts.workers.find(w => String(w.id) === String(worker))
 
+  // Scheduled job with a worker: the ocular date can be sent to the customer automatically
+  const canAuto = !editing && type === 'ocular' && job?.status === 'Scheduled' && !!job?.worker_contact_id && !!job?.start_date && !!job?.end_date
+  const auto = canAuto && mode === 'auto'
+
   const missing = {}
   if (!jobId) missing.job = 'Choose a job order.'
   if (!type) missing.type = 'Choose the type of visit.'
@@ -668,6 +673,16 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
 
   const save = async () => {
     setTried(true)
+    if (auto) {
+      setSaving(true)
+      try {
+        const res = await apiPost('/api/schedules/auto-ocular.php', { job_order_id: Number(jobId) })
+        if (res?.success === false) throw new Error(res.error)
+        onSaved(res?.message || 'Date sent to the customer.')
+      } catch (e) { onError(errText(e)) }
+      setSaving(false)
+      return
+    }
     if (Object.keys(missing).length) return
     setSaving(true)
     try {
@@ -685,7 +700,7 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
   return (
     <Modal onClose={() => !saving && onClose()} width="max-w-xl">
       <ModalHeader icon={CalendarClock} title={editing ? `Edit ${editing.schedule_code || 'visit'}` : 'Plan site visit'}
-        subtitle={editing?.waiting_for ? 'Saving sets this as the final date. The worker and the customer are told.' : 'Monday to Friday. The worker gets an Inbox message and an email.'}
+        subtitle={editing?.waiting_for ? 'Saving sets this as the final date. The worker and the customer are told.' : auto ? 'Monday to Friday. The customer gets an email to confirm the date first.' : 'Monday to Friday. The worker gets an Inbox message and an email.'}
         onClose={() => !saving && onClose()} />
 
       <div className="px-6 py-6 overflow-y-auto flex-1 custom-scroll space-y-5">
@@ -729,6 +744,32 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
           </div>
         )}
 
+        {/* Ocular on a Scheduled job: automatic date or set it yourself */}
+        {canAuto && (
+          <div>
+            <p className={labelCls}>Date</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                ['auto', 'Automatic (recommended)', 'A free weekday between the job dates is sent to the customer, then the worker. They can suggest other dates.'],
+                ['manual', 'Set the date myself', 'Pick the date, time and worker now. The worker is told right away.'],
+              ].map(([k, title, hint]) => (
+                <button key={k} type="button" onClick={() => setMode(k)} aria-pressed={mode === k}
+                  className={`text-left rounded-lg border px-3.5 py-3 transition-colors ${mode === k ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+                  <span className="block text-sm font-medium text-slate-900">{title}</span>
+                  <span className="block text-xs text-slate-500 mt-0.5">{hint}</span>
+                </button>
+              ))}
+            </div>
+            {auto && (
+              <p className="text-xs text-slate-500 mt-2 flex items-start gap-1.5">
+                <Info size={13} {...ICON} className="mt-0.5 flex-shrink-0" />
+                Between {fmtDate(parseDT(`${String(job.start_date).slice(0, 10)} 00:00`), { month: 'short', day: 'numeric' })} and {fmtDate(parseDT(`${String(job.end_date).slice(0, 10)} 00:00`))}, 9:00–11:00 AM, with {job.worker_name || 'the assigned worker'}.
+              </p>
+            )}
+          </div>
+        )}
+
+        {!auto && <>
         {/* When */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
@@ -783,24 +824,28 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
           </div>
         )}
 
+        </>}
+
         {/* Notes */}
+        {!auto && <>
         <div>
           <label className={labelCls}>Notes for the worker <span className="font-normal text-slate-400">(optional)</span></label>
           <textarea rows={3} maxLength={1000} value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="e.g. Measure the kitchen and check the wiring. Call the customer when you arrive."
             className={`${inputCls} h-auto py-2.5 resize-none`} />
         </div>
+        </>}
       </div>
 
       <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
-        {tried && Object.keys(missing).length
+        {tried && !auto && Object.keys(missing).length
           ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={14} {...ICON} />Fill in the required fields.</p>
           : <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500"><CalendarX2 size={14} {...ICON} />No weekends</span>}
         <div className="flex gap-2 w-full sm:w-auto">
           <button onClick={onClose} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
           <button onClick={save} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>
             {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} {...ICON} />}
-            {saving ? 'Saving…' : editing?.waiting_for ? 'Save as final date' : editing ? 'Save changes' : 'Plan visit'}
+            {saving ? 'Saving…' : auto ? 'Send date to customer' : editing?.waiting_for ? 'Save as final date' : editing ? 'Save changes' : 'Plan visit'}
           </button>
         </div>
       </div>
