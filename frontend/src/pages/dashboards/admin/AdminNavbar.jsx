@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate as useRouterNavigate, NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Contact, HardHat, BadgeCheck, Inbox, Briefcase,
@@ -79,7 +80,7 @@ export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobi
       <style>{styles}</style>
 
       {mobileOpen && (
-        <div className="sc-fade fixed inset-0 bg-slate-900/20 backdrop-blur-[1px] z-40 lg:hidden" onClick={onMobileClose} />
+        <div className="sc-fade fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-40 lg:hidden" onClick={onMobileClose} />
       )}
 
       <aside
@@ -171,7 +172,9 @@ export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobi
 // ── User Dropdown ──────────────────────────────────────────────
 function UserDropdown() {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pos, setPos] = useState(null)
+  const ref = useRef(null)      // the button area
+  const menuRef = useRef(null)  // the menu (drawn on top of the whole page)
   const navigate = useNavigate()
   const { backToWorker, logout } = useAuth()
 
@@ -182,12 +185,28 @@ function UserDropdown() {
   const cameFromWorker = !!localStorage.getItem('sc_worker_session')
 
   useEffect(() => {
-    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onClick = e => {
+      if (ref.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
     const onKey = e => e.key === 'Escape' && setOpen(false)
     document.addEventListener('mousedown', onClick)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onClick); document.removeEventListener('keydown', onKey) }
   }, [])
+
+  // Place the menu right under the button, and keep it there if the window is resized
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect()
+      if (r) setPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [open])
 
   const handleSignOut = () => {
     logout()
@@ -225,8 +244,9 @@ function UserDropdown() {
         <ChevronDown size={16} {...ICON} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
-        <div role="menu" className="sc-menu absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl ring-1 ring-slate-900/5 z-50 overflow-hidden">
+      {open && pos && createPortal(
+        <div ref={menuRef} role="menu" style={{ top: pos.top, right: pos.right }}
+          className="sc-menu fixed w-64 bg-white border border-slate-200 rounded-xl shadow-xl ring-1 ring-slate-900/5 z-[900] overflow-hidden">
           <div className="px-4 py-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-emerald-50 ring-1 ring-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0 text-sm font-semibold">
               {initials}
@@ -258,7 +278,8 @@ function UserDropdown() {
               Sign out
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -271,7 +292,7 @@ export function TopBar({ onMenuToggle }) {
   const CurrentIcon = current.icon
 
   return (
-    <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-3 px-4 lg:px-6 flex-shrink-0 relative">
+    <header className="h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-3 px-4 lg:px-6 flex-shrink-0 relative z-30">
       <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuToggle}
