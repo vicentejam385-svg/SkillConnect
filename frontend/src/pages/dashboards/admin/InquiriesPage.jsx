@@ -5,7 +5,7 @@ import {
   Plus, Search, Eye, X, CheckCircle2, AlertCircle, XCircle, Inbox, Trophy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
   Mail, Smartphone, MapPin, Copy, Check, Loader2, MessageSquareText,
-  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, Globe, ThumbsUp, Ban, Hourglass, MessageSquare,
+  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, ThumbsUp, Ban, Hourglass, MessageSquare,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -977,23 +977,6 @@ function NewInquiryModal({ form, setForm, f, saving, onClose, onSubmit, services
           </div>
 
           <div className="space-y-4">
-            {/* Source */}
-            <div>
-              <label className={labelCls}>How did the customer reach you?{req}</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[{ v: 'walk_in', l: 'Walk-in', d: 'Came to the office', Icon: Store }, { v: 'online', l: 'Online', d: 'Phone, email or website', Icon: Globe }].map(({ v, l, d, Icon }) => {
-                  const on = form.source === v
-                  return (
-                    <button key={v} type="button" onClick={() => f('source', v)} aria-pressed={on}
-                      className={`flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-colors ${on ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-gray-300 bg-white hover:bg-gray-50'}`}>
-                      <Icon size={18} {...ICON} className={on ? 'text-emerald-600' : 'text-gray-400'} />
-                      <span><span className="block text-sm font-semibold text-gray-800">{l}</span><span className="block text-xs text-gray-500">{d}</span></span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
             {/* First name | Middle initial */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

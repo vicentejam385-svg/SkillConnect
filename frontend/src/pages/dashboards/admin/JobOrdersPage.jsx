@@ -620,8 +620,6 @@ export default function JobOrdersPage() {
     setShowForm(true)
   }
 
-  // New jobs start as an inquiry (walk-in), so the service always matches workers for job offers
-  const openCreate = () => navigate('/admin/inquiries', { state: { newWalkIn: true } })
 
   const openEdit = (jo) => {
     setEditTarget(jo)
@@ -729,7 +727,6 @@ export default function JobOrdersPage() {
           <h1 className="text-2xl sm:text-[28px] font-semibold text-slate-900 tracking-tight">Job orders</h1>
           <p className="text-sm text-slate-500 mt-1">Assign workers to client projects and track each job from review to completion.</p>
         </div>
-        <button onClick={openCreate} className={`${btnPrimary} self-start sm:self-auto`}><Plus size={16} {...ICON} /> New walk-in inquiry</button>
       </div>
 
       {(highlightInquiryCode || highlightClientName) && (
@@ -802,8 +799,7 @@ export default function JobOrdersPage() {
             ? <EmptyState icon={Search} title="No matching job orders" text="Try a different search or remove a filter." action={<button onClick={clearFilters} className={btnSecondary}>Clear filters</button>} />
             : <EmptyState icon={Briefcase}
                 title={highlightInquiryCode ? 'No job order for this inquiry yet' : highlightClientName ? `No job orders for ${highlightClientName}` : 'No job orders yet'}
-                text="A job order is created when you mark an inquiry as won. For a walk-in customer, add a walk-in inquiry first."
-                action={<button onClick={openCreate} className={btnPrimary}><Plus size={16} {...ICON} /> New walk-in inquiry</button>} />
+                text="A job order is created when you mark an inquiry as won on the Inquiries page." />
         ) : (
           <>
             {/* Mobile list */}
