@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAllProvinces, getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 import { useNavigate } from 'react-router-dom'
+import { validateEmail, validateMobile } from '../utils/validators'
 import {
   HardHat, ClipboardList, ArrowRight, CheckCircle2, Building2, Wrench, Shield, Send,
   AlertCircle, Mail, Phone, MapPin, Clock, Zap, Award, Hammer, TreePine,
@@ -158,21 +159,12 @@ function InquiryForm({ initialReason = '' }) {
     else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.first_name.trim())) e.first_name = 'First name must contain letters only, with no repeated or trailing hyphens.'
     if (!form.last_name.trim()) e.last_name = 'Last name is required.'
     else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.last_name.trim())) e.last_name = 'Last name must contain letters only, with no repeated or trailing hyphens.'
-    if (!form.middle_initial.trim()) e.middle_initial = 'Middle initial is required.'
-    else if (!/^[A-Za-z]{1,2}\.?$/.test(form.middle_initial.trim())) e.middle_initial = 'Enter a valid middle initial (e.g. A or A.).'
-    if (!form.email.trim()) e.email = 'Email address is required.'
-    else {
-      const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
-      const validTLDs = ['com','net','org','edu','gov','ph','io','info','biz','me','tv','us','uk','au','ca','de','fr','jp','sg','nz','in']
-      const tld = form.email.trim().split('.').pop().toLowerCase()
-      if (!emailRegex.test(form.email.trim())) e.email = 'Enter a valid email address (e.g. name@example.com).'
-      else if (!validTLDs.includes(tld)) e.email = 'Enter a valid email domain (e.g. .com, .net, .org, .ph).'
-    }
-    const m = form.mobile.trim()
-    if (!m || m === '+63') e.mobile = 'Mobile number is required.'
-    else if (m.startsWith('+63')) { if (!/^\+639\d{9}$/.test(m)) e.mobile = 'Enter a valid PH mobile number (e.g. +639XXXXXXXXX).' }
-    else if (m.startsWith('09')) { if (!/^09\d{9}$/.test(m)) e.mobile = 'Enter a valid PH mobile number (e.g. 09XXXXXXXXX).' }
-    else e.mobile = 'Mobile number must start with +639 or 09.'
+    // Middle initial is optional (some people have no middle name)
+    if (form.middle_initial.trim() && !/^[A-Za-z]{1,2}\.?$/.test(form.middle_initial.trim())) e.middle_initial = 'Enter a valid middle initial (e.g. A or A.), or leave it blank.'
+    const emailErr = validateEmail(form.email, true)
+    if (emailErr) e.email = emailErr === 'Email is required.' ? 'Email address is required.' : emailErr
+    const mobileErr = validateMobile(form.mobile === '+63' ? '' : form.mobile, true)
+    if (mobileErr) e.mobile = mobileErr
     if (!form.province) e.province = 'Province is required.'
     if (!form.city) e.city = 'City / Municipality is required.'
     if (!form.barangay) e.barangay = 'Barangay is required.'
@@ -238,7 +230,7 @@ function InquiryForm({ initialReason = '' }) {
         <Err k="first_name" />
       </div>
       <div>
-        <label className={label}>Middle initial {req}</label>
+        <label className={label}>Middle initial <span className="text-xs font-normal text-slate-400">(optional)</span></label>
         <input className={input('middle_initial')} value={form.middle_initial} onChange={e => f('middle_initial', e.target.value)} placeholder="A." maxLength={3} />
         <Err k="middle_initial" />
       </div>

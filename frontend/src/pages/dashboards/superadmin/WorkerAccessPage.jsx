@@ -5,6 +5,7 @@ import {
   Users, HardHat, Wrench, MapPin,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+import { validatePassword } from '../../../utils/validators'
 
 const ICON = { strokeWidth: 1.75 }
 
@@ -211,11 +212,11 @@ function ResetPasswordModal({ person, subtitle, onClose, onReset }) {
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [onClose, saving])
 
-  const tooShort = password.length < 8
+  const pwError = validatePassword(password)
   const copy = () => { navigator.clipboard?.writeText(password); setCopied(true); setTimeout(() => setCopied(false), 1500) }
 
   const submit = async () => {
-    if (tooShort || saving) return
+    if (pwError || saving) return
     setSaving(true); setError('')
     try { await onReset(password); setDone(true) }
     catch (err) { setError(err?.response?.data?.error || err?.message || 'Could not reset the password. Try again.') }
@@ -268,7 +269,7 @@ function ResetPasswordModal({ person, subtitle, onClose, onReset }) {
                     onChange={e => { setPassword(e.target.value); setError('') }}
                     onKeyDown={e => e.key === 'Enter' && submit()}
                     className={`w-full h-10 pl-3 pr-10 text-sm font-mono rounded-lg bg-white text-slate-900 shadow-sm focus:outline-none focus:ring-2 transition-colors
-                      ${tooShort && password ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
+                      ${pwError && password ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
                     autoFocus
                   />
                   <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? 'Hide password' : 'Show password'}
@@ -280,8 +281,8 @@ function ResetPasswordModal({ person, subtitle, onClose, onReset }) {
                   <RefreshCw size={15} {...ICON} /> Generate
                 </button>
               </div>
-              <p className={`text-xs mt-1.5 ${tooShort && password ? 'text-red-600' : 'text-slate-500'}`}>
-                {tooShort ? 'Use at least 8 characters.' : 'A strong password is filled in for you. You can change it.'}
+              <p className={`text-xs mt-1.5 ${pwError && password ? 'text-red-600' : 'text-slate-500'}`}>
+                {pwError || 'A strong password is filled in for you. You can change it.'}
               </p>
             </div>
           )}
@@ -293,7 +294,7 @@ function ResetPasswordModal({ person, subtitle, onClose, onReset }) {
           ) : (
             <>
               <button onClick={onClose} disabled={saving} className={btnSecondary}>Cancel</button>
-              <button onClick={submit} disabled={saving || tooShort} className={btnPrimary}>
+              <button onClick={submit} disabled={saving || !!pwError} className={btnPrimary}>
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} {...ICON} />}
                 {saving ? 'Resetting…' : 'Reset password'}
               </button>

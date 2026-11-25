@@ -7,6 +7,7 @@ import {
   Mail, Phone, Smartphone, MapPin, Copy, Check, Clock, ExternalLink, Wrench,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+import { validateEmail, validateMobile, validatePhone, validateUsername } from '../../../utils/validators'
 import { createPortal } from 'react-dom'
 
 const ICON = { strokeWidth: 1.75 }
@@ -567,6 +568,7 @@ export default function WorkersPage() {
   const [form,            setForm]            = useState(EMPTY_FORM)
   const [usernameSuggestions, setUsernameSuggestions] = useState([])
   const [saving,          setSaving]          = useState(false)
+  const [errors,          setErrors]          = useState({})
 
   useEffect(() => {
     const first = form.first_name.trim().toLowerCase().replace(/\s+/g, '')
@@ -581,7 +583,7 @@ export default function WorkersPage() {
   }, [form.first_name, form.last_name, form.username])
 
   const showToast = useCallback((msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500) }, [])
-  const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
+  const f = (key, val) => { setForm(p => ({ ...p, [key]: val })); setErrors(e => ({ ...e, [key]: undefined })) }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -657,28 +659,31 @@ export default function WorkersPage() {
 
   // ── Create (unchanged validation + email)
   const handleCreate = async () => {
+    // All errors are shown under their fields at once
     const nameRe = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/
-    if (!form.first_name.trim()) { showToast('First name is required.', 'error'); return }
-    if (!nameRe.test(form.first_name.trim())) { showToast('First name must contain letters only.', 'error'); return }
-    if (form.middle_name.trim() && !nameRe.test(form.middle_name.trim())) { showToast('Middle name must contain letters only.', 'error'); return }
-    if (!form.last_name.trim()) { showToast('Last name is required.', 'error'); return }
-    if (!nameRe.test(form.last_name.trim())) { showToast('Last name must contain letters only.', 'error'); return }
-    if (!form.mobile.trim()) { showToast('Mobile number is required.', 'error'); return }
-    if (!/^(09\d{9}|\+639\d{9})$/.test(form.mobile.trim())) { showToast('Enter a valid PH mobile number (e.g. 09XXXXXXXXX or +639XXXXXXXXX).', 'error'); return }
-    if (!form.email.trim()) { showToast('Email is required.', 'error'); return }
-    const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
-    const validTLDs = ['com','net','org','edu','gov','ph','io','info','biz','me','tv','us','uk','au','ca','de','fr','jp','sg','nz','in']
-    if (!emailRegex.test(form.email.trim())) { showToast('Enter a valid email address (e.g. name@example.com).', 'error'); return }
-    if (!validTLDs.includes(form.email.trim().split('.').pop().toLowerCase())) { showToast('Enter a valid email domain (e.g. .com, .net, .ph).', 'error'); return }
-    if (!form.username.trim()) { showToast('Username is required.', 'error'); return }
-    if (form.username.trim().length < 4) { showToast('Username must be at least 4 characters.', 'error'); return }
-    if (!/^[a-zA-Z0-9_]+$/.test(form.username.trim())) { showToast('Username can only contain letters, numbers, and underscores (no dots or spaces).', 'error'); return }
-    if (!form.specialization_id) { showToast('Specialization is required.', 'error'); return }
+    const e = {}
+    const first = form.first_name.trim(), middle = form.middle_name.trim(), last = form.last_name.trim(), suffix = form.suffix.trim()
+
+    if (!first) e.first_name = 'First name is required.'
+    else if (first.length < 2 || first.length > 50 || !nameRe.test(first)) e.first_name = 'First name must be 2–50 letters (spaces, - and \' allowed).'
+    if (middle && (middle.length > 50 || !nameRe.test(middle))) e.middle_name = 'Middle name must contain letters only.'
+    if (!last) e.last_name = 'Last name is required.'
+    else if (last.length < 2 || last.length > 50 || !nameRe.test(last)) e.last_name = 'Last name must be 2–50 letters (spaces, - and \' allowed).'
+    if (suffix && !/^[A-Za-z.]{1,5}$/.test(suffix)) e.suffix = 'e.g. Jr., Sr., III'
+
+    const mobileErr = validateMobile(form.mobile === '+63' ? '' : form.mobile, true); if (mobileErr) e.mobile = mobileErr
+    const phoneErr  = validatePhone(form.phone);                                       if (phoneErr)  e.phone = phoneErr
+    const emailErr  = validateEmail(form.email, true);                                  if (emailErr)  e.email = emailErr
+    const userErr   = validateUsername(form.username);                                  if (userErr)   e.username = userErr
+    if (!form.specialization_id) e.specialization_id = 'Specialization is required.'
+
+    setErrors(e)
+    if (Object.keys(e).length) return
     if (saving) return
     setSaving(true)
     try {
       const generatedPassword = generateWorkerPassword()
-      const data = await apiPost('/api/workers/create.php', { ...form, type: 'worker', password: generatedPassword })
+      const data = await apiPost('/api/workers/create.php', { ...form, phone: form.phone.trim() || null, type: 'worker', password: generatedPassword })
       if (!data.success) throw new Error(data.error)
 
       let emailOk = true
@@ -701,7 +706,7 @@ export default function WorkersPage() {
   }
 
   const closeDrawer = useCallback(() => setSelected(null), [])
-  const closeForm = useCallback(() => { if (!saving) setShowForm(false) }, [saving])
+  const closeForm = useCallback(() => { if (!saving) { setShowForm(false); setErrors({}) } }, [saving])
 
   const rowActions = w => (
     <div className="flex items-center justify-end">
@@ -868,7 +873,7 @@ export default function WorkersPage() {
       )}
 
       {showForm && (
-        <NewWorkerModal form={form} f={f} specializations={specializations} usernameSuggestions={usernameSuggestions}
+        <NewWorkerModal form={form} f={f} errors={errors} specializations={specializations} usernameSuggestions={usernameSuggestions}
           saving={saving} onClose={closeForm} onSubmit={handleCreate} />
       )}
     </div>
@@ -876,9 +881,12 @@ export default function WorkersPage() {
 }
 
 // ── Add worker modal ───────────────────────────────────────────
-function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving, onClose, onSubmit }) {
+function NewWorkerModal({ form, f, errors = {}, specializations, usernameSuggestions, saving, onClose, onSubmit }) {
   useEscapeAndLock(onClose)
-  const inp = 'w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors'
+  const inpBase = 'w-full h-10 px-3 text-sm border rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 transition-colors'
+  const inp = k => `${inpBase} ${errors[k] ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`
+  const Err = ({ k }) => errors[k] ? <p className="text-xs text-red-600 mt-1.5">{errors[k]}</p> : null
+  const errorCount = Object.values(errors).filter(Boolean).length
   const lbl = 'block text-sm font-medium text-slate-700 mb-1.5'
   const req = <span className="text-red-500 ml-0.5">*</span>
   const opt = <span className="text-xs font-normal text-slate-400"> (optional)</span>
@@ -907,10 +915,10 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
           <div>
             <Legend icon={Users}>Personal information</Legend>
             <div className="grid grid-cols-6 gap-4">
-              <div className="col-span-6 sm:col-span-3"><label className={lbl}>First name{req}</label><input className={inp} value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Juan" autoFocus /></div>
-              <div className="col-span-6 sm:col-span-3"><label className={lbl}>Middle name{opt}</label><input className={inp} value={form.middle_name} onChange={e => f('middle_name', e.target.value)} placeholder="Santos" /></div>
-              <div className="col-span-4"><label className={lbl}>Last name{req}</label><input className={inp} value={form.last_name} onChange={e => f('last_name', e.target.value)} placeholder="Dela Cruz" /></div>
-              <div className="col-span-2"><label className={lbl}>Suffix{opt}</label><input className={inp} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." /></div>
+              <div className="col-span-6 sm:col-span-3"><label className={lbl}>First name{req}</label><input className={inp('first_name')} value={form.first_name} maxLength={50} onChange={e => f('first_name', e.target.value)} placeholder="Juan" autoFocus /><Err k="first_name" /></div>
+              <div className="col-span-6 sm:col-span-3"><label className={lbl}>Middle name{opt}</label><input className={inp('middle_name')} value={form.middle_name} maxLength={50} onChange={e => f('middle_name', e.target.value)} placeholder="Santos" /><Err k="middle_name" /></div>
+              <div className="col-span-4"><label className={lbl}>Last name{req}</label><input className={inp('last_name')} value={form.last_name} maxLength={50} onChange={e => f('last_name', e.target.value)} placeholder="Dela Cruz" /><Err k="last_name" /></div>
+              <div className="col-span-2"><label className={lbl}>Suffix{opt}</label><input className={inp('suffix')} value={form.suffix} maxLength={5} onChange={e => f('suffix', e.target.value)} placeholder="Jr." /><Err k="suffix" /></div>
             </div>
           </div>
 
@@ -923,7 +931,7 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
                 <label className={lbl}>Mobile number{req}</label>
                 <div className="relative">
                   <Smartphone size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input className={`${inp} pl-9`} value={form.mobile} maxLength={13} placeholder="+639XXXXXXXXX" inputMode="tel"
+                  <input className={`${inp('mobile')} pl-9`} value={form.mobile} maxLength={13} placeholder="+639XXXXXXXXX" inputMode="tel"
                     onChange={e => {
                       let val = e.target.value
                       if (!val.startsWith('+63')) val = '+63'
@@ -932,21 +940,23 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
                       f('mobile', '+63' + digits.slice(0, 10))
                     }} />
                 </div>
+                <Err k="mobile" />
               </div>
               <div>
                 <label className={lbl}>Phone{opt}</label>
                 <div className="relative">
                   <Phone size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input className={`${inp} pl-9`} value={form.phone} onChange={e => f('phone', e.target.value)} placeholder="02 XXXX XXXX" />
+                  <input className={`${inp('phone')} pl-9`} value={form.phone} maxLength={14} inputMode="tel" onChange={e => f('phone', e.target.value.replace(/[^\d\s-]/g, ''))} placeholder="02 8123 4567" />
                 </div>
+                <Err k="phone" />
               </div>
               <div className="sm:col-span-2">
                 <label className={lbl}>Email address{req}</label>
                 <div className="relative">
                   <Mail size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input type="email" className={`${inp} pl-9`} value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@example.com" />
+                  <input type="email" className={`${inp('email')} pl-9`} value={form.email} maxLength={150} onChange={e => f('email', e.target.value)} placeholder="name@example.com" />
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">Login details are sent to this address.</p>
+                {errors.email ? <Err k="email" /> : <p className="text-xs text-slate-500 mt-1.5">Login details are sent to this address.</p>}
               </div>
             </div>
           </div>
@@ -958,7 +968,8 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
             <div className="space-y-4">
               <div>
                 <label className={lbl}>Username{req}</label>
-                <input className={inp} value={form.username} onChange={e => f('username', e.target.value)} placeholder="juan_delacruz" />
+                <input className={inp('username')} value={form.username} maxLength={30} onChange={e => f('username', e.target.value.replace(/\s/g, ''))} placeholder="juan_delacruz" />
+                {errors.username ? <Err k="username" /> : <p className="text-xs text-slate-500 mt-1.5">4–30 characters: letters, numbers and _ only.</p>}
                 {usernameSuggestions.length > 0 && (
                   <div className="mt-2">
                     <p className="text-xs text-slate-500 mb-1.5">Suggestions</p>
@@ -977,17 +988,18 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
                 <div>
                   <label className={lbl}>Specialization{req}</label>
                   <div className="relative">
-                    <select className={`${inp} appearance-none pr-9 cursor-pointer`} value={form.specialization_id} onChange={e => f('specialization_id', e.target.value)}>
+                    <select className={`${inp('specialization_id')} appearance-none pr-9 cursor-pointer`} value={form.specialization_id} onChange={e => f('specialization_id', e.target.value)}>
                       <option value="">Select a specialization</option>
                       {specializations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                     <Chev />
                   </div>
+                  <Err k="specialization_id" />
                 </div>
                 <div>
                   <label className={lbl}>Status</label>
                   <div className="relative">
-                    <select className={`${inp} appearance-none pr-9 cursor-pointer`} value={form.status_id} onChange={e => f('status_id', e.target.value)}>
+                    <select className={`${inp('status_id')} appearance-none pr-9 cursor-pointer`} value={form.status_id} onChange={e => f('status_id', e.target.value)}>
                       {WORKER_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                     </select>
                     <Chev />
@@ -999,7 +1011,9 @@ function NewWorkerModal({ form, f, specializations, usernameSuggestions, saving,
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
-          <p className="hidden sm:block text-xs text-slate-500"><span className="text-red-500">*</span> Required fields</p>
+          {errorCount > 0
+            ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={14} {...ICON} />Fix {errorCount} field{errorCount === 1 ? '' : 's'} above to continue.</p>
+            : <p className="hidden sm:block text-xs text-slate-500"><span className="text-red-500">*</span> Required fields</p>}
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={onClose} disabled={saving} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>
             <button onClick={onSubmit} disabled={saving} className={`${btnPrimary} flex-1 sm:flex-none`}>

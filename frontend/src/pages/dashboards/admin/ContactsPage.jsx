@@ -539,7 +539,7 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
                     }}
                   />
                 </Field>
-                <Field label="Phone number" required icon={Phone} error={errors.phone}>
+                <Field label="Phone number" icon={Phone} error={errors.phone} hint="Optional. Landline, e.g. 02 8123 4567.">
                   <input
                     className={input(errors.phone, true)}
                     value={form.phone}
@@ -677,8 +677,8 @@ export default function ContactsPage() {
     if (!mobile || mobile === '+63') errs.mobile = 'Mobile number is required.'
     else if (!/^\+639\d{9}$/.test(mobile)) errs.mobile = 'Enter a valid PH mobile number (+639XXXXXXXXX).'
 
-    if (!phone) errs.phone = 'Phone number is required.'
-    else if (phoneDigits.length < 7 || phoneDigits.length > 11) errs.phone = 'Enter a valid phone number (e.g. 02 8123 4567).'
+    // Phone (landline) is optional: only check it when something was typed
+    if (phone && (phoneDigits.length < 7 || phoneDigits.length > 11)) errs.phone = 'Enter a valid phone number (e.g. 02 8123 4567), or leave it blank.'
 
     if (!email) errs.email = 'Email is required.'
     else if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email)) errs.email = 'Enter a valid email address (e.g. name@example.com).'
@@ -686,7 +686,7 @@ export default function ContactsPage() {
     if (Object.keys(errs).length) { setErrors(errs); return }
     setSaving(true)
     try {
-      const data = await apiPost('/api/contacts/create.php', form)
+      const data = await apiPost('/api/contacts/create.php', { ...form, phone: phone || null })
       if (!data.success) throw new Error(data.error)
       showToast('Contact created')
       setShowForm(false)

@@ -348,7 +348,7 @@ function AdminUserModal({ onClose, onSave, editUser = null }) {
             <div>
               <label className={labelCls}>Username</label>
               <input className={`${inputCls} ${errCls('username')}`} value={form.username} onChange={e => f('username', e.target.value)} placeholder="juan_delacruz" />
-              {errors.username ? <p className="text-xs text-red-600 mt-1.5">{errors.username}</p> : <p className="text-xs text-slate-500 mt-1.5">At least 5 characters, no special characters.</p>}
+              {errors.username ? <p className="text-xs text-red-600 mt-1.5">{errors.username}</p> : <p className="text-xs text-slate-500 mt-1.5">4–30 characters: letters, numbers and _ only.</p>}
             </div>
           </>
         ) : (

@@ -2,10 +2,15 @@
 // ── RegEx patterns ────────────────────────────────────────────────────────────
 export const PATTERNS = {
   name:     /^[A-Za-zÀ-ÖØ-öø-ÿ\s'\-.]{1,100}$/u,
-  mobile:   /^(\+63|09)\d{9}$/,
-  email:    /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  password: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/,
-  username: /^[a-zA-Z0-9_]{5,100}$/,
+  mobile:   /^(\+639|09)\d{9}$/,                 // +639XXXXXXXXX or 09XXXXXXXXX
+  phone:    /^[\d\s-]+$/,                         // landline: digits, spaces, dashes
+  email:    /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$/,
+  password: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,64}$/,
+  username: /^[a-zA-Z0-9_]{4,30}$/,
+  // Contract types must be a length of time, e.g. "2 Weeks", "3 Months", "5 Years ++"
+  contractType:   /^\d{1,3}\s(Day|Week|Month|Year)s?(\s?\+{1,2})?$/i,
+  // Specializations: letters, spaces and & / - ( ) only, e.g. "Electrician", "Masonry & Concrete"
+  specialization: /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s&/()\-]*$/u,
 };
 
 // ── Individual validators (return error string or null) ───────────────────────
@@ -23,25 +28,44 @@ export const validateLastName = (v) => {
 
 export const validateMobile = (v, required = false) => {
   if (!v || !v.trim()) return required ? 'Mobile number is required.' : null;
-  if (!PATTERNS.mobile.test(v.trim())) return 'Mobile must start with +63 or 09 followed by 9 digits.';
+  if (!PATTERNS.mobile.test(v.trim())) return 'Enter a valid PH mobile number (09XXXXXXXXX or +639XXXXXXXXX).';
+  return null;
+};
+
+// Phone (landline) is always optional; only checked when something is typed
+export const validatePhone = (v) => {
+  if (!v || !v.trim()) return null;
+  const digits = v.replace(/\D/g, '');
+  if (!PATTERNS.phone.test(v.trim()) || digits.length < 7 || digits.length > 11) return 'Enter a valid phone number (e.g. 02 8123 4567), or leave it blank.';
   return null;
 };
 
 export const validateEmail = (v, required = false) => {
   if (!v || !v.trim()) return required ? 'Email is required.' : null;
-  if (!PATTERNS.email.test(v.trim())) return 'Enter a valid email address.';
+  if (v.trim().length > 150 || !PATTERNS.email.test(v.trim())) return 'Enter a valid email address (e.g. name@example.com).';
   return null;
 };
 
 export const validatePassword = (v) => {
   if (!v || !v.trim()) return 'Password is required.';
-  if (!PATTERNS.password.test(v)) return 'Password must be at least 8 characters with uppercase, lowercase, and a number.';
+  if (v.length > 64) return 'Password must be 64 characters or fewer.';
+  if (!PATTERNS.password.test(v)) return 'Use at least 8 characters with an uppercase letter, a lowercase letter and a number.';
   return null;
 };
 
 export const validateUsername = (v) => {
   if (!v || !v.trim()) return 'Username is required.';
-  if (!PATTERNS.username.test(v.trim())) return 'Username must be 5–100 characters (letters, numbers, underscores only).';
+  if (!PATTERNS.username.test(v.trim())) return 'Username must be 4–30 characters: letters, numbers and underscores only.';
+  return null;
+};
+
+// Names added on the Configuration page
+export const validateConfigName = (v, kind) => {
+  const t = (v || '').trim();
+  if (!t) return 'Name is required.';
+  if (t.length < 2 || t.length > 50) return 'Name must be 2–50 characters.';
+  if (kind === 'contract_type' && !PATTERNS.contractType.test(t)) return 'Use a length of time, e.g. 2 Weeks, 3 Months or 1 Year.';
+  if (kind === 'specialization' && !PATTERNS.specialization.test(t)) return 'Use letters only (spaces, & / - ( ) allowed).';
   return null;
 };
 

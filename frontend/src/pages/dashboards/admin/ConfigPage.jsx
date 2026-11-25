@@ -4,6 +4,7 @@ import {
   Users, HardHat, UserCog, Briefcase, CalendarClock, Inbox, Hash, ChevronDown, Check,
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
+import { validateConfigName } from '../../../utils/validators'
 import { createPortal } from 'react-dom'
 
 const ICON = { strokeWidth: 1.75 }
@@ -108,8 +109,8 @@ const toneFor = label =>
 
 // ── Sections ───────────────────────────────────────────────────
 const SECTIONS = [
-  { key: 'org_types',       label: 'Contract types',  icon: FileSignature, title: 'Contract types',  text: 'How long a job order runs. Used to work out end dates and visit counts.', single: 'contract type',  placeholder: 'e.g. 2 Months', endpoint: '/api/config/contract-types.php' },
-  { key: 'specializations', label: 'Specializations', icon: Wrench,        title: 'Specializations', text: 'Trades your workers are skilled in. Used to match workers to job orders.',     single: 'specialization', placeholder: 'Electrician',     endpoint: '/api/config/specializations.php' },
+  { key: 'org_types',       label: 'Contract types',  icon: FileSignature, title: 'Contract types',  text: 'How long a job order runs. Used to work out end dates and visit counts.', single: 'contract type',  placeholder: 'e.g. 2 Months', hint: 'A length of time, e.g. 2 Weeks, 3 Months or 1 Year.', endpoint: '/api/config/contract-types.php' },
+  { key: 'specializations', label: 'Specializations', icon: Wrench,        title: 'Specializations', text: 'Trades your workers are skilled in. Used to match workers to job orders.',     single: 'specialization', placeholder: 'Electrician', hint: 'Letters only, e.g. Electrician or Masonry & Concrete.',     endpoint: '/api/config/specializations.php' },
   { key: 'statuses',        label: 'Statuses',        icon: Tags,          title: 'Statuses',        text: 'Stages each record can be in. These are built into the system.' },
 ]
 
@@ -124,9 +125,15 @@ function AddModal({ section, existing, saving, onClose, onSave }) {
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [onClose])
 
-  const trimmed = name.trim()
+  const [touched, setTouched] = useState(false)
+  const trimmed = name.trim().replace(/\s+/g, ' ')
   const duplicate = trimmed && existing.some(i => (i.name || '').trim().toLowerCase() === trimmed.toLowerCase())
-  const submit = () => { if (trimmed && !duplicate && !saving) onSave(trimmed) }
+  const ruleError = validateConfigName(trimmed, section.key === 'org_types' ? 'contract_type' : 'specialization')
+  const error = duplicate ? `“${trimmed}” already exists.` : (touched && ruleError) || ''
+  const submit = () => {
+    setTouched(true)
+    if (!ruleError && !duplicate && !saving) onSave(trimmed)
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
@@ -146,20 +153,22 @@ function AddModal({ section, existing, saving, onClose, onSave }) {
           <label className="block text-sm font-medium text-slate-700 mb-1.5">Name<span className="text-red-500 ml-0.5">*</span></label>
           <input
             className={`w-full h-10 px-3 text-sm rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 transition-colors ${
-              duplicate ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
+              error ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'}`}
             value={name}
             onChange={e => setName(e.target.value)}
+            onBlur={() => trimmed && setTouched(true)}
+            maxLength={50}
             onKeyDown={e => { if (e.key === 'Enter') submit() }}
             placeholder={section.placeholder}
             autoFocus
           />
-          {duplicate
-            ? <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1"><AlertCircle size={12} {...ICON} />“{trimmed}” already exists.</p>
-            : <p className="text-xs text-slate-500 mt-1.5">Press Enter to add.</p>}
+          {error
+            ? <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1"><AlertCircle size={12} {...ICON} />{error}</p>
+            : <p className="text-xs text-slate-500 mt-1.5">{section.hint} Press Enter to add.</p>}
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
           <button onClick={onClose} className={btnSecondary}>Cancel</button>
-          <button onClick={submit} disabled={!trimmed || duplicate || saving} className={btnPrimary}>
+          <button onClick={submit} disabled={!trimmed || duplicate || (touched && !!ruleError) || saving} className={btnPrimary}>
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} {...ICON} />}
             {saving ? 'Adding…' : `Add ${section.single}`}
           </button>
