@@ -78,25 +78,6 @@ function Reveal({ children, delay = 0, className = '', as: Tag = 'div' }) {
   )
 }
 
-/* ── Count-up ── */
-function useCountUp(target, duration = 1800, start = false) {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    if (!start) return
-    if (prefersReduced()) { setCount(target); return }
-    let startTime = null, raf
-    const step = ts => {
-      if (!startTime) startTime = ts
-      const p = Math.min((ts - startTime) / duration, 1)
-      setCount(Math.round(target * (1 - Math.pow(1 - p, 3))))
-      if (p < 1) raf = requestAnimationFrame(step)
-    }
-    raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
-  }, [target, duration, start])
-  return count
-}
-
 /* ── Section heading ── */
 function SectionHeading({ eyebrow, title, text, align = 'center', dark = false }) {
   return (
@@ -471,7 +452,6 @@ const CONTACTS = [
 /* ── Main page ── */
 export default function LandingPage() {
   const navigate = useNavigate()
-  const [statsVisible, setStatsVisible] = useState(false)
   const [activeSection, setActiveSection] = useState('')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -479,12 +459,6 @@ export default function LandingPage() {
   const [quoteService, setQuoteService] = useState('')
   const [pastHero, setPastHero] = useState(false)
 
-  const projects = useCountUp(500, 1800, statsVisible)
-  const workers  = useCountUp(120, 1800, statsVisible)
-  const clients  = useCountUp(85,  1800, statsVisible)
-  const years    = useCountUp(12,  1800, statsVisible)
-
-  useEffect(() => { const t = setTimeout(() => setStatsVisible(true), 600); return () => clearTimeout(t) }, [])
 
   useEffect(() => {
     const onScroll = () => { setScrolled(window.scrollY > 24); setPastHero(window.scrollY > window.innerHeight * 0.7) }
@@ -605,14 +579,6 @@ export default function LandingPage() {
                 className="inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-white/10 hover:bg-white/15 ring-1 ring-white/25 backdrop-blur text-white text-sm font-semibold transition-colors">
                 Explore services
               </button>
-            </div>
-            <div className="lp-up mt-10 grid grid-cols-4 gap-3 sm:gap-6 max-w-xl" style={{ animationDelay: '560ms' }}>
-              {[[`${projects}+`, 'Projects'], [`${workers}+`, 'Workers'], [`${clients}+`, 'Clients'], [`${years}`, 'Years']].map(([v, l]) => (
-                <div key={l}>
-                  <p className="text-xl sm:text-2xl font-semibold text-white tabular-nums">{v}</p>
-                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">{l}</p>
-                </div>
-              ))}
             </div>
           </div>
 
