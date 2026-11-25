@@ -5,7 +5,7 @@ import {
   Plus, Search, Eye, X, CheckCircle2, AlertCircle, XCircle, Inbox, Trophy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
   Mail, Smartphone, MapPin, Copy, Check, Loader2, MessageSquareText,
-  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, Globe,
+  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, Globe, ThumbsUp, Ban, Hourglass, MessageSquare,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -111,6 +111,25 @@ const STATUS = {
 function SourceBadge({ source }) {
   if (source !== 'walk_in') return null
   return <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-200 whitespace-nowrap"><Store size={11} {...ICON} />Walk-in</span>
+}
+
+// The customer's answer to the "we received your inquiry" email (Yes, proceed / No, cancel)
+function AnswerBadge({ inquiry, quietWhenNone = false }) {
+  if (inquiry.source === 'walk_in') return null
+  if (inquiry.customer_answer === 'proceed') {
+    return <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200 whitespace-nowrap"><ThumbsUp size={11} {...ICON} />Wants to proceed</span>
+  }
+  if (inquiry.customer_answer === 'cancel') {
+    return <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset bg-red-50 text-red-700 ring-red-200 whitespace-nowrap"><Ban size={11} {...ICON} />Customer cancelled</span>
+  }
+  if (quietWhenNone || inquiry.status !== 'New' || inquiry.email_status !== 'sent') return null
+  return <span className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset bg-slate-50 text-slate-500 ring-slate-200 whitespace-nowrap"><Hourglass size={11} {...ICON} />No answer yet</span>
+}
+
+const SEND_LABEL = {
+  sent:    ['Sent',     'text-emerald-700'],
+  failed:  ['Failed',   'text-red-600'],
+  skipped: ['Not sent', 'text-slate-500'],
 }
 
 function StatusBadge({ status }) {
@@ -326,7 +345,7 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
               <div className="min-w-0 pt-0.5">
                 <h3 className="text-lg font-semibold text-slate-900 leading-tight">{inquiry.full_name}</h3>
                 <p className="text-sm text-slate-500 mt-0.5">{inquiry.source === 'walk_in' ? 'Walk-in' : 'Online'} · {fmtDate(created)} · {timeAgo(created)}</p>
-                <div className="mt-2.5"><StatusBadge status={inquiry.status} /></div>
+                <div className="mt-2.5 flex items-center gap-1.5 flex-wrap"><StatusBadge status={inquiry.status} /><AnswerBadge inquiry={inquiry} /></div>
               </div>
             </div>
 
@@ -384,6 +403,51 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
                 ))}
               </dl>
             </section>
+
+            {/* Customer confirmation (online inquiries) */}
+            {inquiry.source !== 'walk_in' && (inquiry.sms_status || inquiry.email_status || inquiry.customer_answer) && (
+              <section>
+                <h4 className="text-sm font-semibold text-slate-900 mb-2">Customer confirmation</h4>
+                <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+                  <div className="flex items-start gap-3 px-4 py-3">
+                    {inquiry.customer_answer === 'proceed' ? <ThumbsUp size={16} {...ICON} className="text-emerald-600 mt-0.5 flex-shrink-0" />
+                      : inquiry.customer_answer === 'cancel' ? <Ban size={16} {...ICON} className="text-red-500 mt-0.5 flex-shrink-0" />
+                      : <Hourglass size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-slate-500">Customer's answer</p>
+                      <p className="text-sm text-slate-900 mt-0.5">
+                        {inquiry.customer_answer === 'proceed' ? 'Yes, wants to proceed'
+                          : inquiry.customer_answer === 'cancel' ? 'No, cancelled the inquiry'
+                          : inquiry.email_status === 'sent' ? 'No answer yet' : 'Can’t answer: the email was not sent'}
+                        {inquiry.customer_answer_at && <span className="text-slate-500"> · {fmtDate(parseDT(inquiry.customer_answer_at))}, {timeAgo(parseDT(inquiry.customer_answer_at))}</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 divide-x divide-slate-100">
+                    {[['SMS', inquiry.sms_status, MessageSquare, inquiry.sms_error], ['Email', inquiry.email_status, Mail, null]].map(([label, st, Icon, err]) => {
+                      const [text, cls] = SEND_LABEL[st] || ['—', 'text-slate-400']
+                      return (
+                        <div key={label} className="flex items-start gap-3 px-4 py-3 min-w-0">
+                          <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs text-slate-500">{label}</p>
+                            <p className={`text-sm font-medium mt-0.5 ${cls}`}>{text}</p>
+                            {err && st !== 'sent' && <p className="text-xs text-slate-500 mt-0.5 break-words">{err}</p>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {open && inquiry.customer_answer === 'cancel' && (
+              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">
+                <Ban size={16} {...ICON} className="text-red-500 flex-shrink-0 mt-0.5" />
+                <p>The customer cancelled this inquiry from the email. You can mark it as <span className="font-semibold">Lost</span>.</p>
+              </div>
+            )}
 
             {open && (
               <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg border border-sky-200 bg-sky-50 text-sm text-sky-800">
@@ -797,7 +861,7 @@ export default function InquiriesPage() {
                           <StatusBadge status={inq.status} />
                         </div>
                         <p className="text-xs text-slate-600 truncate mt-0.5">{inq.reason || '—'}</p>
-                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">{inq.inquiry_code} · {timeAgo(d)} <SourceBadge source={inq.source} /></p>
+                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">{inq.inquiry_code} · {timeAgo(d)} <SourceBadge source={inq.source} /><AnswerBadge inquiry={inq} /></p>
                       </div>
                       <ChevronRight size={16} {...ICON} className="text-slate-300 flex-shrink-0" />
                     </button>
@@ -847,7 +911,9 @@ export default function InquiriesPage() {
                           <p className="text-slate-700 tabular-nums">{fmtDate(d)}</p>
                           <p className="text-xs text-slate-500">{timeAgo(d)}</p>
                         </td>
-                        <td className="px-5 py-3"><StatusBadge status={inq.status} /></td>
+                        <td className="px-5 py-3">
+                          <div className="flex flex-col items-start gap-1"><StatusBadge status={inq.status} /><AnswerBadge inquiry={inq} /></div>
+                        </td>
                         <td className="px-5 py-3">
                           <div className="flex items-center justify-end gap-0.5">
                             <button onClick={() => setSelected(inq)} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">

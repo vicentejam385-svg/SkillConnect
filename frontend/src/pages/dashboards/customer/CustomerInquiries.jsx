@@ -103,6 +103,8 @@ export default function CustomerInquiriesPage() {
   const missing = {
     first_name:   !form.first_name.trim(),
     last_name:    !form.last_name.trim(),
+    email:        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()),
+    mobile:       !/^(\+639\d{9}|09\d{9})$/.test(form.mobile.replace(/[\s-]/g, '')),
     province:     !form.province,
     city:         !form.city,
     barangay:     !form.barangay,
@@ -117,9 +119,9 @@ export default function CustomerInquiriesPage() {
     if (hasMissing || formLoading) return
     setFormLoading(true)
     try {
-      const res = await apiPost('/api/inquiries/create.php', { ...form, address: buildAddress() })
+      const res = await apiPost('/api/inquiries/create.php', { ...form, email: form.email.trim(), mobile: form.mobile.replace(/[\s-]/g, ''), address: buildAddress() })
       if (!res.success) throw new Error(res.error)
-      showToast('Inquiry sent. We will get back to you soon.')
+      showToast(res.message || 'Inquiry sent. We will get back to you soon.')
       setShowForm(false); setForm(EMPTY_INQUIRY); setTried(false)
       loadInquiries(true)
     } catch (err) { showToast(err.message || 'Could not send your inquiry.', 'error') }
@@ -246,7 +248,7 @@ export default function CustomerInquiriesPage() {
       {/* New inquiry */}
       {showForm && (
         <Modal onClose={closeForm} maxW="max-w-xl">
-          <ModalHeader icon={FileText} title="New inquiry" sub="Tell us what you need and our team will get back to you." onClose={closeForm} />
+          <ModalHeader icon={FileText} title="New inquiry" sub="Tell us what you need. We will text and email you to confirm we received it." onClose={closeForm} />
           <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
             <section className="space-y-4">
               <h3 className="text-sm font-semibold text-slate-900">Your details</h3>
@@ -260,12 +262,12 @@ export default function CustomerInquiriesPage() {
                   <input id="iq-last" value={form.last_name} onChange={e => setF('last_name', e.target.value)} placeholder="Dela Cruz" className={`${inputCls} ${bad('last_name')}`} />
                 </div>
                 <div>
-                  <label htmlFor="iq-email" className={labelCls}>Email</label>
-                  <input id="iq-email" type="email" value={form.email} onChange={e => setF('email', e.target.value)} placeholder="juan@email.com" className={inputCls} />
+                  <label htmlFor="iq-email" className={labelCls}>Email <span className="text-red-500">*</span></label>
+                  <input id="iq-email" type="email" value={form.email} onChange={e => setF('email', e.target.value)} placeholder="juan@email.com" className={`${inputCls} ${bad('email')}`} />
                 </div>
                 <div>
-                  <label htmlFor="iq-mobile" className={labelCls}>Mobile</label>
-                  <input id="iq-mobile" value={form.mobile} onChange={e => setF('mobile', e.target.value)} placeholder="+639XXXXXXXXX" className={inputCls} />
+                  <label htmlFor="iq-mobile" className={labelCls}>Mobile <span className="text-red-500">*</span></label>
+                  <input id="iq-mobile" inputMode="tel" value={form.mobile} onChange={e => setF('mobile', e.target.value)} placeholder="09XXXXXXXXX" className={`${inputCls} ${bad('mobile')}`} />
                 </div>
               </div>
             </section>
@@ -320,7 +322,7 @@ export default function CustomerInquiriesPage() {
           </div>
           <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex flex-col-reverse sm:flex-row sm:items-center gap-3 flex-shrink-0">
             {tried && hasMissing
-              ? <p className="cx-shake flex items-center gap-1.5 text-xs text-red-600 sm:mr-auto"><AlertCircle size={14} {...ICON} />Please fill in the fields marked in red.</p>
+              ? <p className="cx-shake flex items-center gap-1.5 text-xs text-red-600 sm:mr-auto"><AlertCircle size={14} {...ICON} />{missing.email || missing.mobile ? 'Enter a valid email and PH mobile number (09XXXXXXXXX).' : 'Please fill in the fields marked in red.'}</p>
               : <p className="text-xs text-slate-400 sm:mr-auto"><span className="text-red-500">*</span> Required</p>}
             <div className="flex gap-3">
               <button onClick={closeForm} disabled={formLoading} className={`${btnSecondary} flex-1 sm:flex-none`}>Cancel</button>

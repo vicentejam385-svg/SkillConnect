@@ -1,6 +1,7 @@
 <?php
 // backend/api/inquiries/list.php
 // Admins see all inquiries; clients only their own.   ?source=online|walk_in to filter.
+// Each inquiry includes customer_answer (proceed / cancel / null), sms_status and email_status.
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
@@ -78,9 +79,16 @@ try {
     );
     $dataStmt->execute($params);
 
+    $rows = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$r) {
+        unset($r['respond_token_hash']);            // the private link never leaves the server
+        if (!isAdminUser($auth)) unset($r['sms_error']);
+    }
+    unset($r);
+
     echo json_encode([
         'success'    => true,
-        'inquiries'  => $dataStmt->fetchAll(PDO::FETCH_ASSOC),
+        'inquiries'  => $rows,
         'pagination' => [
             'total'    => $total,
             'page'     => $page,

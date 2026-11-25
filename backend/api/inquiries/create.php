@@ -1,9 +1,12 @@
 <?php
 // backend/api/inquiries/create.php
+// Inquiries sent by the customer (website or customer account) need an email and a mobile number:
+// the customer gets a "we received your inquiry" SMS and an email with Yes, proceed / No, cancel buttons.
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../middleware/jwt.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
+require_once __DIR__ . '/../../helpers/inquiry-confirm.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -67,6 +70,22 @@ if (!$svcName) {
 }
 $data['reason'] = $svcName; // same spelling as the specialization, so job offers match
 
+// Sent by the customer (website or customer account): email and mobile are required,
+// because we send the "inquiry received" SMS and email there. Inquiries the admin types in are not affected.
+$customerSent = ($source === 'online' && !$adminTok);
+if ($customerSent) {
+    if (empty(trim($data['email'] ?? ''))) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => 'Email address is required.']);
+        exit;
+    }
+    if (empty(trim($data['mobile'] ?? ''))) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => 'Mobile number is required.']);
+        exit;
+    }
+}
+
 // ── 2. RegEx validation ───────────────────────────────────────────────────────
 $nameRegex   = '/^[A-Za-zÀ-ÖØ-öø-ÿ\s\'\-\.]{1,100}$/u';
 $mobileRegex = '/^(\+639\d{9}|09\d{9})$/';
@@ -82,6 +101,7 @@ if (!preg_match($nameRegex, trim($data['last_name']))) {
     echo json_encode(['success' => false, 'error' => 'Last name contains invalid characters.']);
     exit;
 }
+if (!empty($data['mobile'])) $data['mobile'] = preg_replace('/[\s\-]+/', '', trim($data['mobile']));
 if (!empty($data['mobile']) && !preg_match($mobileRegex, $data['mobile'])) {
     http_response_code(422);
     echo json_encode(['success' => false, 'error' => 'Enter a valid PH mobile number (e.g. +639XXXXXXXXX or 09XXXXXXXXX).']);
@@ -148,8 +168,22 @@ try {
             'actor_type'    => $linkedUserId ? 'client' : 'guest',
           ], $entry));
 
+    // Sent by the customer: "we received your inquiry" SMS + email with the Proceed / Cancel buttons
+    $notify = null;
+    if ($customerSent) {
+        $notify = inquiryNotifyReceived($pdo, $inqId);
+    }
+    unset($inquiry['respond_token_hash']);
+
     http_response_code(201);
-    echo json_encode(['success' => true, 'message' => 'Inquiry submitted successfully.', 'inquiry' => $inquiry]);
+    echo json_encode([
+        'success' => true,
+        'message' => $notify && $notify['email'] === 'sent'
+            ? 'Inquiry submitted. We sent a confirmation to your email and mobile number.'
+            : 'Inquiry submitted successfully.',
+        'inquiry' => $inquiry,
+        'notify'  => $notify,
+    ]);
 
 } catch (PDOException $e) {
     error_log('Inquiry create failed: ' . $e->getMessage());

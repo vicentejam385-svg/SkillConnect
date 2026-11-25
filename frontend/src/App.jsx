@@ -7,6 +7,7 @@ import AdminDashboard from './pages/dashboards/admin/AdminDashboard'
 import WorkerDashboard from './pages/dashboards/worker/WorkerDashboard'
 import CustomerDashboard from './pages/dashboards/customer/CustomerDashboard' 
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import InquiryResponse from './pages/InquiryResponse'
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, loading } = useAuth()
@@ -33,7 +34,7 @@ function RoleRouter() {
   if (user.loginRole === 'super_admin') return <Navigate to="/superadmin/dashboard" replace />
   if (user.loginRole === 'admin') return <Navigate to="/admin/dashboard" replace />
   if (user.loginRole === 'worker') return <Navigate to="/worker/dashboard" replace />
-  if (user.loginRole === 'client') return <Navigate to="/customer/dashboard" replace /> // ← add this
+  if (user.loginRole === 'client') return <Navigate to="/customer/dashboard" replace />
   return <Navigate to="/login" replace />
 }
 
@@ -45,6 +46,8 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* Public: opened from the "We received your inquiry" email (no login) */}
+          <Route path="/inquiry-response" element={<InquiryResponse />} />
           <Route path="/dashboard" element={<ProtectedRoute><RoleRouter /></ProtectedRoute>} />
           <Route path="/superadmin/*" element={
             <ProtectedRoute allowedRoles={['super_admin']}>
@@ -61,7 +64,6 @@ export default function App() {
               <WorkerDashboard />
             </ProtectedRoute>
           } />
-          {/* ← add this */}
           <Route path="/customer/*" element={
             <ProtectedRoute allowedRoles={['client']}>
               <CustomerDashboard />
