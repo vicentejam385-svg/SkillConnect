@@ -18,14 +18,21 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // ══════════════════════════════════════════════════════════════
-// RATE LIMIT HELPERS (unchanged)
+// RATE LIMIT HELPERS
+// The lock is per ACCOUNT: typing the username or the email counts toward the
+// same 5 tries. Unknown usernames/emails are counted by what was typed.
+// $key = rlKey(...) below; $credential = what the person typed (for the audit log).
 // ══════════════════════════════════════════════════════════════
 define('MAX_ATTEMPTS',     5);
 define('LOCKOUT_SECONDS',  15 * 60); // 15 minutes
 
-function rl_file(string $credential): string {
+function rlKey(?array $row, string $credential): string {
+    return $row ? 'user:' . $row['id'] : 'typed:' . strtolower(trim($credential));
+}
+
+function rl_file(string $key): string {
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-    return sys_get_temp_dir() . '/sc_lock_' . md5(strtolower(trim($credential)) . $ip) . '.json';
+    return sys_get_temp_dir() . '/sc_lock_' . md5($key . '|' . $ip) . '.json';
 }
 
 function rl_get(string $credential): array {
@@ -43,8 +50,8 @@ function rl_clear(string $credential): void {
     if (file_exists($f)) unlink($f);
 }
 
-function rl_check(string $credential): void {
-    $state = rl_get($credential);
+function rl_check(string $key, string $credential): void {
+    $state = rl_get($key);
     $now   = time();
 
     if (!empty($state['locked_until'])) {
@@ -70,7 +77,7 @@ function rl_check(string $credential): void {
             ]);
             exit;
         }
-        rl_clear($credential);
+        rl_clear($key);
     }
 }
 
@@ -129,8 +136,6 @@ if (!$credential || !$password) {
     exit;
 }
 
-rl_check($credential);
-
 // ══════════════════════════════════════════════════════════════
 // AUTH LOGIC — one lookup in users, whatever the type
 // ══════════════════════════════════════════════════════════════
@@ -155,7 +160,11 @@ try {
          LIMIT 1"
     );
     $stmt->execute([$credential]);
-    $row = $stmt->fetch();
+    $row = $stmt->fetch() ?: null;
+
+    // Lock check happens after the lookup so username and email share one counter
+    $rlKey = rlKey($row, $credential);
+    rl_check($rlKey, $credential);
 
     // ── Unknown user or wrong password → same generic error ───
     $fullName = $row
@@ -163,7 +172,7 @@ try {
         : '';
 
     if (!$row || !checkPassword($password, $row['pw_hash'])) {
-        $left  = rl_fail($credential);
+        $left  = rl_fail($rlKey);
         $shown = mb_substr($credential, 0, 100);
         $desc  = $row
             ? 'Failed login: incorrect password for "' . $shown . '"'
@@ -216,7 +225,7 @@ try {
         jsonError($msg, 403);
     }
 
-    rl_success($credential);
+    rl_success($rlKey);
 
     // ── Build the user info ───────────────────────────────────
     $fullName = trim($row['first_name'] . ' ' . $row['last_name'] . ' ' . ($row['suffix'] ?? ''));

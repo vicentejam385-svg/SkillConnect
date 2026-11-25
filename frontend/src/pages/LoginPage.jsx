@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   Eye, EyeOff, AlertCircle, ArrowRight, ArrowLeft, HardHat, User, Lock, Loader2,
-  ClipboardList, CalendarDays, LineChart, ShieldAlert,
+  ClipboardList, CalendarDays, LineChart,
 } from 'lucide-react'
 
 const ICON = { strokeWidth: 1.75 }
@@ -38,13 +38,13 @@ const styles = `
   @keyframes lg-up    { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
   @keyframes lg-zoom  { from { transform: scale(1.1); } to { transform: scale(1); } }
   @keyframes lg-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-  @keyframes lg-shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+  @keyframes lg-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
   @keyframes lg-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
   @keyframes lg-shine { 0% { transform: translateX(-120%) skewX(-20deg); } 60%, 100% { transform: translateX(260%) skewX(-20deg); } }
   .lg-up    { animation: lg-up .7s cubic-bezier(.2,.7,.2,1) both; }
   .lg-zoom  { animation: lg-zoom 14s ease-out both; }
   .lg-float { animation: lg-float 6s ease-in-out infinite; }
-  .lg-shake { animation: lg-shake .45s ease-in-out both; }
+  .lg-shake { animation: lg-shake .3s ease-in-out both; }
   .lg-pulse { animation: lg-pulse 2s infinite; }
   .lg-shine { position: relative; overflow: hidden; isolation: isolate; }
   .lg-shine::after { content: ''; position: absolute; inset: 0; width: 40%; z-index: -1; pointer-events: none;
@@ -180,7 +180,7 @@ export default function LoginPage() {
         } else {
           setLockoutState(credential, { attempts, lockedUntil: null })
           setAttemptsLeft(remaining)
-          showError(`${msg} — ${remaining} attempt${remaining !== 1 ? 's' : ''} left`)
+          showError('Incorrect email/username or password.')
         }
       } else {
         showError(msg)
@@ -190,9 +190,10 @@ export default function LoginPage() {
     }
   }
 
-  const inputCls = `w-full h-11 pl-10 pr-4 text-sm rounded-lg bg-white text-slate-900 placeholder-slate-400 border border-slate-200 shadow-sm
-    hover:border-slate-300 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20
-    disabled:bg-slate-50 disabled:cursor-not-allowed transition-colors`
+  const hasError = !!error && !isLocked
+  const inputCls = `w-full h-11 pl-10 pr-4 text-sm rounded-lg bg-white text-slate-900 placeholder-slate-400 border shadow-sm
+    focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:cursor-not-allowed transition-colors
+    ${hasError ? 'border-red-200 focus:border-red-400 focus:ring-red-500/15' : 'border-slate-200 hover:border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20'}`
 
   return (
     <div className="lg min-h-screen flex bg-white antialiased">
@@ -295,39 +296,32 @@ export default function LoginPage() {
             <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Sign in</h2>
             <p className="mt-1 text-sm text-slate-500">Enter your credentials to access your account.</p>
 
-            {/* Error / lockout banner */}
+            {/* Error / lockout message (kept small and calm) */}
             {(error || isLocked) && (
               <div
                 key={isLocked ? 'locked' : errorKey}
                 role="alert"
-                className={`lg-shake mt-6 flex items-start gap-2.5 p-3.5 rounded-lg border text-sm
-                  ${isLocked ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-red-50 border-red-200 text-red-700'}`}
+                className={`lg-shake mt-6 flex items-start gap-2.5 px-3.5 py-3 rounded-lg text-sm
+                  ${isLocked ? 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200/70' : 'bg-red-50/70 text-red-700 ring-1 ring-inset ring-red-100'}`}
               >
                 {isLocked
-                  ? <ShieldAlert size={17} {...ICON} className="flex-shrink-0 mt-0.5 text-amber-600" />
-                  : <AlertCircle size={17} {...ICON} className="flex-shrink-0 mt-0.5 text-red-500" />}
-                <div>
+                  ? <Lock size={16} {...ICON} className="flex-shrink-0 mt-0.5 text-amber-600" />
+                  : <AlertCircle size={16} {...ICON} className="flex-shrink-0 mt-0.5 text-red-500" />}
+                <div className="min-w-0">
                   {isLocked ? (
                     <>
-                      <p className="font-semibold">Account temporarily locked</p>
-                      <p className="text-xs mt-0.5">Too many failed attempts. Try again in <span className="font-semibold tabular-nums">{countdown}</span>.</p>
+                      <p className="font-medium">Too many attempts</p>
+                      <p className="text-xs mt-0.5 text-amber-800/90">For your security, sign-in is paused. Try again in <span className="font-semibold tabular-nums">{countdown}</span>, or reset your password.</p>
                     </>
                   ) : (
-                    <span>{error}</span>
+                    <>
+                      <p>{error}</p>
+                      {attemptsLeft > 0 && attemptsLeft <= 2 && (
+                        <p className="text-xs mt-0.5 text-red-600/80">{attemptsLeft} {attemptsLeft === 1 ? 'try' : 'tries'} left before sign-in is paused for 15 minutes.</p>
+                      )}
+                    </>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Attempts indicator */}
-            {!isLocked && attemptsLeft < MAX_ATTEMPTS && attemptsLeft > 0 && (
-              <div className="mt-3">
-                <div className="flex gap-1">
-                  {Array.from({ length: MAX_ATTEMPTS }).map((_, i) => (
-                    <div key={i} className={`h-1 flex-1 rounded-full transition-colors duration-500 ${i < attemptsLeft ? 'bg-emerald-400' : 'bg-red-300'}`} />
-                  ))}
-                </div>
-                <p className="mt-1.5 text-xs text-slate-500">{attemptsLeft} attempt{attemptsLeft !== 1 ? 's' : ''} left before a 15-minute lock</p>
               </div>
             )}
 
@@ -358,7 +352,7 @@ export default function LoginPage() {
                     id="password"
                     type={showPass ? 'text' : 'password'}
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={e => { setPassword(e.target.value); if (error && !isLocked) setError('') }}
                     placeholder="Enter your password"
                     disabled={loading}
                     autoComplete="current-password"
