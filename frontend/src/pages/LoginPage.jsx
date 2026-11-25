@@ -207,7 +207,6 @@ export default function LoginPage() {
           className="lg-zoom absolute inset-0 w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950/95 via-slate-900/85 to-emerald-900/70" />
-        <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '56px 56px' }} />
 
         <div className="relative z-10 flex flex-col justify-between w-full p-12 xl:p-14">
           <button onClick={() => navigate('/')} className="lg-up self-start flex items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
@@ -263,7 +262,6 @@ export default function LoginPage() {
         {/* Mobile brand bar */}
         <div className="lg:hidden relative overflow-hidden bg-slate-900 px-5 pt-6 pb-16">
           <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900/80" />
-          <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
           <div className="relative flex items-center justify-between">
             <button onClick={() => navigate('/')} className="flex items-center gap-2.5">
               <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
