@@ -3,7 +3,29 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRight, AlertCircle, CheckCircle2, Mail, KeyRound, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
+import { BASE_URL } from '../utils/api'
+import { validatePassword } from '../utils/validators'
+
+// Same server address as the rest of the app (…/backend) + /api, like every other endpoint
+const API_BASE = `${BASE_URL}/api`
+
+// POST helper: clear messages when the server can't be reached or sends back an error page
+async function postJson(path, body, fallbackMsg) {
+  let res
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error("Can't reach the server right now. Check your connection and try again.")
+  }
+  let data = {}
+  try { data = await res.json() } catch { /* not JSON (e.g. a server error page) */ }
+  if (!res.ok || data.success === false) throw new Error(data.error || fallbackMsg)
+  return data
+}
 
 // ── Step indicators ──────────────────────────────────────────────────────────
 const STEPS = ['Email', 'Verify OTP', 'New Password']
@@ -136,13 +158,7 @@ export default function ForgotPasswordPage() {
     }
     setLoading(true)
     try {
-      const res  = await fetch(`${API_BASE}/forgot-password/send-otp.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to send OTP.')
+      await postJson('/forgot-password/send-otp.php', { email: email.trim() }, 'Failed to send OTP.')
       setStep(1)
       setCooldown(120)
     } catch (err) {
@@ -159,13 +175,7 @@ export default function ForgotPasswordPage() {
     if (otp.length < 6) { setError('Please enter the full 6-digit code.'); return }
     setLoading(true)
     try {
-      const res  = await fetch(`${API_BASE}/forgot-password/verify-otp.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), otp }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Invalid or expired OTP.')
+      await postJson('/forgot-password/verify-otp.php', { email: email.trim(), otp }, 'Invalid or expired OTP.')
       setStep(2)
     } catch (err) {
       setError(err.message)
@@ -180,13 +190,7 @@ export default function ForgotPasswordPage() {
     clearError()
     setLoading(true)
     try {
-      const res  = await fetch(`${API_BASE}/forgot-password/send-otp.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to resend OTP.')
+      await postJson('/forgot-password/send-otp.php', { email: email.trim() }, 'Failed to resend OTP.')
       setOtp('')
       setCooldown(60)
     } catch (err) {
@@ -200,17 +204,12 @@ export default function ForgotPasswordPage() {
   const handleReset = async (e) => {
     e.preventDefault()
     clearError()
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
+    const pwErr = validatePassword(password)   // same rule as the server: 8–64, upper, lower, number
+    if (pwErr) { setError(pwErr); return }
     if (password !== confirm) { setError('Passwords do not match.'); return }
     setLoading(true)
     try {
-      const res  = await fetch(`${API_BASE}/forgot-password/reset-password.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), otp, password }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to reset password.')
+      await postJson('/forgot-password/reset-password.php', { email: email.trim(), otp, password }, 'Failed to reset password.')
       setSuccess(true)
       setTimeout(() => navigate('/login'), 2500)
     } catch (err) {

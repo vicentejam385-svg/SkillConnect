@@ -1,83 +1,55 @@
 <?php
 // api/forgot-password/verify-otp.php
-// Verifies the 6-digit OTP submitted by the user.
+// Step 2 of Forgot Password: checks the 6-digit code. 5 wrong tries ends the request.
 
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Content-Type');
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+require_once __DIR__ . '/../../helpers/password-reset.php';
+prStart();
 
 require_once __DIR__ . '/../../config/db.php';
-$pdo = getDB(); // ← add this line
 
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS   = 5;
+const RESET_WINDOW_MIN = 10;   // after a correct code, 10 minutes to choose the new password
 
-// ── Input ─────────────────────────────────────────────────────────────────────
-$body  = json_decode(file_get_contents('php://input'), true);
-$email = trim($body['email'] ?? '');
-$otp   = trim($body['otp']   ?? '');
+$body  = prInput();
+$email = prEmail($body);
+$otp   = prOtp($body);
 
-if (!$email || !$otp || strlen($otp) !== 6 || !ctype_digit($otp)) {
-    http_response_code(422);
-    echo json_encode(['error' => 'Invalid request.']);
-    exit;
-}
+try {
+    $pdo = getDB();
+    $req = prFindRequest($pdo, $email);
 
-// ── Fetch OTP record ──────────────────────────────────────────────────────────
-$stmt = $pdo->prepare('
-    SELECT otp_hash, expires_at, attempts
-    FROM   password_reset_otps
-    WHERE  email = ?
-    LIMIT  1
-');
-$stmt->execute([$email]);
-$row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$req) prFail(400, 'No code was requested for this email, or it was already used. Please request a new code.');
 
-if (!$row) {
-    http_response_code(400);
-    echo json_encode(['error' => 'No OTP request found. Please request a new code.']);
-    exit;
-}
-
-// ── Attempt limit ─────────────────────────────────────────────────────────────
-if ((int)$row['attempts'] >= MAX_ATTEMPTS) {
-    $pdo->prepare('DELETE FROM password_reset_otps WHERE email = ?')->execute([$email]);
-    http_response_code(429);
-    echo json_encode(['error' => 'Too many incorrect attempts. Please request a new code.']);
-    exit;
-}
-
-// ── Expiry check ──────────────────────────────────────────────────────────────
-if (new DateTime() > new DateTime($row['expires_at'])) {
-    $pdo->prepare('DELETE FROM password_reset_otps WHERE email = ?')->execute([$email]);
-    http_response_code(400);
-    echo json_encode(['error' => 'This code has expired. Please request a new one.']);
-    exit;
-}
-
-// ── Hash check ────────────────────────────────────────────────────────────────
-if (!password_verify($otp, $row['otp_hash'])) {
-    $newAttempts = (int)$row['attempts'] + 1;
-    $remaining   = MAX_ATTEMPTS - $newAttempts;
-
-    if ($remaining <= 0) {
-        $pdo->prepare('DELETE FROM password_reset_otps WHERE email = ?')->execute([$email]);
-        http_response_code(429);
-        echo json_encode(['error' => 'Too many incorrect attempts. Please request a new code.']);
-        exit;
+    if ((int)$req['still_valid'] !== 1) {
+        prDeleteRequest($pdo, $email);
+        prFail(400, 'This code has expired. Please request a new one.');
     }
 
-    $pdo->prepare('UPDATE password_reset_otps SET attempts = attempts + 1 WHERE email = ?')
+    if ((int)$req['verified'] === 1) {
+        prOk('Code already verified.');   // e.g. the button was clicked twice
+    }
+
+    if ((int)$req['attempts'] >= MAX_ATTEMPTS) {
+        prDeleteRequest($pdo, $email);
+        prFail(429, 'Too many wrong codes. Please request a new code.');
+    }
+
+    if (!password_verify($otp, $req['otp_hash'])) {
+        $left = MAX_ATTEMPTS - ((int)$req['attempts'] + 1);
+        if ($left <= 0) {
+            prDeleteRequest($pdo, $email);
+            prFail(429, 'Too many wrong codes. Please request a new code.');
+        }
+        $pdo->prepare('UPDATE password_reset_otps SET attempts = attempts + 1 WHERE email = ?')->execute([$email]);
+        prFail(400, "That code is not correct. {$left} " . ($left === 1 ? 'try' : 'tries') . ' left.');
+    }
+
+    // Correct: give them a little time to choose the new password
+    $pdo->prepare('UPDATE password_reset_otps SET verified = 1, expires_at = NOW() + INTERVAL ' . RESET_WINDOW_MIN . ' MINUTE WHERE email = ?')
         ->execute([$email]);
-    http_response_code(400);
-    echo json_encode(['error' => "Incorrect code. {$remaining} attempt(s) remaining."]);
-    exit;
+
+    prOk('Code verified.');
+} catch (Throwable $e) {
+    error_log('[forgot-password] verify-otp: ' . $e->getMessage());
+    prFail(500, 'Something went wrong. Please try again.');
 }
-
-// ── OTP is valid — mark as verified (reset attempts so reset-password.php can proceed) ──
-// We keep the row so reset-password.php can confirm the OTP is still valid server-side.
-$pdo->prepare('UPDATE password_reset_otps SET attempts = -1 WHERE email = ?')
-    ->execute([$email]);
-// attempts = -1 is our sentinel: "OTP verified, pending password reset"
-
-echo json_encode(['message' => 'OTP verified successfully.']);
