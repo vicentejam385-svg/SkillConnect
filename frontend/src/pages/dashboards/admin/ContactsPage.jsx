@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { apiGet, apiPost } from '../../../utils/api'
 import { createPortal } from 'react-dom'
+import { getMunicipalitiesByProvince, getBarangaysByMunicipality } from '@aivangogh/ph-address'
 
 const ICON = { strokeWidth: 1.75 }
 
@@ -462,8 +463,26 @@ function Field({ label, required, error, icon: Icon, hint, children }) {
   )
 }
 
-function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
+// ── Address (same lists as the public inquiry form) ────────────
+const NCR_CODE = '1300000000'
+const PROVINCES = [{ code: NCR_CODE, name: 'Metro Manila (NCR)', label: 'Metro Manila' }]
+const provinceLabel = code => PROVINCES.find(p => p.code === code)?.label || ''
+const citiesOf = code => (code ? getMunicipalitiesByProvince(code) : [])
+const barangaysOf = code => (code ? getBarangaysByMunicipality(code) : [])
+function buildContactAddress(form) {
+  const city = citiesOf(form.province).find(c => c.psgcCode === form.city)?.name
+  return [form.house_street.trim(), form.barangay, city, provinceLabel(form.province)].filter(Boolean).join(', ')
+}
+
+function NewContactModal({ form, f, setAddr, errors, saving, onClose, onSubmit }) {
   useEscapeAndLock(onClose)
+  const cities = citiesOf(form.province)
+  const barangays = barangaysOf(form.city)
+  const select = err =>
+    `w-full h-10 pl-3 pr-9 text-sm rounded-lg bg-white text-slate-900 shadow-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 transition-colors disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed ${
+      err ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'
+    }`
+  const Chev = () => <ChevronDown size={16} {...ICON} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
   const input = (err, withIcon) =>
     `w-full h-10 ${withIcon ? 'pl-9' : 'pl-3'} pr-3 text-sm rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 transition-colors ${
       err ? 'border border-red-300 focus:border-red-500 focus:ring-red-500/20' : 'border border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20'
@@ -553,8 +572,40 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
               <Field label="Email" required icon={Mail} error={errors.email}>
                 <input type="email" className={input(errors.email, true)} value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@company.com" />
               </Field>
-              <Field label="Address" icon={MapPin}>
-                <textarea className={`${input(null, true)} h-auto py-2.5 resize-none`} rows={2} value={form.address} onChange={e => f('address', e.target.value)} placeholder="Street, barangay, city, province" />
+            </div>
+          </fieldset>
+
+          <div className="h-px bg-slate-100" />
+
+          {/* Address */}
+          <fieldset>
+            <legend className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2"><MapPin size={16} {...ICON} className="text-slate-400" />Address</legend>
+            <div className="space-y-4">
+              <Field label="Province" required error={errors.province}>
+                <select className={select(errors.province)} value={form.province} onChange={e => setAddr({ province: e.target.value, city: '', barangay: '' })}>
+                  <option value="">Select province…</option>
+                  {PROVINCES.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
+                </select>
+                <Chev />
+              </Field>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="City / Municipality" required error={errors.city}>
+                  <select className={select(errors.city)} value={form.city} disabled={!form.province} onChange={e => setAddr({ city: e.target.value, barangay: '' })}>
+                    <option value="">Select city…</option>
+                    {cities.map(c => <option key={c.psgcCode} value={c.psgcCode}>{c.name}</option>)}
+                  </select>
+                  <Chev />
+                </Field>
+                <Field label="Barangay" required error={errors.barangay}>
+                  <select className={select(errors.barangay)} value={form.barangay} disabled={!form.city} onChange={e => f('barangay', e.target.value)}>
+                    <option value="">Select barangay…</option>
+                    {barangays.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+                  </select>
+                  <Chev />
+                </Field>
+              </div>
+              <Field label="House No. & Street" required error={errors.house_street}>
+                <input className={input(errors.house_street)} value={form.house_street} maxLength={150} onChange={e => f('house_street', e.target.value)} placeholder="e.g. 123 Rizal Street" />
               </Field>
             </div>
           </fieldset>
@@ -577,7 +628,7 @@ function NewContactModal({ form, f, errors, saving, onClose, onSubmit }) {
 }
 
 // ── Contacts Page ──────────────────────────────────────────────
-const EMPTY_FORM = { first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', address: '', type: 'client', status_id: '1' }
+const EMPTY_FORM = { first_name: '', middle_name: '', last_name: '', suffix: '', email: '', mobile: '+63', phone: '', address: '', province: '', city: '', barangay: '', house_street: '', type: 'client', status_id: '1' }
 
 export default function ContactsPage() {
   const navigate = useNavigate()
@@ -602,6 +653,11 @@ export default function ContactsPage() {
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
   const f = (key, val) => { setForm(p => ({ ...p, [key]: val })); setErrors(e => ({ ...e, [key]: undefined })) }
+  // Changing province or city clears the fields under it
+  const setAddr = patch => {
+    setForm(p => ({ ...p, ...patch }))
+    setErrors(e => { const n = { ...e }; Object.keys(patch).forEach(k => { n[k] = undefined }); return n })
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -683,10 +739,17 @@ export default function ContactsPage() {
     if (!email) errs.email = 'Email is required.'
     else if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email)) errs.email = 'Enter a valid email address (e.g. name@example.com).'
 
+    if (!form.province) errs.province = 'Province is required.'
+    if (!form.city) errs.city = 'City / Municipality is required.'
+    if (!form.barangay) errs.barangay = 'Barangay is required.'
+    if (!form.house_street.trim()) errs.house_street = 'House No. & Street is required.'
+    else if (form.house_street.trim().length < 3) errs.house_street = 'Enter the house number and street.'
+
     if (Object.keys(errs).length) { setErrors(errs); return }
     setSaving(true)
     try {
-      const data = await apiPost('/api/contacts/create.php', { ...form, phone: phone || null })
+      const { province, city, barangay, house_street, ...rest } = form
+      const data = await apiPost('/api/contacts/create.php', { ...rest, phone: phone || null, address: buildContactAddress(form) })
       if (!data.success) throw new Error(data.error)
       showToast('Contact created')
       setShowForm(false)
@@ -914,7 +977,7 @@ export default function ContactsPage() {
       )}
 
       {showForm && (
-        <NewContactModal form={form} f={f} errors={errors} saving={saving} onClose={closeForm} onSubmit={handleCreate} />
+        <NewContactModal form={form} f={f} setAddr={setAddr} errors={errors} saving={saving} onClose={closeForm} onSubmit={handleCreate} />
       )}
     </div>
   )
