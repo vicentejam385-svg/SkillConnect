@@ -4,7 +4,7 @@ import { useLocation, useNavigate as useRouterNavigate, NavLink } from 'react-ro
 import {
   LayoutDashboard, Contact, HardHat, BadgeCheck, Inbox, Briefcase,
   CalendarClock, Settings, Menu, LogOut, ChevronDown, ChevronRight,
-  PanelLeftClose, PanelLeftOpen, X, ArrowLeftRight,
+  PanelLeftClose, PanelLeftOpen, X, ArrowLeftRight, User,
 } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 
@@ -63,7 +63,8 @@ function useIsDesktop() {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────
-export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobileClose }) {
+// `items` lets the worker-admin layout reuse this sidebar with its own menu
+export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobileClose, items = NAV_ITEMS }) {
   const location = useLocation()
   const isDesktop = useIsDesktop()
   const collapsed = collapsedProp && isDesktop // phones always show full labels
@@ -112,7 +113,8 @@ export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobi
 
         {/* Nav */}
         <nav className={`flex-1 py-4 ${collapsed ? 'overflow-visible' : 'overflow-y-auto custom-scroll'}`} aria-label="Admin">
-          {NAV_ITEMS.map((item, idx) => {
+          {items.map((item, idx) => {
+            if (item.hidden) return null
             if (item.type === 'section') {
               return collapsed ? (
                 idx > 0 && <div key={idx} className="mx-4 my-3 h-px bg-slate-100" />
@@ -140,7 +142,14 @@ export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobi
                   <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-emerald-600" />
                 )}
                 <Icon size={18} {...ICON} className={active ? 'text-emerald-600' : 'text-slate-400 group-hover:text-slate-600'} />
-                {!collapsed && <span className="truncate">{item.label}</span>}
+                {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+                {item.badge > 0 && (
+                  <span aria-label={`${item.badge} unread`}
+                    className={`min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none flex items-center justify-center tabular-nums
+                      ${collapsed ? 'absolute top-0.5 right-2 ring-2 ring-white' : ''}`}>
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
 
                 {/* Tooltip when collapsed */}
                 {collapsed && (
@@ -170,7 +179,7 @@ export function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen, onMobi
 }
 
 // ── User Dropdown ──────────────────────────────────────────────
-function UserDropdown() {
+function UserDropdown({ roleLabel, profilePath, hideSwitch = false }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(null)
   const ref = useRef(null)      // the button area
@@ -182,7 +191,7 @@ function UserDropdown() {
     try { return JSON.parse(localStorage.getItem('sc_user')) || {} } catch { return {} }
   })()
 
-  const cameFromWorker = !!localStorage.getItem('sc_worker_session')
+  const cameFromWorker = !hideSwitch && !!localStorage.getItem('sc_worker_session')
 
   useEffect(() => {
     const onClick = e => {
@@ -224,7 +233,7 @@ function UserDropdown() {
     ? user.name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()
     : 'AU'
   const displayName = user?.name || 'Admin User'
-  const displayRole = user?.type === 'super_admin' ? 'Super Admin' : 'Admin'
+  const displayRole = roleLabel || (user?.type === 'super_admin' ? 'Super Admin' : 'Admin')
 
   return (
     <div className="relative" ref={ref}>
@@ -259,6 +268,16 @@ function UserDropdown() {
           </div>
 
           <div className="border-t border-slate-100 p-1.5">
+            {profilePath && (
+              <button
+                role="menuitem"
+                onClick={() => { setOpen(false); navigate(profilePath) }}
+                className="w-full flex items-center gap-3 px-3 h-9 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <User size={16} {...ICON} className="text-slate-400" />
+                My profile
+              </button>
+            )}
             {cameFromWorker && (
               <button
                 role="menuitem"
@@ -286,9 +305,9 @@ function UserDropdown() {
 }
 
 // ── Top Bar ────────────────────────────────────────────────────
-export function TopBar({ onMenuToggle }) {
+export function TopBar({ onMenuToggle, items = NAV_ITEMS, rootLabel = 'Admin', userMenu = {} }) {
   const location = useLocation()
-  const current = NAV_ITEMS.find(i => i.path && isActivePath(location.pathname, i.path)) || NAV_ITEMS[1]
+  const current = items.find(i => i.path && isActivePath(location.pathname, i.path)) || items.find(i => i.path)
   const CurrentIcon = current.icon
 
   return (
@@ -303,7 +322,7 @@ export function TopBar({ onMenuToggle }) {
         </button>
 
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm min-w-0">
-          <span className="hidden sm:inline text-slate-500">Admin</span>
+          <span className="hidden sm:inline text-slate-500">{rootLabel}</span>
           <ChevronRight size={14} {...ICON} className="hidden sm:block text-slate-300 flex-shrink-0" />
           <span className="flex items-center gap-2 font-medium text-slate-900 truncate">
             <CurrentIcon size={16} {...ICON} className="text-emerald-600 flex-shrink-0" />
@@ -312,7 +331,7 @@ export function TopBar({ onMenuToggle }) {
         </nav>
       </div>
 
-      <UserDropdown />
+      <UserDropdown {...userMenu} />
     </header>
   )
 }
