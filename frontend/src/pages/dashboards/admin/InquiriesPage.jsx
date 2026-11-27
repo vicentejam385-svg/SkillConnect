@@ -309,192 +309,84 @@ function Chip({ children, onRemove }) {
 }
 
 // ── Inquiry details modal ────────────────────────────────────────
-function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
-  const [confirm, setConfirm] = useState(null) // 'won' | 'lost'
+/* Simple read-only details. Won / Lost are done from the table. */
+function InquiryDetails({ inquiry, onClose }) {
   useEscapeAndLock(onClose)
   const created = parseDT(inquiry.created_at)
-  const open = inquiry.status !== 'Won' && inquiry.status !== 'Lost'
-  const reasonText = inquiry.reason === 'Other' ? (inquiry.description || 'Other') : inquiry.reason
-
-  const steps = [
-    { label: 'Received', done: true },
-    { label: 'Under review', done: !open || true, current: open },
-    { label: inquiry.status === 'Lost' ? 'Lost' : 'Won', done: !open, lost: inquiry.status === 'Lost' },
+  const answer = inquiry.source === 'walk_in' ? null
+    : inquiry.customer_answer === 'proceed' ? 'Yes, wants to proceed'
+    : inquiry.customer_answer === 'cancel'  ? 'No, cancelled the inquiry'
+    : inquiry.email_status === 'sent' ? 'No answer yet' : 'Email was not sent'
+  const rows = [
+    ['Inquiry no.',     inquiry.inquiry_code],
+    ['Name',            inquiry.full_name],
+    ['Service',         inquiry.reason],
+    ['Mobile',          inquiry.mobile],
+    ['Email',           inquiry.email],
+    ['Project address', inquiry.address],
+    ['Received',        `${fmtDate(created)} (${timeAgo(created)})`],
+    ['Type',            inquiry.source === 'walk_in' ? 'Walk-in' : 'Online'],
+    ...(answer ? [['Customer answer', answer]] : []),
   ]
-
-  const info = [
-    { icon: Mail,       label: 'Email',   value: inquiry.email },
-    { icon: Smartphone, label: 'Mobile',  value: inquiry.mobile },
-    { icon: MapPin,     label: 'Address', value: inquiry.address },
-  ]
-
   return createPortal(
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-      <div className="sc-fade absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="sc-pop relative w-full max-w-lg max-h-[90vh] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 h-14 border-b border-slate-100 flex-shrink-0">
-          <p className="text-sm font-medium text-slate-500">Inquiry <span className="text-slate-900 tabular-nums">{inquiry.inquiry_code}</span></p>
-          <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scroll">
-          {/* Profile */}
-          <div className="px-6 pt-6 pb-5 border-b border-slate-100">
-            <div className="flex items-start gap-4">
-              <Avatar name={inquiry.full_name} seed={inquiry.id} size="w-14 h-14" text="text-lg" />
-              <div className="min-w-0 pt-0.5">
-                <h3 className="text-lg font-semibold text-slate-900 leading-tight">{inquiry.full_name}</h3>
-                <p className="text-sm text-slate-500 mt-0.5">{inquiry.source === 'walk_in' ? 'Walk-in' : 'Online'} · {fmtDate(created)} · {timeAgo(created)}</p>
-                <div className="mt-2.5 flex items-center gap-1.5 flex-wrap"><StatusBadge status={inquiry.status} /><AnswerBadge inquiry={inquiry} /></div>
-              </div>
-            </div>
-
-          </div>
-
-          <div className="px-6 py-5 space-y-6">
-            {/* Progress */}
-            <ol className="flex items-center">
-              {steps.map((s, i) => (
-                <li key={s.label} className="flex items-center flex-1 last:flex-none">
-                  <div className="flex flex-col items-center gap-1.5">
-                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold
-                      ${s.lost && s.done ? 'bg-red-500 text-white'
-                        : s.done && !s.current ? 'bg-emerald-600 text-white'
-                        : s.current ? 'bg-white ring-2 ring-emerald-500 text-emerald-700'
-                        : 'bg-slate-100 text-slate-400'}`}>
-                      {s.lost && s.done ? <X size={14} strokeWidth={2.5} /> : s.done && !s.current ? <Check size={14} strokeWidth={2.5} /> : i + 1}
-                    </span>
-                    <span className={`text-xs whitespace-nowrap ${s.current ? 'font-medium text-slate-900' : 'text-slate-500'}`}>{s.label}</span>
-                  </div>
-                  {i < steps.length - 1 && <span className={`flex-1 h-0.5 mx-2 -mt-5 rounded ${steps[i + 1].done || steps[i + 1].current ? 'bg-emerald-500' : 'bg-slate-200'}`} />}
-                </li>
-              ))}
-            </ol>
-
-            {/* Request */}
-            <section>
-              <h4 className="text-sm font-semibold text-slate-900 mb-2">Request</h4>
-              <div className="rounded-xl border border-slate-200 p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                  <MessageSquareText size={16} {...ICON} className="text-emerald-600" />
-                  {inquiry.reason || 'No reason given'}
-                </div>
-                {inquiry.reason === 'Other' && inquiry.description && (
-                  <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{inquiry.description}</p>
-                )}
-              </div>
-            </section>
-
-            {/* Contact */}
-            <section>
-              <h4 className="text-sm font-semibold text-slate-900 mb-2">Contact information</h4>
-              <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-                {info.map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="group flex items-start gap-3 px-4 py-3">
-                    <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <dt className="text-xs text-slate-500">{label}</dt>
-                      <dd className="text-sm text-slate-900 break-words mt-0.5">
-                        {value || <span className="text-slate-400">Not provided</span>}
-                      </dd>
-                    </div>
-                    <CopyButton value={value} />
-                  </div>
-                ))}
-              </dl>
-            </section>
-
-            {/* Customer confirmation (online inquiries) */}
-            {inquiry.source !== 'walk_in' && (inquiry.sms_status || inquiry.email_status || inquiry.customer_answer) && (
-              <section>
-                <h4 className="text-sm font-semibold text-slate-900 mb-2">Customer confirmation</h4>
-                <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
-                  <div className="flex items-start gap-3 px-4 py-3">
-                    {inquiry.customer_answer === 'proceed' ? <ThumbsUp size={16} {...ICON} className="text-emerald-600 mt-0.5 flex-shrink-0" />
-                      : inquiry.customer_answer === 'cancel' ? <Ban size={16} {...ICON} className="text-red-500 mt-0.5 flex-shrink-0" />
-                      : <Hourglass size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-slate-500">Customer's answer</p>
-                      <p className="text-sm text-slate-900 mt-0.5">
-                        {inquiry.customer_answer === 'proceed' ? 'Yes, wants to proceed'
-                          : inquiry.customer_answer === 'cancel' ? 'No, cancelled the inquiry'
-                          : inquiry.email_status === 'sent' ? 'No answer yet' : 'Can’t answer: the email was not sent'}
-                        {inquiry.customer_answer_at && <span className="text-slate-500"> · {fmtDate(parseDT(inquiry.customer_answer_at))}, {timeAgo(parseDT(inquiry.customer_answer_at))}</span>}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 divide-x divide-slate-100">
-                    {[['SMS', inquiry.sms_status, MessageSquare, inquiry.sms_error], ['Email', inquiry.email_status, Mail, null]].map(([label, st, Icon, err]) => {
-                      const [text, cls] = SEND_LABEL[st] || ['—', 'text-slate-400']
-                      return (
-                        <div key={label} className="flex items-start gap-3 px-4 py-3 min-w-0">
-                          <Icon size={16} {...ICON} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-slate-500">{label}</p>
-                            <p className={`text-sm font-medium mt-0.5 ${cls}`}>{text}</p>
-                            {err && st !== 'sent' && <p className="text-xs text-slate-500 mt-0.5 break-words">{err}</p>}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {open && inquiry.customer_answer === 'cancel' && (
-              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">
-                <Ban size={16} {...ICON} className="text-red-500 flex-shrink-0 mt-0.5" />
-                <p>The customer cancelled this inquiry from the email. You can mark it as <span className="font-semibold">Lost</span>.</p>
-              </div>
-            )}
-
-            {open && (
-              <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg border border-sky-200 bg-sky-50 text-sm text-sky-800">
-                <Info size={16} {...ICON} className="text-sky-500 flex-shrink-0 mt-0.5" />
-                <p>Marking this as <span className="font-semibold">Won</span> creates a client account, opens a pending job order for “{reasonText}”, and emails login details to {inquiry.email || 'the client'}.</p>
-              </div>
-            )}
+      <div className="sc-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="inq-details-title"
+        className="sc-pop relative w-full max-w-md max-h-[90vh] bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-5 h-14 border-b border-slate-100 flex-shrink-0">
+          <h3 id="inq-details-title" className="text-base font-semibold text-slate-900">Inquiry details</h3>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={inquiry.status} />
+            <button onClick={onClose} aria-label="Close" className={iconBtn}><X size={18} {...ICON} /></button>
           </div>
         </div>
+        <dl className="flex-1 overflow-y-auto custom-scroll px-5 py-2 divide-y divide-slate-100">
+          {rows.map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[130px_1fr] gap-3 py-2.5 text-sm">
+              <dt className="text-slate-500">{label}</dt>
+              <dd className="text-slate-900 break-words">{value || <span className="text-slate-400">—</span>}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="px-5 py-3.5 border-t border-slate-100 flex justify-end flex-shrink-0">
+          <button onClick={onClose} className={btnSecondary}>Close</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
-          {!open ? (
-            <div className="flex items-center justify-between gap-3">
-              <p className={`flex items-center gap-2 text-sm font-medium ${inquiry.status === 'Won' ? 'text-emerald-700' : 'text-red-600'}`}>
-                {inquiry.status === 'Won' ? <Trophy size={16} {...ICON} /> : <XCircle size={16} {...ICON} />}
-                {inquiry.status === 'Won' ? 'This inquiry was won' : 'This inquiry was lost'}
-              </p>
-              <button onClick={onClose} className={btnSecondary}>Close</button>
-            </div>
-          ) : confirm ? (
-            <div className="sc-pop">
-              <p className="text-sm text-slate-700 mb-3">
-                {confirm === 'won'
-                  ? <>Mark <span className="font-semibold">{inquiry.full_name}</span> as won and send their login details?</>
-                  : <>Mark this inquiry as lost? You can’t undo this.</>}
-              </p>
-              <div className="flex gap-2">
-                <button onClick={() => setConfirm(null)} disabled={!!busy} className={`${btnSecondary} flex-1`}>Back</button>
-                {confirm === 'won' ? (
-                  <button onClick={onWon} disabled={!!busy} className={`${btnPrimary} flex-1`}>
-                    {busy === 'Won' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} {...ICON} />}
-                    {busy === 'Won' ? 'Setting up account…' : 'Yes, mark as won'}
-                  </button>
-                ) : (
-                  <button onClick={onLost} disabled={!!busy} className="inline-flex flex-1 items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm disabled:opacity-60">
-                    {busy === 'Lost' ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} {...ICON} />}
-                    {busy === 'Lost' ? 'Saving…' : 'Yes, mark as lost'}
-                  </button>
-                )}
-              </div>
-            </div>
+/* "Are you sure?" before marking an inquiry won or lost */
+function ConfirmStatus({ inquiry, type, busy, onCancel, onConfirm }) {
+  useEscapeAndLock(onCancel)
+  const won = type === 'won'
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+      <div className="sc-fade absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]" onClick={onCancel} />
+      <div role="alertdialog" aria-modal="true" aria-labelledby="inq-confirm-title"
+        className="sc-pop relative w-full max-w-sm bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 p-6">
+        <span className={`w-11 h-11 rounded-full flex items-center justify-center ${won ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+          {won ? <Trophy size={20} {...ICON} /> : <XCircle size={20} {...ICON} />}
+        </span>
+        <h3 id="inq-confirm-title" className="mt-4 text-base font-semibold text-slate-900">{won ? 'Mark as won?' : 'Mark as lost?'}</h3>
+        <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">
+          {won
+            ? <>This creates a client account for <span className="font-medium text-slate-900">{inquiry.full_name}</span>, opens a pending job order for “{inquiry.reason}”, and emails the login details.</>
+            : <>The inquiry of <span className="font-medium text-slate-900">{inquiry.full_name}</span> will be closed as lost. You can’t undo this.</>}
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button onClick={onCancel} disabled={!!busy} className={`${btnSecondary} flex-1`}>Cancel</button>
+          {won ? (
+            <button onClick={onConfirm} disabled={!!busy} className={`${btnPrimary} flex-1`}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Trophy size={16} {...ICON} />}
+              {busy ? 'Setting up…' : 'Mark as won'}
+            </button>
           ) : (
-            <div className="flex gap-2">
-              <button onClick={() => setConfirm('lost')} className={`${btnDanger} flex-1`}><XCircle size={16} {...ICON} /> Mark as lost</button>
-              <button onClick={() => setConfirm('won')} className={`${btnPrimary} flex-1`}><Trophy size={16} {...ICON} /> Mark as won</button>
-            </div>
+            <button onClick={onConfirm} disabled={!!busy} className="inline-flex flex-1 items-center justify-center gap-2 h-9 px-4 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm disabled:opacity-60">
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} {...ICON} />}
+              {busy ? 'Saving…' : 'Mark as lost'}
+            </button>
           )}
         </div>
       </div>
@@ -503,7 +395,28 @@ function InquiryDrawer({ inquiry, busy, onClose, onWon, onLost }) {
   )
 }
 
-// ── Form field ─────────────────────────────────────────────────
+const isOpen = inq => inq.status !== 'Won' && inq.status !== 'Lost'
+
+/* The three row actions */
+function RowActions({ inq, onView, onWon, onLost, full = false }) {
+  const base = 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 whitespace-nowrap'
+  return (
+    <div className={full ? 'grid grid-cols-2 gap-1.5' : 'flex items-center gap-1.5 justify-end'}>
+      <button onClick={onView} className={`${base} border border-slate-200 text-slate-700 hover:bg-slate-50 ${full ? 'col-span-2' : ''}`}>
+        <Eye size={14} {...ICON} /> View details
+      </button>
+      {isOpen(inq) && <>
+        <button onClick={onWon} className={`${base} bg-emerald-600 text-white hover:bg-emerald-700`}>
+          <Trophy size={14} {...ICON} /> Mark as won
+        </button>
+        <button onClick={onLost} className={`${base} border border-red-200 text-red-600 hover:bg-red-50`}>
+          <XCircle size={14} {...ICON} /> Mark as lost
+        </button>
+      </>}
+    </div>
+  )
+}
+
 function Field({ label, required, error, hint, icon: Icon, className = '', children }) {
   return (
     <div className={className}>
@@ -539,6 +452,7 @@ export default function InquiriesPage() {
   const [toast,        setToast]        = useState(null)
   const [showForm,     setShowForm]     = useState(false)
   const [selected,     setSelected]     = useState(null)
+  const [confirm,      setConfirm]      = useState(null)   // { inq, type: 'won' | 'lost' }
   const [busy,         setBusy]         = useState(null)
   const [page,         setPage]         = useState(1)
   const [perPage,      setPerPage]      = useState(10)
@@ -762,9 +676,11 @@ export default function InquiriesPage() {
     setBusy(label)
     await handleStatusUpdate(inq, id, label)
     setBusy(null)
+    setConfirm(null)
   }
 
-  const closeDrawer = useCallback(() => { if (!busy) setSelected(null) }, [busy])
+  const closeDrawer = useCallback(() => setSelected(null), [])
+  const closeConfirm = useCallback(() => { if (!busy) setConfirm(null) }, [busy])
   const closeForm = useCallback(() => { if (!saving) { setShowForm(false); setErrors({}) } }, [saving])
 
   return (
@@ -797,8 +713,8 @@ export default function InquiriesPage() {
               { value: 'Lost', label: 'Lost',         count: counts.Lost, dot: 'bg-red-500' },
             ]}
           />
-          <div className="flex flex-1 items-center gap-2 lg:justify-end">
-            <div className="relative flex-1 lg:max-w-xs">
+          <div className="flex flex-1 flex-wrap sm:flex-nowrap items-center gap-2 lg:justify-end">
+            <div className="relative w-full sm:w-auto sm:flex-1 lg:max-w-xs">
               <Search size={16} {...ICON} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 className="w-full h-9 pl-9 pr-9 text-sm border border-slate-200 rounded-lg bg-white shadow-sm placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
@@ -808,12 +724,12 @@ export default function InquiriesPage() {
               />
               {search && <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700"><X size={14} {...ICON} /></button>}
             </div>
-            <SelectBox value={filterSource} onChange={setFilterSource} className="w-36 flex-shrink-0">
+            <SelectBox value={filterSource} onChange={setFilterSource} className="flex-1 min-w-0 sm:flex-none sm:w-36 sm:flex-shrink-0">
               <option value="">All sources</option>
               <option value="online">Online</option>
               <option value="walk_in">Walk-in</option>
             </SelectBox>
-            <SelectBox value={filterReason} onChange={setFilterReason} className="w-44 flex-shrink-0">
+            <SelectBox value={filterReason} onChange={setFilterReason} className="flex-1 min-w-0 sm:flex-none sm:w-44 sm:flex-shrink-0">
               <option value="">All services</option>
               {services.map(r => <option key={r} value={r}>{r}</option>)}
             </SelectBox>
@@ -849,81 +765,53 @@ export default function InquiriesPage() {
         ) : (
           <>
             <ul className="sm:hidden divide-y divide-slate-100">
-              {pageItems.map((inq, i) => {
-                const d = parseDT(inq.created_at)
-                return (
-                  <li key={inq.id}>
-                    <button onClick={() => setSelected(inq)} className="sc-rise w-full text-left px-4 py-3.5 flex items-center gap-3 active:bg-slate-50" style={{ animationDelay: `${i * 30}ms` }}>
-                      <Avatar name={inq.full_name} seed={inq.id} size="w-10 h-10" text="text-xs" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-slate-900 truncate">{inq.full_name}</p>
-                          <StatusBadge status={inq.status} />
-                        </div>
-                        <p className="text-xs text-slate-600 truncate mt-0.5">{inq.reason || '—'}</p>
-                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">{inq.inquiry_code} · {timeAgo(d)} <SourceBadge source={inq.source} /><AnswerBadge inquiry={inq} /></p>
-                      </div>
-                      <ChevronRight size={16} {...ICON} className="text-slate-300 flex-shrink-0" />
-                    </button>
-                  </li>
-                )
-              })}
+              {pageItems.map((inq, i) => (
+                <li key={inq.id} className="sc-rise px-4 py-3.5" style={{ animationDelay: `${i * 30}ms` }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{inq.full_name}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 truncate">{inq.inquiry_code} · {inq.reason || '—'} · {fmtDate(parseDT(inq.created_at))}</p>
+                    </div>
+                    <StatusBadge status={inq.status} />
+                  </div>
+                  <div className="mt-2.5">
+                    <RowActions inq={inq} full
+                      onView={() => setSelected(inq)}
+                      onWon={() => setConfirm({ inq, type: 'won' })}
+                      onLost={() => setConfirm({ inq, type: 'lost' })} />
+                  </div>
+                </li>
+              ))}
             </ul>
 
             <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
-                    <SortHeader label="Inquirer"  sortKey="full_name"  sort={sort} onSort={onSort} />
-                    <SortHeader label="Service"   sortKey="reason"     sort={sort} onSort={onSort} />
-                    <th className="px-5 py-2.5 font-medium">Mobile / email</th>
-                    <SortHeader label="Received"  sortKey="created_at" sort={sort} onSort={onSort} />
-                    <SortHeader label="Status"    sortKey="status"     sort={sort} onSort={onSort} />
+                    <th className="px-5 py-2.5 font-medium">Inquiry no.</th>
+                    <SortHeader label="Name"     sortKey="full_name"  sort={sort} onSort={onSort} />
+                    <SortHeader label="Service"  sortKey="reason"     sort={sort} onSort={onSort} />
+                    <SortHeader label="Received" sortKey="created_at" sort={sort} onSort={onSort} />
+                    <SortHeader label="Status"   sortKey="status"     sort={sort} onSort={onSort} />
                     <th className="px-5 py-2.5 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pageItems.map((inq, i) => {
-                    const d = parseDT(inq.created_at)
-                    return (
-                      <tr key={inq.id} className="sc-rise group hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
-                        <td className="px-5 py-3">
-                          <button onClick={() => setSelected(inq)} className="flex items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-                            <Avatar name={inq.full_name} seed={inq.id} size="w-9 h-9" text="text-xs" />
-                            <span>
-                              <span className="flex items-center gap-2">
-                                <span className="font-medium text-slate-900 group-hover:text-emerald-700 transition-colors whitespace-nowrap">{inq.full_name}</span>
-                                {inq.status === 'New' && <span className="w-1.5 h-1.5 rounded-full bg-sky-500" title="Awaiting review" />}
-                              </span>
-                              <span className="flex items-center gap-1.5 text-xs text-slate-500 tabular-nums">{inq.inquiry_code} <SourceBadge source={inq.source} /></span>
-                            </span>
-                          </button>
-                        </td>
-                        <td className="px-5 py-3 max-w-[220px]">
-                          <p className="text-slate-700 truncate">{inq.reason || '—'}</p>
-                          {inq.reason === 'Other' && inq.description && <p className="text-xs text-slate-500 truncate">{inq.description}</p>}
-                        </td>
-                        <td className="px-5 py-3">
-                          <p className="text-slate-700 tabular-nums">{inq.mobile || <span className="text-slate-400">—</span>}</p>
-                          {inq.email && <p className="text-xs text-slate-500 truncate max-w-[200px]">{inq.email}</p>}
-                        </td>
-                        <td className="px-5 py-3 whitespace-nowrap">
-                          <p className="text-slate-700 tabular-nums">{fmtDate(d)}</p>
-                          <p className="text-xs text-slate-500">{timeAgo(d)}</p>
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex flex-col items-start gap-1"><StatusBadge status={inq.status} /><AnswerBadge inquiry={inq} /></div>
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button onClick={() => setSelected(inq)} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-                              <Eye size={15} {...ICON} /> View
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {pageItems.map((inq, i) => (
+                    <tr key={inq.id} className="sc-rise hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
+                      <td className="px-5 py-3 text-slate-500 tabular-nums whitespace-nowrap">{inq.inquiry_code}</td>
+                      <td className="px-5 py-3 font-medium text-slate-900 whitespace-nowrap">{inq.full_name}</td>
+                      <td className="px-5 py-3 text-slate-700 max-w-[200px] truncate">{inq.reason || '—'}</td>
+                      <td className="px-5 py-3 text-slate-700 tabular-nums whitespace-nowrap">{fmtDate(parseDT(inq.created_at))}</td>
+                      <td className="px-5 py-3"><StatusBadge status={inq.status} /></td>
+                      <td className="px-5 py-3">
+                        <RowActions inq={inq}
+                          onView={() => setSelected(inq)}
+                          onWon={() => setConfirm({ inq, type: 'won' })}
+                          onLost={() => setConfirm({ inq, type: 'lost' })} />
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -933,13 +821,15 @@ export default function InquiriesPage() {
         )}
       </section>
 
-      {selected && (
-        <InquiryDrawer
-          inquiry={selected}
+      {selected && <InquiryDetails inquiry={selected} onClose={closeDrawer} />}
+
+      {confirm && (
+        <ConfirmStatus
+          inquiry={confirm.inq}
+          type={confirm.type}
           busy={busy}
-          onClose={closeDrawer}
-          onWon={() => runStatus(selected, 9, 'Won')}
-          onLost={() => runStatus(selected, 10, 'Lost')}
+          onCancel={closeConfirm}
+          onConfirm={() => confirm.type === 'won' ? runStatus(confirm.inq, 9, 'Won') : runStatus(confirm.inq, 10, 'Lost')}
         />
       )}
 
