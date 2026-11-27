@@ -164,20 +164,9 @@ function offerView(jo) {
   }
 }
 
-function OfferPanel({ offer, willSend, resend, assignNow, onAssignNow, onUndo }) {
-  const [confirm, setConfirm] = useState(false)
+function OfferPanel({ offer, willSend, resend }) {
   const box = 'mt-3 flex items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-700'
-  const link = 'text-sm font-medium text-emerald-700 hover:underline underline-offset-2 whitespace-nowrap'
 
-  if (assignNow) {
-    return (
-      <div className={box}>
-        <Info size={16} {...ICON} className="text-slate-400 flex-shrink-0 mt-0.5" />
-        <p className="flex-1 min-w-0">You can pick a worker now. Once you save, the other workers can no longer accept this job.</p>
-        <button type="button" onClick={onUndo} className={link}>Undo</button>
-      </div>
-    )
-  }
   if (willSend) {
     return (
       <div className={box}>
@@ -196,17 +185,6 @@ function OfferPanel({ offer, willSend, resend, assignNow, onAssignNow, onUndo })
       <Icon size={16} {...ICON} className={`${offer.tone} flex-shrink-0 mt-0.5`} />
       <div className="flex-1 min-w-0">
         <p>{offer.text}</p>
-        {offer.key === 'waiting' && (
-          confirm ? (
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="text-slate-600">Pick a worker yourself before the offer ends?</span>
-              <button type="button" onClick={() => { setConfirm(false); onAssignNow() }} className={link}>Yes, assign now</button>
-              <button type="button" onClick={() => setConfirm(false)} className="text-sm font-medium text-slate-500 hover:text-slate-700">Cancel</button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => setConfirm(true)} className={`${link} mt-2 inline-block`}>Assign now anyway</button>
-          )
-        )}
       </div>
     </div>
   )
@@ -396,11 +374,9 @@ const API_HOST = 'https://saddlebrown-swan-877763.hostingersite.com'
 
 // What needs attention on a job order (flags come from list.php)
 const FLAG = {
-  no_photo_yet:     { label: 'No photo yet',          cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   past_end:         { label: 'Past end date',         cls: 'bg-red-50 text-red-700 ring-red-200' },
   awaiting_confirm: { label: 'Finished · to confirm', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   issue:            { label: 'Not finished yet',      cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  visit_to_plan:    { label: 'Plan site visit',       cls: 'bg-slate-100 text-slate-600 ring-slate-200' },
   visit_pick_date:  { label: 'Pick visit date',       cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
 }
 function FlagBadges({ jo }) {
@@ -409,7 +385,7 @@ function FlagBadges({ jo }) {
   return (
     <span className="flex flex-wrap gap-1 mt-1">
       {flags.map(k => (
-        <span key={k} title={k === 'no_photo_yet' ? `Should have started ${fmtDay(jo.start_date)}` : undefined}
+        <span key={k}
           className={`inline-flex items-center h-5 px-1.5 rounded text-[11px] font-medium ring-1 ring-inset whitespace-nowrap ${FLAG[k].cls}`}>
           {FLAG[k].label}{k === 'awaiting_confirm' && (jo.flags || []).includes('customer_slow') ? ' · 3+ days' : ''}
         </span>
@@ -994,7 +970,11 @@ function JobOrderModal({
   // Job offers: while workers still have time to accept, the worker picker is locked
   // (unless the admin chooses "Assign now anyway")
   const offer    = editTarget && !editTarget.worker_name ? offerView(editTarget) : null
-  const canPick  = !editTarget || !!editTarget.worker_name || editTarget.offer_can_assign !== false || !!form.assign_now
+  // The worker is fixed once someone accepted (or was assigned). The admin picks a worker
+  // ONLY when no one accepted: the offer ended, everyone said not interested, or no worker matched.
+  const workerFixed = !!editTarget?.worker_name
+  const NOBODY_ACCEPTED = ['expired', 'all_declined', 'no_match']
+  const canPick  = !workerFixed && (!editTarget?.offer_state || NOBODY_ACCEPTED.includes(editTarget.offer_state))
   const termsChanged = !!editTarget && (
     String(form.contract_type_id || '') !== String(editTarget.contract_type_id || '') ||
     String(form.start_date || '')       !== String(editTarget.start_date || '') ||
@@ -1104,15 +1084,6 @@ function JobOrderModal({
               </div>
             )}
 
-            {form._inquiry_code && (
-              <div className="mt-3 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-2.5">
-                <span className="w-8 h-8 rounded-lg bg-white border border-amber-200 text-amber-600 flex items-center justify-center flex-shrink-0"><Link2 size={15} {...ICON} /></span>
-                <div className="min-w-0">
-                  <p className="text-xs text-amber-700">Linked inquiry · {form._inquiry_code}</p>
-                  <p className="text-sm font-medium text-amber-900 truncate">{form._inquiry_reason || '—'}</p>
-                </div>
-              </div>
-            )}
           </fieldset>
 
           <div className="h-px bg-slate-100" />
@@ -1121,26 +1092,42 @@ function JobOrderModal({
           <fieldset>
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><HardHat size={16} {...ICON} className="text-slate-400" />Worker</legend>
             <label className={labelCls}>Assigned worker</label>
-            <div className="relative">
-              <select className={`${selectCls} ${err('worker') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
-                value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}
-                disabled={!canPick} title={!canPick ? 'Workers still have time to accept this job' : undefined}>
-                <option value="">Select a worker</option>
-                {requiredSpec ? matched.map(renderOption) : allWorkers.map(renderOption)}
-              </select>
-              <Chev />
-            </div>
-            {fieldError(err('worker'))}
-            <OfferPanel
-              key={editTarget?.id ?? 'new'}
-              offer={offer}
-              willSend={willSend}
-              resend={!!editTarget?.offered_at}
-              assignNow={!!form.assign_now}
-              onAssignNow={() => f('assign_now', true)}
-              onUndo={() => { f('assign_now', false); f('worker_contact_id', '') }}
-            />
-            {requiredSpec && (
+            {workerFixed ? (
+              <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                <span className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0"><HardHat size={15} {...ICON} /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900 truncate">{editTarget.worker_name}</p>
+                  <p className="text-xs text-slate-500">{editTarget.assigned_by === 'admin' ? 'Assigned by the admin' : 'Accepted the job offer'}</p>
+                </div>
+                <Lock size={14} {...ICON} className="text-slate-400 flex-shrink-0" aria-label="Fixed" />
+              </div>
+            ) : canPick ? (
+              <>
+                <div className="relative">
+                  <select className={`${selectCls} ${err('worker') ? errCls : ''}`}
+                    value={form.worker_contact_id} onChange={e => f('worker_contact_id', e.target.value)}>
+                    <option value="">Select a worker</option>
+                    {requiredSpec ? matched.map(renderOption) : allWorkers.map(renderOption)}
+                  </select>
+                  <Chev />
+                </div>
+                {fieldError(err('worker'))}
+              </>
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border border-dashed border-slate-200 px-3.5 py-2.5 text-sm text-slate-500">
+                <Hourglass size={15} {...ICON} className="text-slate-400 flex-shrink-0" />
+                No worker yet. The first matching worker to accept the job offer will be assigned here.
+              </div>
+            )}
+            {!workerFixed && (
+              <OfferPanel
+                key={editTarget?.id ?? 'new'}
+                offer={offer}
+                willSend={willSend}
+                resend={!!editTarget?.offered_at}
+              />
+            )}
+            {canPick && requiredSpec && (
               <p className="text-xs text-slate-500 mt-1.5">
                 {matched.length
                   ? <>Showing workers who specialise in <span className="font-medium text-slate-700">{requiredSpec}</span>.</>
