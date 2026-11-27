@@ -1401,6 +1401,6 @@ function CompletionPanel({ jo, confirmJob }) {
           )
         )}
       </div>
-    </section>
+    </section> 
   )
 }
