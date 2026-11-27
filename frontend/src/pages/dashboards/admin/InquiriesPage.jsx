@@ -316,7 +316,7 @@ function InquiryDetails({ inquiry, onClose }) {
   const answer = inquiry.source === 'walk_in' ? null
     : inquiry.customer_answer === 'proceed' ? 'Yes, wants to proceed'
     : inquiry.customer_answer === 'cancel'  ? 'No, cancelled the inquiry'
-    : inquiry.email_status === 'sent' ? 'No answer yet' : 'Email was not sent (use “Resend confirmation email”)'
+    : inquiry.email_status === 'sent' ? 'No answer yet' : 'Email was not sent (use “Resend email”)'
   const rows = [
     ['Inquiry no.',     inquiry.inquiry_code],
     ['Name',            inquiry.full_name],
@@ -416,7 +416,7 @@ function RowActions({ inq, onView, onWon, onLost, onResend }) {
   const place = useCallback(() => {
     const r = btnRef.current?.getBoundingClientRect()
     if (!r) return
-    const W = 248, H = isOpen(inq) ? 172 : 52
+    const W = 200, H = isOpen(inq) ? 172 : 52
     const below = window.innerHeight - r.bottom > H + 12
     setPos({ left: Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8)), top: below ? r.bottom + 6 : r.top - H - 6, width: W })
   }, [inq])
@@ -444,12 +444,6 @@ function RowActions({ inq, onView, onWon, onLost, onResend }) {
 
   const pick = fn => () => { setOpen(false); fn() }
   const item = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md text-left whitespace-nowrap transition-colors focus-visible:outline-none'
-  const locked = (Icon, label, reason) => (
-    <div role="menuitem" aria-disabled="true" title="Unlocks after the customer answers the confirmation email" className={`${item} text-slate-400 cursor-not-allowed`}>
-      <Icon size={15} {...ICON} /> {label}
-      <span className={`ml-auto text-[10px] font-medium ${reason === 'Cancelled' ? 'text-red-500' : 'text-amber-600'}`}>{reason}</span>
-    </div>
-  )
 
   return (
     <>
@@ -464,13 +458,13 @@ function RowActions({ inq, onView, onWon, onLost, onResend }) {
             <Eye size={15} {...ICON} className="text-slate-400" /> View details
           </button>
           {isOpen(inq) && <>
-            <div className="my-1 h-px bg-slate-100" />
-            {wonLockReason(inq) ? locked(Trophy, 'Mark as won', wonLockReason(inq)) : (
+            {(!wonLockReason(inq) || !lostLockReason(inq)) && <div className="my-1 h-px bg-slate-100" />}
+            {!wonLockReason(inq) && (
               <button role="menuitem" onClick={pick(onWon)} className={`${item} text-emerald-700 hover:bg-emerald-50`}>
                 <Trophy size={15} {...ICON} /> Mark as won
               </button>
             )}
-            {lostLockReason(inq) ? locked(XCircle, 'Mark as lost', lostLockReason(inq)) : (
+            {!lostLockReason(inq) && (
               <button role="menuitem" onClick={pick(onLost)} className={`${item} text-red-600 hover:bg-red-50`}>
                 <XCircle size={15} {...ICON} /> Mark as lost
               </button>
@@ -478,7 +472,7 @@ function RowActions({ inq, onView, onWon, onLost, onResend }) {
             {needsAnswer(inq) && <>
               <div className="my-1 h-px bg-slate-100" />
               <button role="menuitem" onClick={pick(onResend)} className={`${item} text-slate-700 hover:bg-slate-50`}>
-                <Send size={15} {...ICON} className="text-slate-400" /> Resend confirmation email
+                <Send size={15} {...ICON} className="text-slate-400" /> Resend email
               </button>
             </>}
           </>}
