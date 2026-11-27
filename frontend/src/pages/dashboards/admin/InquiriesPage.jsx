@@ -316,7 +316,7 @@ function InquiryDetails({ inquiry, onClose }) {
   const answer = inquiry.source === 'walk_in' ? null
     : inquiry.customer_answer === 'proceed' ? 'Yes, wants to proceed'
     : inquiry.customer_answer === 'cancel'  ? 'No, cancelled the inquiry'
-    : inquiry.email_status === 'sent' ? 'No answer yet' : 'Email was not sent'
+    : inquiry.email_status === 'sent' ? 'No answer yet' : 'Email was not sent (use “Resend confirmation email”)'
   const rows = [
     ['Inquiry no.',     inquiry.inquiry_code],
     ['Name',            inquiry.full_name],
@@ -396,9 +396,18 @@ function ConfirmStatus({ inquiry, type, busy, onCancel, onConfirm }) {
 
 const isOpen = inq => inq.status !== 'Won' && inq.status !== 'Lost'
 const cancelledByCustomer = inq => inq.customer_answer === 'cancel'
+/* Online inquiries wait for the customer's answer in the email. Walk-in inquiries are not affected. */
+const needsAnswer = inq => inq.source !== 'walk_in' && !inq.customer_answer
+const linkExpired = inq => !!inq.respond_expires_at && parseDT(inq.respond_expires_at) < new Date()
+/* Why "Mark as won" is locked (null = allowed) */
+const wonLockReason = inq => cancelledByCustomer(inq) ? 'Cancelled'
+  : !needsAnswer(inq) ? null
+  : inq.email_status === 'sent' ? 'Awaiting reply' : 'Email not sent'
+/* Why "Mark as lost" is locked: only while the customer can still answer (link sent and not expired) */
+const lostLockReason = inq => needsAnswer(inq) && inq.email_status === 'sent' && !linkExpired(inq) ? 'Awaiting reply' : null
 
 /* Row actions: one "…" button that opens a small menu (drawn on top of everything, so it never hides behind the table) */
-function RowActions({ inq, onView, onWon, onLost }) {
+function RowActions({ inq, onView, onWon, onLost, onResend }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState(null)
   const btnRef = useRef(null)
@@ -407,7 +416,7 @@ function RowActions({ inq, onView, onWon, onLost }) {
   const place = useCallback(() => {
     const r = btnRef.current?.getBoundingClientRect()
     if (!r) return
-    const W = 184, H = isOpen(inq) ? 132 : 52
+    const W = 248, H = isOpen(inq) ? 172 : 52
     const below = window.innerHeight - r.bottom > H + 12
     setPos({ left: Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8)), top: below ? r.bottom + 6 : r.top - H - 6, width: W })
   }, [inq])
@@ -434,7 +443,13 @@ function RowActions({ inq, onView, onWon, onLost }) {
   }, [open, place])
 
   const pick = fn => () => { setOpen(false); fn() }
-  const item = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md text-left transition-colors focus-visible:outline-none'
+  const item = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md text-left whitespace-nowrap transition-colors focus-visible:outline-none'
+  const locked = (Icon, label, reason) => (
+    <div role="menuitem" aria-disabled="true" title="Unlocks after the customer answers the confirmation email" className={`${item} text-slate-400 cursor-not-allowed`}>
+      <Icon size={15} {...ICON} /> {label}
+      <span className={`ml-auto text-[10px] font-medium ${reason === 'Cancelled' ? 'text-red-500' : 'text-amber-600'}`}>{reason}</span>
+    </div>
+  )
 
   return (
     <>
@@ -450,19 +465,22 @@ function RowActions({ inq, onView, onWon, onLost }) {
           </button>
           {isOpen(inq) && <>
             <div className="my-1 h-px bg-slate-100" />
-            {cancelledByCustomer(inq) ? (
-              <div role="menuitem" aria-disabled="true" title="The customer cancelled this inquiry" className={`${item} text-slate-400 cursor-not-allowed`}>
-                <Trophy size={15} {...ICON} /> Mark as won
-                <span className="ml-auto text-[10px] font-medium text-red-500">Cancelled</span>
-              </div>
-            ) : (
+            {wonLockReason(inq) ? locked(Trophy, 'Mark as won', wonLockReason(inq)) : (
               <button role="menuitem" onClick={pick(onWon)} className={`${item} text-emerald-700 hover:bg-emerald-50`}>
                 <Trophy size={15} {...ICON} /> Mark as won
               </button>
             )}
-            <button role="menuitem" onClick={pick(onLost)} className={`${item} text-red-600 hover:bg-red-50`}>
-              <XCircle size={15} {...ICON} /> Mark as lost
-            </button>
+            {lostLockReason(inq) ? locked(XCircle, 'Mark as lost', lostLockReason(inq)) : (
+              <button role="menuitem" onClick={pick(onLost)} className={`${item} text-red-600 hover:bg-red-50`}>
+                <XCircle size={15} {...ICON} /> Mark as lost
+              </button>
+            )}
+            {needsAnswer(inq) && <>
+              <div className="my-1 h-px bg-slate-100" />
+              <button role="menuitem" onClick={pick(onResend)} className={`${item} text-slate-700 hover:bg-slate-50`}>
+                <Send size={15} {...ICON} className="text-slate-400" /> Resend confirmation email
+              </button>
+            </>}
           </>}
         </div>,
         document.body
@@ -662,6 +680,10 @@ export default function InquiriesPage() {
         showToast('The customer cancelled this inquiry, so it can’t be marked as won.', 'error')
         loadInquiries(); return
       }
+      if (fresh && wonLockReason(fresh)) {
+        showToast('Wait for the customer to click “Yes, proceed” in the email before marking it as won.', 'error')
+        loadInquiries(); return
+      }
     } catch { /* if the check fails, continue as before */ }
 
     try {
@@ -733,6 +755,15 @@ export default function InquiriesPage() {
       showToast(credMsg)
       setSelected(null); navigate('/admin/job-orders')
     } catch (err) { showToast(`Error: ${err.message}`, 'error') }
+  }
+
+  const resendEmail = async inq => {
+    try {
+      const d = await apiPost('/api/inquiries/resend.php', { id: inq.id })
+      if (!d.success) throw new Error(d.error)
+      showToast(`Confirmation email sent again to ${inq.email}`)
+      loadInquiries()
+    } catch (e) { showToast(e.message || 'Could not resend the email.', 'error') }
   }
 
   const runStatus = async (inq, id, label) => {
@@ -842,7 +873,8 @@ export default function InquiriesPage() {
                       <RowActions inq={inq}
                         onView={() => setSelected(inq)}
                         onWon={() => setConfirm({ inq, type: 'won' })}
-                        onLost={() => setConfirm({ inq, type: 'lost' })} />
+                        onLost={() => setConfirm({ inq, type: 'lost' })}
+                        onResend={() => resendEmail(inq)} />
                     </div>
                   </div>
                 </li>
@@ -886,7 +918,8 @@ export default function InquiriesPage() {
                           <RowActions inq={inq}
                             onView={() => setSelected(inq)}
                             onWon={() => setConfirm({ inq, type: 'won' })}
-                            onLost={() => setConfirm({ inq, type: 'lost' })} />
+                            onLost={() => setConfirm({ inq, type: 'lost' })}
+                            onResend={() => resendEmail(inq)} />
                         </div>
                       </td>
                     </tr>
