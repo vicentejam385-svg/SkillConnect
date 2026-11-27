@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../middleware/audit.php';
 require_once __DIR__ . '/../../helpers/job-order-status.php';
 require_once __DIR__ . '/../../helpers/job-offers.php';
 require_once __DIR__ . '/../../helpers/site-visits.php';
+require_once __DIR__ . '/../../helpers/holidays.php';
 
 handleCors();
 header('Content-Type: application/json');
@@ -113,6 +114,15 @@ if (!$before) {
     exit;
 }
 
+// ── Start date: no Saturday, Sunday or holiday (only checked when the start date changes) ──
+if (!empty($data['start_date']) && (string)$data['start_date'] !== (string)($before['start_date'] ?? '')) {
+    if ($why = phNonWorkingReason((string)$data['start_date'])) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => 'The start date can\'t be a Saturday, Sunday or holiday (' . $why . '). Pick a working day.']);
+        exit;
+    }
+}
+
 // ── Worker assignment rules ───────────────────────────────────────────────────
 $oldWorker = $before['worker_user_id'] ? (int)$before['worker_user_id'] : null;
 $newWorker = $oldWorker;
@@ -130,15 +140,21 @@ if ($directAssign) {
         echo json_encode(['success' => false, 'error' => 'Worker not found.']);
         exit;
     }
-    // While the job is still open to workers, the admin needs "Assign now anyway"
-    if (!$oldWorker && empty($data['assign_now'])) {
+    // Once a worker accepted (or was assigned), the worker is fixed
+    if ($oldWorker) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => 'The worker can\'t be changed after they accepted the job.']);
+        exit;
+    }
+    // While the job is still open to workers, the admin can't pick one: wait until no one accepted
+    if (!$oldWorker) {
         $offerBefore = jobOfferState($before);
         if ($offerBefore['state'] === 'waiting') {
             http_response_code(422);
             echo json_encode([
                 'success' => false,
                 'code'    => 'offer_open',
-                'error'   => 'Workers still have time to accept this job. Use "Assign now anyway" to pick a worker yourself.',
+                'error'   => 'Workers still have time to accept this job. You can pick a worker only if no one accepts.',
             ]);
             exit;
         }

@@ -34,6 +34,7 @@ try {
     if ((int)$jo['status_id'] !== JO_STATUS_SCHEDULED) aoFail('The automatic date is only for job orders that are Scheduled.');
     if (empty($jo['worker_user_id'])) aoFail('Assign a worker to this job order first.');
     if (empty($jo['start_date']) || empty($jo['end_date'])) aoFail('Set the start and end dates of the job order first.');
+    if (svNoVisits($jo)) aoFail(SV_NO_VISITS_MSG);
 
     $res = svAutoOcular($pdo, $jobId);
     if (!$res['ok']) {

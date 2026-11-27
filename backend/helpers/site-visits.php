@@ -69,19 +69,27 @@ function svLoad(PDO $pdo, int $id): ?array
 function svLoadJob(PDO $pdo, int $id): ?array
 {
     $st = $pdo->prepare(
-        "SELECT jo.*, sp.id AS service_id, sp.name AS service,
+        "SELECT jo.*, sp.id AS service_id, sp.name AS service, ct.name AS contract_name,
                 COALESCE(NULLIF(c.address, ''), i.address) AS address,
                 TRIM(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) AS client_name
          FROM job_orders jo
          LEFT JOIN inquiries i ON i.id = jo.inquiry_id
          LEFT JOIN users c     ON c.id = jo.client_user_id
          LEFT JOIN specializations sp ON sp.name = COALESCE(NULLIF(i.reason, ''), jo.description)
+         LEFT JOIN contract_types ct  ON ct.id = jo.contract_type_id
          WHERE jo.id = ?"
     );
     $st->execute([$id]);
     $row = $st->fetch(PDO::FETCH_ASSOC);
     return $row ?: null;
 }
+
+/** A 1-day job has no site visits at all (no ocular, no progress). Site visits start from 2-day contracts. */
+function svNoVisits(array $jo): bool
+{
+    return preg_match('/^\s*1\s*day\s*$/i', (string)($jo['contract_name'] ?? '')) === 1;
+}
+const SV_NO_VISITS_MSG = 'Site visits are not available for 1-day contracts. They start from 2-day contracts.';
 
 /** "2026-12-01T09:00" or "2026-12-01 09:00:00" -> "2026-12-01 09:00:00", or null. */
 function svNormalizeTime($value): ?string
@@ -435,6 +443,7 @@ function svAutoOcular(PDO $pdo, int $jobOrderId): array
         if (!$jo || (int)$jo['status_id'] !== JO_STATUS_SCHEDULED || empty($jo['worker_user_id'])) {
             return ['ok' => false, 'reason' => 'not_scheduled'];
         }
+        if (svNoVisits($jo)) return ['ok' => false, 'reason' => 'one_day'];   // 1-day job: no ocular visit
         $open = implode(',', array_merge(svOpenStatuses(), [SV_COMPLETE]));
         $ex = $pdo->prepare("SELECT id FROM schedules WHERE job_order_id = ? AND visit_type = 'ocular' AND status_id IN ($open) LIMIT 1");
         $ex->execute([$jobOrderId]);

@@ -229,7 +229,8 @@ export default function SchedulesPage() {
     navigate('/admin/scheduling', { replace: true, state: {} })
   }, [planFor]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visitJobs = useMemo(() => jobOrders.filter(jo => VISIT_JOB_STATUSES.includes(jo.status)), [jobOrders])
+  // 1-day jobs have no site visits; visits start from 2-day contracts
+  const visitJobs = useMemo(() => jobOrders.filter(jo => VISIT_JOB_STATUSES.includes(jo.status) && !/^\s*1\s*day\s*$/i.test(String(jo.contract_type || ''))), [jobOrders])
   const viewVisit = visits.find(v => v.id === viewId) || null
 
   // Calendar
@@ -718,7 +719,7 @@ function VisitForm({ initial, jobs, onClose, onSaved, onError }) {
             <Chev />
           </div>
           {fieldError('job')}
-          {!jobs.length && <p className="text-xs text-slate-500 mt-1.5">Only job orders that are Under Review, Scheduled or In Progress can have a site visit.</p>}
+          {!jobs.length && <p className="text-xs text-slate-500 mt-1.5">Only job orders that are Under Review, Scheduled or In Progress can have a site visit. 1-day jobs have no site visits.</p>}
           {job && (
             <p className="text-xs text-slate-500 mt-1.5 flex items-start gap-1.5"><MapPin size={12} {...ICON} className="mt-0.5 flex-shrink-0" />{job.client_address || 'No address'}</p>
           )}

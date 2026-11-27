@@ -41,6 +41,8 @@ try {
     $jo = svLoadJob($pdo, $jobId);
     if (!$jo) svFail('Job order not found.', 404);
 
+    if (svNoVisits($jo)) svFail(SV_NO_VISITS_MSG);
+
     $allowed = svAllowedTypes((int)$jo['status_id']);
     if (!$allowed) svFail('Site visits can be planned when the job order is Under Review, Scheduled or In Progress.');
     if (!in_array($type, $allowed, true)) {

@@ -894,6 +894,103 @@ export default function JobOrdersPage() {
   )
 }
 
+// ── Philippine holidays (from the server, cached for the session) ──
+let HOLIDAY_CACHE = null
+function useHolidays() {
+  const [map, setMap] = useState(HOLIDAY_CACHE || {})
+  useEffect(() => {
+    if (HOLIDAY_CACHE) return
+    const y = new Date().getFullYear()
+    apiGet('/api/holidays/list.php', { from: y, to: y + 2 })
+      .then(d => { HOLIDAY_CACHE = Object.fromEntries((d.holidays || []).map(h => [h.date, h.name])); setMap(HOLIDAY_CACHE) })
+      .catch(() => {})
+  }, [])
+  return map
+}
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const isOneDayContract = name => /^\s*1\s*day\s*$/i.test(String(name || ''))
+
+/* Calendar for the start date: Saturdays, Sundays, holidays, past days and the worker's busy days are greyed out */
+function StartDatePicker({ value, onChange, blockReason, disabled, invalid, placeholder = 'Pick a start date' }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
+  const base = value ? new Date(value + 'T00:00:00') : new Date()
+  const [month, setMonth] = useState(new Date(base.getFullYear(), base.getMonth(), 1))
+  const btnRef = useRef(null), popRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const r = btnRef.current.getBoundingClientRect()
+    const W = 296, H = 352
+    const below = window.innerHeight - r.bottom > H + 8
+    setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - W - 8)), top: below ? r.bottom + 6 : Math.max(8, r.top - H - 6), width: W })
+    const away = e => { if (!popRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setOpen(false) }
+    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
+    document.addEventListener('mousedown', away)
+    window.addEventListener('keydown', esc, true)
+    return () => { document.removeEventListener('mousedown', away); window.removeEventListener('keydown', esc, true) }
+  }, [open])
+
+  const first = new Date(month.getFullYear(), month.getMonth(), 1)
+  const days = []
+  for (let i = 0; i < first.getDay(); i++) days.push(null)
+  for (let d = 1; d <= new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate(); d++) days.push(new Date(month.getFullYear(), month.getMonth(), d))
+  const todayStr = ymd(new Date())
+
+  return (
+    <>
+      <button ref={btnRef} type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+        className={`w-full h-10 px-3 flex items-center justify-between gap-2 text-sm border rounded-lg shadow-sm transition-colors text-left
+          ${invalid ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white hover:border-slate-300'}
+          ${open ? 'border-emerald-500 ring-2 ring-emerald-500/20' : ''}
+          disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}>
+        <span className={value ? 'text-slate-900 tabular-nums' : 'text-slate-400'}>
+          {value ? new Date(value + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : placeholder}
+        </span>
+        <CalendarDays size={15} {...ICON} className="text-slate-400 flex-shrink-0" />
+      </button>
+      {open && pos && createPortal(
+        <div ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+          className="sc-pop z-[1000] bg-white rounded-xl shadow-xl ring-1 ring-slate-900/10 p-3 select-none">
+          <div className="flex items-center justify-between mb-2">
+            <button type="button" aria-label="Previous month" onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className={iconBtn}><ChevronLeft size={16} {...ICON} /></button>
+            <p className="text-sm font-semibold text-slate-900">{month.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}</p>
+            <button type="button" aria-label="Next month" onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className={iconBtn}><ChevronRight size={16} {...ICON} /></button>
+          </div>
+          <div className="grid grid-cols-7 text-center text-[11px] font-medium text-slate-400 mb-1">
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <span key={d} className="py-1">{d}</span>)}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5">
+            {days.map((d, i) => {
+              if (!d) return <span key={i} />
+              const s = ymd(d)
+              const why = blockReason(s)
+              const sel = s === value
+              return (
+                <button key={s} type="button" disabled={!!why} title={why || undefined}
+                  onClick={() => { onChange(s); setOpen(false) }}
+                  className={`relative h-9 rounded-md text-sm tabular-nums transition-colors
+                    ${sel ? 'bg-emerald-600 text-white font-semibold'
+                      : why ? 'text-slate-300 bg-slate-50 cursor-not-allowed'
+                      : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'}
+                    ${s === todayStr && !sel ? 'ring-1 ring-inset ring-emerald-300' : ''}`}>
+                  {d.getDate()}
+                  {why && why !== 'Weekend' && why !== 'Past date' && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-300" />}
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-slate-100" />Weekend / past</span>
+            <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-red-300" />Holiday or worker busy</span>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
 // ── Create / edit modal ────────────────────────────────────────
 function JobOrderModal({
   form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange,
@@ -908,6 +1005,7 @@ function JobOrderModal({
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [closeForm])
   const [tried, setTried] = useState(false)
+  const holidays = useHolidays()
 
   const inputCls = 'w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-colors'
   const selectCls = `${inputCls} appearance-none pr-9 cursor-pointer`
@@ -950,6 +1048,16 @@ function JobOrderModal({
     while (cur <= end) { busyDates.add(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1) }
   })
   const startBusy = form.start_date && busyDates.has(form.start_date)
+  // Start date rules: a working day (no Saturday, Sunday or holiday), not in the past, worker free
+  const minStart = nextAvail || (today ? ymd(today) : ymd(new Date()))
+  const startBlock = s => {
+    const d = new Date(s + 'T00:00:00')
+    if (s < minStart) return 'Past date'
+    if (d.getDay() === 0 || d.getDay() === 6) return 'Weekend'
+    if (holidays[s]) return `Holiday: ${holidays[s]}`
+    if (busyDates.has(s)) return 'Worker is busy'
+    return null
+  }
   const endBusy   = form.end_date && busyDates.has(form.end_date)
 
   // Status options (unchanged rules)
@@ -994,6 +1102,8 @@ function JobOrderModal({
   if (needTerms) {
     if (!form.contract_type_id)  missing.contract = 'Choose a contract type.'
     if (!form.start_date)        missing.start    = 'Pick a start date.'
+    else if (form.start_date !== editTarget?.start_date && ['Weekend'].includes(startBlock(form.start_date)) ) missing.start = 'The start date can’t be a Saturday or Sunday.'
+    else if (form.start_date !== editTarget?.start_date && String(startBlock(form.start_date) || '').startsWith('Holiday')) missing.start = `The start date can’t be a holiday (${holidays[form.start_date]}).`
     if (!form.end_date)          missing.end      = 'Pick an end date.'
     else if (form.start_date && form.end_date <= form.start_date) missing.end = 'End date must be after the start date.'
   }
@@ -1190,25 +1300,28 @@ function JobOrderModal({
               </div>
               <div>
                 <label className={labelCls}>Start date</label>
-                <input type="date" disabled={datesLocked}
-                  className={`${inputCls} ${startBusy || err('start') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
+                <StartDatePicker
                   value={form.start_date}
-                  min={nextAvail || (today ? today.toISOString().slice(0, 10) : undefined)}
-                  onChange={e => {
-                    f('start_date', e.target.value)
+                  disabled={datesLocked}
+                  invalid={!!(startBusy || err('start') || (form.start_date && startBlock(form.start_date) && form.start_date !== editTarget?.start_date))}
+                  blockReason={startBlock}
+                  onChange={v => {
+                    f('start_date', v)
                     const ct = contracts.find(c => String(c.id) === String(form.contract_type_id))
-                    if (ct && e.target.value) { const end = calcEndDate(e.target.value, ct.name); if (end) f('end_date', end) }
+                    if (ct) { const end = calcEndDate(v, ct.name); if (end) f('end_date', end) }
                   }} />
                 {startBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
                 {!startBusy && fieldError(err('start'))}
               </div>
               <div>
                 <label className={labelCls}>End date</label>
-                <input type="date" disabled={datesLocked}
-                  className={`${inputCls} ${endBusy || err('end') ? errCls : ''} disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed`}
-                  value={form.end_date}
-                  min={form.start_date || (today ? today.toISOString().slice(0, 10) : undefined)}
-                  onChange={e => f('end_date', e.target.value)} />
+                <div className={`w-full h-10 px-3 flex items-center justify-between gap-2 text-sm rounded-lg border bg-slate-50 cursor-not-allowed ${endBusy || err('end') ? 'border-red-300' : 'border-slate-200'}`}
+                  title="Set automatically from the start date and the contract type">
+                  <span className={form.end_date ? 'text-slate-700 tabular-nums' : 'text-slate-400'}>
+                    {form.end_date ? new Date(form.end_date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Automatic'}
+                  </span>
+                  <Lock size={14} {...ICON} className="text-slate-400 flex-shrink-0" />
+                </div>
                 {endBusy && <p className="text-xs text-red-600 mt-1.5">Worker is busy on this date.</p>}
                 {!endBusy && fieldError(err('end'))}
               </div>
@@ -1219,9 +1332,14 @@ function JobOrderModal({
                 Suggested contract for {form._service || 'this service'}: <span className="font-medium">{selectedContract.name}</span>. You can change it.
               </p>
             )}
+            {selectedContract && isOneDayContract(selectedContract.name) && (
+              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1.5">
+                <Info size={12} {...ICON} />1-day contracts have no site visits. Site visits start from 2-day contracts.
+              </p>
+            )}
             {selectedContract && form.start_date && (
               <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
-                <Clock size={12} {...ICON} />End date is set from the {selectedContract.name} contract. You can still change it.
+                <Clock size={12} {...ICON} />The end date is set automatically from the {selectedContract.name} contract.
               </p>
             )}
             {nextAvail && form.worker_contact_id && (
@@ -1290,7 +1408,7 @@ function JobOrderModal({
             ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertTriangle size={14} {...ICON} />Fix the date conflict to save.</p>
             : tried && Object.keys(missing).length
               ? <p className="hidden sm:flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={14} {...ICON} />Fill in the required fields to save.</p>
-              : editTarget && [20, 21, 22, 17].includes(savedId)
+              : editTarget && [20, 21, 22, 17].includes(savedId) && !isOneDayContract(selectedContract?.name)
                 ? <button type="button" onClick={() => onPlanVisit(editTarget)} className={`${btnSecondary} w-full sm:w-auto !border-emerald-200 !text-emerald-700 hover:!bg-emerald-50`}>
                     <CalendarClock size={16} {...ICON} />{savedId === 20 ? 'Plan ocular visit' : 'Plan site visit'}
                   </button>
@@ -1401,6 +1519,6 @@ function CompletionPanel({ jo, confirmJob }) {
           )
         )}
       </div>
-    </section> 
+    </section>
   )
 }
