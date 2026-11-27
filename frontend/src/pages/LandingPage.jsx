@@ -269,9 +269,8 @@ function InquiryForm({ initialReason = '', onSuccess }) {
       </div>
       <div className="sm:col-span-2">
         <label className={label}>Province {req}</label>
-        <div className="w-full h-11 px-3.5 text-sm rounded-lg bg-slate-50 text-slate-700 border border-slate-200 flex items-center justify-between cursor-default" aria-readonly="true">
-          <span>Metro Manila (NCR)</span>
-          <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200 rounded-full px-2 py-0.5">Service area</span>
+        <div className="w-full h-11 px-3.5 text-sm rounded-lg bg-slate-50 text-slate-700 border border-slate-200 flex items-center cursor-default" aria-readonly="true">
+          Metro Manila (NCR)
         </div>
         <p className="mt-1.5 text-xs text-slate-500">We currently accept projects within Metro Manila only.</p>
         <Err k="province" />
@@ -564,7 +563,7 @@ export default function LandingPage() {
               })}
             </div>
             <button onClick={() => navigate('/login')}
-              className={`hidden sm:inline-flex items-center h-9 px-4 rounded-lg text-sm font-medium transition-colors ${solidNav ? 'text-slate-700 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}>
+              className="hidden sm:inline-flex items-center h-9 px-4 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2">
               Sign in
             </button>
             <button onClick={() => setMobileMenuOpen(o => !o)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}
@@ -583,7 +582,7 @@ export default function LandingPage() {
                   {l.label}
                 </button>
               ))}
-              <button onClick={() => navigate('/login')} className="w-full h-11 mt-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50">Sign in</button>
+              <button onClick={() => navigate('/login')} className="w-full h-11 mt-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold text-white transition-colors">Sign in</button>
             </div>
           </div>
         </div>
