@@ -814,10 +814,12 @@ export default function InquiriesPage() {
             <ul className="sm:hidden divide-y divide-slate-100">
               {pageItems.map((inq, i) => (
                 <li key={inq.id} className="sc-rise px-4 py-3" style={{ animationDelay: `${i * 30}ms` }}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={inq.full_name} seed={inq.id} size="w-10 h-10" text="text-xs" />
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-900 truncate">{inq.full_name}</p>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">{inq.inquiry_code} · {inq.reason || '—'} · {fmtDate(parseDT(inq.created_at))}</p>
+                      <p className="text-xs text-slate-600 truncate mt-0.5">{inq.reason || '—'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{inq.inquiry_code} · {timeAgo(parseDT(inq.created_at))}</p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <StatusBadge status={inq.status} />
@@ -835,8 +837,7 @@ export default function InquiriesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-500 bg-slate-50/80 border-b border-slate-100">
-                    <th className="px-5 py-2.5 font-medium">Inquiry no.</th>
-                    <SortHeader label="Name"     sortKey="full_name"  sort={sort} onSort={onSort} />
+                    <SortHeader label="Inquirer" sortKey="full_name"  sort={sort} onSort={onSort} />
                     <SortHeader label="Service"  sortKey="reason"     sort={sort} onSort={onSort} />
                     <SortHeader label="Received" sortKey="created_at" sort={sort} onSort={onSort} />
                     <SortHeader label="Status"   sortKey="status"     sort={sort} onSort={onSort} />
@@ -846,10 +847,23 @@ export default function InquiriesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {pageItems.map((inq, i) => (
                     <tr key={inq.id} className="sc-rise hover:bg-slate-50/70 transition-colors" style={{ animationDelay: `${i * 25}ms` }}>
-                      <td className="px-5 py-3 text-slate-500 tabular-nums whitespace-nowrap">{inq.inquiry_code}</td>
-                      <td className="px-5 py-3 font-medium text-slate-900 whitespace-nowrap">{inq.full_name}</td>
-                      <td className="px-5 py-3 text-slate-700 max-w-[200px] truncate">{inq.reason || '—'}</td>
-                      <td className="px-5 py-3 text-slate-700 tabular-nums whitespace-nowrap">{fmtDate(parseDT(inq.created_at))}</td>
+                      <td className="px-5 py-3">
+                        <button onClick={() => setSelected(inq)} className="group flex items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                          <Avatar name={inq.full_name} seed={inq.id} size="w-9 h-9" text="text-xs" />
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-2">
+                              <span className="font-medium text-slate-900 group-hover:text-emerald-700 transition-colors whitespace-nowrap">{inq.full_name}</span>
+                              {inq.status === 'New' && <span className="w-1.5 h-1.5 rounded-full bg-sky-500" title="Awaiting review" />}
+                            </span>
+                            <span className="block text-xs text-slate-500 tabular-nums">{inq.inquiry_code}</span>
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-5 py-3 text-slate-700 max-w-[220px] truncate">{inq.reason || '—'}</td>
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        <p className="text-slate-700 tabular-nums">{fmtDate(parseDT(inq.created_at))}</p>
+                        <p className="text-xs text-slate-500">{timeAgo(parseDT(inq.created_at))}</p>
+                      </td>
                       <td className="px-5 py-3"><StatusBadge status={inq.status} /></td>
                       <td className="px-5 py-3">
                         <div className="flex justify-end">
