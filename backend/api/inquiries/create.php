@@ -101,6 +101,21 @@ if (!preg_match($nameRegex, trim($data['last_name']))) {
     echo json_encode(['success' => false, 'error' => 'Last name contains invalid characters.']);
     exit;
 }
+// Middle name is optional; if given it follows the same rules as the other names
+$middleName = trim(preg_replace('/\s+/', ' ', (string)($data['middle_name'] ?? '')));
+if ($middleName !== '' && !preg_match($nameRegex, $middleName)) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'error' => 'Middle name contains invalid characters.']);
+    exit;
+}
+// Names must contain letters, not only spaces / dots / hyphens
+foreach (['First name' => $data['first_name'], 'Last name' => $data['last_name'], 'Middle name' => $middleName] as $lbl => $v) {
+    if (trim($v) !== '' && !preg_match('/\p{L}.*\p{L}/u', $v)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'error' => $lbl . ' must have at least 2 letters.']);
+        exit;
+    }
+}
 if (!empty($data['mobile'])) $data['mobile'] = preg_replace('/[\s\-]+/', '', trim($data['mobile']));
 if (!empty($data['mobile']) && !preg_match($mobileRegex, $data['mobile'])) {
     http_response_code(422);
@@ -117,13 +132,14 @@ if (!empty($data['email']) && !preg_match($emailRegex, $data['email'])) {
 try {
     $stmt = $pdo->prepare("
         INSERT INTO inquiries
-            (user_id, first_name, last_name, email, address, phone, mobile, description, reason, status_id, source)
+            (user_id, first_name, middle_name, last_name, email, address, phone, mobile, description, reason, status_id, source)
         VALUES
-            (:user_id, :first_name, :last_name, :email, :address, :phone, :mobile, :description, :reason, :status_id, :source)
+            (:user_id, :first_name, :middle_name, :last_name, :email, :address, :phone, :mobile, :description, :reason, :status_id, :source)
     ");
 
     $stmt->execute([
         ':first_name'  => trim($data['first_name']),
+        ':middle_name' => $middleName !== '' ? $middleName : null,
         ':last_name'   => trim($data['last_name']),
         ':email'       => !empty($data['email'])       ? trim($data['email'])       : null,
         ':address'     => !empty($data['address'])     ? trim($data['address'])     : null,
@@ -140,7 +156,7 @@ try {
 
     $rowStmt = $pdo->prepare(
         "SELECT i.*, i.user_id AS contact_id,
-                CONCAT(i.first_name,' ',i.last_name) AS full_name,
+                CONCAT_WS(' ', i.first_name, NULLIF(i.middle_name, ''), i.last_name) AS full_name,
                 s.label AS status
          FROM inquiries i LEFT JOIN statuses s ON s.id = i.status_id
          WHERE i.id = ?"

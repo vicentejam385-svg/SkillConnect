@@ -60,10 +60,10 @@ function Reveal({ children, delay = 0, className = '', as: Tag = 'div' }) {
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    if (prefersReduced()) { setShown(true); return }
+    if (prefersReduced() || typeof IntersectionObserver === 'undefined') { setShown(true); return }
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) { setShown(true); io.disconnect() }
-    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' })
+    }, { threshold: 0.01, rootMargin: '0px 0px -24px 0px' })
     io.observe(el)
     return () => io.disconnect()
   }, [])
@@ -113,16 +113,29 @@ const REASONS = [
   'Interior Design', 'Project Management',
 ]
 
-function InquiryForm({ initialReason = '' }) {
+/* Input cleaners: block numbers / symbols as the user types, no leading or double spaces */
+const LETTERS = 'A-Za-zÀ-ÖØ-öø-ÿ'
+const cleanName   = v => v.replace(new RegExp(`[^${LETTERS}\\s'\\-.]`, 'g'), '').replace(/^\s+/, '').replace(/\s{2,}/g, ' ').slice(0, 50)
+const cleanSuffix = v => v.replace(/[^A-Za-z.]/g, '').slice(0, 4)
+const cleanStreet = v => v.replace(/[^A-Za-z0-9À-ÖØ-öø-ÿ\s#.,'\-\/]/g, '').replace(/^\s+/, '').replace(/\s{2,}/g, ' ').slice(0, 150)
+const NAME_OK   = new RegExp(`^[${LETTERS}]+(?:(?:\\. ?|[\\s'\\-])[${LETTERS}]+)*\\.?$`)
+const SUFFIX_OK = /^(Jr|Sr|II|III|IV|V)\.?$/i
+const EMPTY_FORM = {
+  first_name: '', middle_name: '', last_name: '', suffix: '',
+  email: '', mobile: '+63',
+  province: '1300000000', city: '', barangay: '', house_street: '',  // Metro Manila only
+  description: '', reason: '',
+}
+
+function InquiryForm({ initialReason = '', onSuccess }) {
   const [form, setForm] = useState({
-    first_name: '', middle_initial: '', last_name: '', suffix: '',
+    first_name: '', middle_name: '', last_name: '', suffix: '',
     email: '', mobile: '+63',
-    province: '', city: '', barangay: '', house_street: '',
+    province: '1300000000', city: '', barangay: '', house_street: '',  // Metro Manila only
     description: '', reason: REASONS.includes(initialReason) ? initialReason : '',
   })
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
-  const [success, setSuccess] = useState(false)
   const [apiError, setApiError] = useState('')
 
   const f = (key, val) => { setForm(p => ({ ...p, [key]: val })); setErrors(e => ({ ...e, [key]: undefined })) }
@@ -136,12 +149,16 @@ function InquiryForm({ initialReason = '' }) {
 
   const validate = () => {
     const e = {}
-    if (!form.first_name.trim()) e.first_name = 'First name is required.'
-    else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.first_name.trim())) e.first_name = 'First name must contain letters only, with no repeated or trailing hyphens.'
-    if (!form.last_name.trim()) e.last_name = 'Last name is required.'
-    else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ]+(['\-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/.test(form.last_name.trim())) e.last_name = 'Last name must contain letters only, with no repeated or trailing hyphens.'
-    // Middle initial is optional (some people have no middle name)
-    if (form.middle_initial.trim() && !/^[A-Za-z]{1,2}\.?$/.test(form.middle_initial.trim())) e.middle_initial = 'Enter a valid middle initial (e.g. A or A.), or leave it blank.'
+    const nameErr = (v, what, required) => {
+      const t = v.trim()
+      if (!t) return required ? `${what} is required.` : undefined
+      if (t.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '').length < 2) return `${what} must have at least 2 letters.`
+      if (!NAME_OK.test(t)) return `${what} can only contain letters, single spaces, hyphens ( - ) and apostrophes ( ' ).`
+    }
+    e.first_name  = nameErr(form.first_name, 'First name', true)
+    e.middle_name = nameErr(form.middle_name, 'Middle name', false)   // optional: some people have no middle name
+    e.last_name   = nameErr(form.last_name, 'Last name', true)
+    if (form.suffix.trim() && !SUFFIX_OK.test(form.suffix.trim())) e.suffix = 'Use Jr., Sr., II, III, IV or V.'
     const emailErr = validateEmail(form.email, true)
     if (emailErr) e.email = emailErr === 'Email is required.' ? 'Email address is required.' : emailErr
     const mobileErr = validateMobile(form.mobile === '+63' ? '' : form.mobile, true)
@@ -149,9 +166,12 @@ function InquiryForm({ initialReason = '' }) {
     if (!form.province) e.province = 'Province is required.'
     if (!form.city) e.city = 'City / Municipality is required.'
     if (!form.barangay) e.barangay = 'Barangay is required.'
-    if (!form.house_street.trim()) e.house_street = 'House No. & Street is required.'
+    if (!form.house_street.trim()) e.house_street = 'House no. and street is required.'
+    else if (!/[A-Za-z]/.test(form.house_street)) e.house_street = 'Include the street name, not just numbers.'
+    else if (form.house_street.trim().length < 5) e.house_street = 'Enter the full house no. and street.'
     if (!form.reason) e.reason = 'Please select a service.'
     else if (!REASONS.includes(form.reason)) e.reason = 'Please select a service from the list.'
+    Object.keys(e).forEach(k => e[k] === undefined && delete e[k])
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -164,12 +184,18 @@ function InquiryForm({ initialReason = '' }) {
       const res = await fetch('https://saddlebrown-swan-877763.hostingersite.com/backend/api/inquiries/create.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, address: buildAddress() }),
+        body: JSON.stringify({
+          ...form,
+          first_name: form.first_name.trim(), middle_name: form.middle_name.trim(),
+          last_name: form.last_name.trim(), suffix: form.suffix.trim(),
+          email: form.email.trim(), house_street: form.house_street.trim(),
+          address: buildAddress(),
+        }),
       })
       const data = await res.json()
       if (!data.success) throw new Error(data.error)
-      setSuccess(true)
-      setForm({ first_name: '', middle_initial: '', last_name: '', suffix: '', email: '', mobile: '+63', province: '', city: '', barangay: '', house_street: '', description: '', reason: '' })
+      setForm(EMPTY_FORM)
+      onSuccess?.()
     } catch (err) {
       setApiError(err.message || 'Submission failed. Please try again.')
     } finally {
@@ -184,19 +210,6 @@ function InquiryForm({ initialReason = '' }) {
   const Err = ({ k }) => errors[k] ? <p className="text-red-600 text-xs mt-1.5 flex items-start gap-1"><AlertCircle size={12} {...ICON} className="mt-0.5 flex-shrink-0" />{errors[k]}</p> : null
   const Chev = () => <ChevronDown size={16} {...ICON} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
 
-  if (success) return (
-    <div className="lp-up flex flex-col items-center justify-center text-center py-14 px-4">
-      <div className="w-16 h-16 rounded-full bg-emerald-50 ring-8 ring-emerald-50/60 flex items-center justify-center">
-        <CheckCircle2 size={32} {...ICON} className="text-emerald-600" />
-      </div>
-      <h3 className="mt-6 text-2xl font-semibold text-slate-900">Inquiry received</h3>
-      <p className="mt-2 text-slate-600 max-w-sm">Thank you. Our team will review your project and get back to you within one business day.</p>
-      <button onClick={() => setSuccess(false)} className="mt-6 h-10 px-5 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-        Submit another inquiry
-      </button>
-    </div>
-  )
-
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
       {apiError && (
@@ -207,23 +220,24 @@ function InquiryForm({ initialReason = '' }) {
 
       <div>
         <label className={label}>First name {req}</label>
-        <input className={input('first_name')} value={form.first_name} onChange={e => f('first_name', e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s'\-]/g, ''))} placeholder="Juan" />
+        <input className={input('first_name')} value={form.first_name} onChange={e => f('first_name', cleanName(e.target.value))} placeholder="Juan" autoComplete="given-name" maxLength={50} />
         <Err k="first_name" />
       </div>
       <div>
-        <label className={label}>Middle initial <span className="text-xs font-normal text-slate-400">(optional)</span></label>
-        <input className={input('middle_initial')} value={form.middle_initial} onChange={e => f('middle_initial', e.target.value)} placeholder="A." maxLength={3} />
-        <Err k="middle_initial" />
+        <label className={label}>Middle name <span className="text-xs font-normal text-slate-400">(optional)</span></label>
+        <input className={input('middle_name')} value={form.middle_name} onChange={e => f('middle_name', cleanName(e.target.value))} placeholder="Santos" autoComplete="additional-name" maxLength={50} />
+        <Err k="middle_name" />
       </div>
       <div className="flex gap-3">
         <div className="flex-1 min-w-0">
           <label className={label}>Last name {req}</label>
-          <input className={input('last_name')} value={form.last_name} onChange={e => f('last_name', e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s'\-]/g, ''))} placeholder="Dela Cruz" />
+          <input className={input('last_name')} value={form.last_name} onChange={e => f('last_name', cleanName(e.target.value))} placeholder="Dela Cruz" autoComplete="family-name" maxLength={50} />
           <Err k="last_name" />
+          <Err k="suffix" />
         </div>
         <div className="w-24">
           <label className={label}>Suffix</label>
-          <input className={input('suffix')} value={form.suffix} onChange={e => f('suffix', e.target.value)} placeholder="Jr." maxLength={10} />
+          <input className={input('suffix')} value={form.suffix} onChange={e => f('suffix', cleanSuffix(e.target.value))} placeholder="Jr." maxLength={4} />
         </div>
       </div>
       <div>
@@ -246,7 +260,7 @@ function InquiryForm({ initialReason = '' }) {
       </div>
       <div className="sm:col-span-2">
         <label className={label}>Email address {req}</label>
-        <input className={input('email')} type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder="name@email.com" />
+        <input className={input('email')} type="email" value={form.email} onChange={e => f('email', e.target.value.replace(/\s/g, '').slice(0, 254))} placeholder="name@email.com" autoComplete="email" />
         <Err k="email" />
       </div>
 
@@ -255,14 +269,11 @@ function InquiryForm({ initialReason = '' }) {
       </div>
       <div className="sm:col-span-2">
         <label className={label}>Province {req}</label>
-        <div className="relative">
-          <select className={`${input('province')} appearance-none pr-9 cursor-pointer`} value={form.province}
-            onChange={e => { setForm(p => ({ ...p, province: e.target.value, city: '', barangay: '' })); setErrors(er => ({ ...er, province: undefined })) }}>
-            <option value="">Select province</option>
-            <option value="1300000000">Metro Manila (NCR)</option>
-          </select>
-          <Chev />
+        <div className="w-full h-11 px-3.5 text-sm rounded-lg bg-slate-50 text-slate-700 border border-slate-200 flex items-center justify-between cursor-default" aria-readonly="true">
+          <span>Metro Manila (NCR)</span>
+          <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200 rounded-full px-2 py-0.5">Service area</span>
         </div>
+        <p className="mt-1.5 text-xs text-slate-500">We currently accept projects within Metro Manila only.</p>
         <Err k="province" />
       </div>
       <div>
@@ -290,7 +301,7 @@ function InquiryForm({ initialReason = '' }) {
       </div>
       <div className="sm:col-span-2">
         <label className={label}>House no. and street {req}</label>
-        <input className={input('house_street')} value={form.house_street} onChange={e => f('house_street', e.target.value)} placeholder="123 Rizal Street" />
+        <input className={input('house_street')} value={form.house_street} onChange={e => f('house_street', cleanStreet(e.target.value))} placeholder="123 Rizal Street" autoComplete="address-line1" maxLength={150} />
         <Err k="house_street" />
       </div>
 
@@ -402,6 +413,7 @@ function ServicesSection({ onInquire }) {
 
 /* ── Inquiry popup: bottom sheet on phones, centered on desktop ── */
 function InquiryModal({ onClose, service }) {
+  const [done, setDone] = useState(false)
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
@@ -409,6 +421,40 @@ function InquiryModal({ onClose, service }) {
     document.body.style.overflow = 'hidden'
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [onClose])
+
+  if (done) return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="lp-fade absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]" onClick={onClose} />
+      <div role="alertdialog" aria-modal="true" aria-labelledby="inq-done-title"
+        className="lp-sheet relative w-full max-w-md bg-white rounded-3xl shadow-2xl px-6 sm:px-8 pt-8 pb-6 text-center">
+        <button onClick={onClose} aria-label="Close" className="absolute right-3 top-3 p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+          <X size={18} {...ICON} />
+        </button>
+        <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 ring-8 ring-emerald-50/60 flex items-center justify-center">
+          <CheckCircle2 size={32} {...ICON} className="text-emerald-600" />
+        </div>
+        <h3 id="inq-done-title" className="mt-5 text-xl sm:text-2xl font-semibold text-slate-900">Inquiry submitted</h3>
+        <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+          Thank you! We received your inquiry and sent a confirmation to your email and mobile number. Our team will get back to you within one business day.
+        </p>
+        <div className="mt-5 rounded-2xl bg-slate-50 ring-1 ring-slate-200 p-4 text-left">
+          <p className="text-sm font-medium text-slate-900">If you have any concerns, kindly contact us:</p>
+          <a href={`mailto:${CONTACTS[0].lines[0]}`} className="mt-3 flex items-center gap-3 text-sm text-slate-700 hover:text-emerald-700 transition-colors">
+            <span className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 text-emerald-600 flex items-center justify-center flex-shrink-0"><Mail size={15} {...ICON} /></span>
+            <span className="break-all">{CONTACTS[0].lines[0]}</span>
+          </a>
+          <a href={`tel:${CONTACTS[1].lines[0].replace(/\s/g, '')}`} className="mt-2 flex items-center gap-3 text-sm text-slate-700 hover:text-emerald-700 transition-colors">
+            <span className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 text-emerald-600 flex items-center justify-center flex-shrink-0"><Phone size={15} {...ICON} /></span>
+            <span>{CONTACTS[1].lines[0]}</span>
+          </a>
+        </div>
+        <button onClick={onClose} autoFocus
+          className="mt-6 w-full h-11 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2">
+          Done
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4">
@@ -429,7 +475,7 @@ function InquiryModal({ onClose, service }) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6">
-          <InquiryForm initialReason={service} />
+          <InquiryForm initialReason={service} onSuccess={() => setDone(true)} />
         </div>
       </div>
     </div>
@@ -544,7 +590,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ══════════════ HERO ══════════════ */}
-      <section id="home" className="relative min-h-[86vh] flex items-center overflow-hidden bg-slate-900">
+      <section id="home" className="relative min-h-screen flex items-center overflow-hidden bg-slate-900" style={{ minHeight: '100svh' }}>
         <img src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1800&q=75" alt="" aria-hidden="true"
           className="lp-zoom absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-emerald-900/50" />
@@ -554,7 +600,7 @@ export default function LandingPage() {
           <div className="max-w-2xl">
             <p className="lp-up inline-flex items-center gap-2 h-8 pl-2 pr-3.5 rounded-full bg-white/10 ring-1 ring-white/20 backdrop-blur text-xs font-medium text-white" style={{ animationDelay: '100ms' }}>
               <span className="lp-pulse w-2 h-2 rounded-full bg-emerald-400 ml-1" />
-              Trusted construction partner in Metro Manila
+              Serving Metro Manila only
             </p>
             <h1 className="lp-up mt-6 text-4xl sm:text-5xl lg:text-6xl font-semibold text-white tracking-tight leading-[1.05]" style={{ animationDelay: '200ms' }}>
               Building dreams,<br />
@@ -565,10 +611,9 @@ export default function LandingPage() {
             </p>
             <p className="lp-up mt-5 text-base sm:text-lg text-white font-medium" style={{ animationDelay: '380ms' }}>
               Need help with{' '}
-              <span className="inline-block min-w-[9ch] text-emerald-300 overflow-hidden align-bottom">
+              <span className="inline-block text-emerald-300 overflow-hidden align-bottom">
                 <RotatingWord words={['roofing', 'plumbing', 'renovation', 'electrical work', 'painting', 'carpentry', 'a new build']} />
-              </span>
-              ?
+              </span>?
             </p>
             <div className="lp-up mt-6 flex flex-wrap gap-3" style={{ animationDelay: '440ms' }}>
               <button onClick={() => openQuote()}
@@ -627,7 +672,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-5 sm:px-8">
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-stretch">
             <div className="flex flex-col">
-              <SectionHeading align="left" eyebrow="Contact us" title="Let’s talk about your project" text="Reach us any way you like, or send an inquiry and we’ll get back to you within one business day." />
+              <SectionHeading align="left" eyebrow="Contact us" title="Let’s talk about your project" text="Reach us any way you like, or send an inquiry and we’ll get back to you within one business day. We currently accept projects within Metro Manila only." />
 
               <Reveal delay={100}>
                 <ul className="mt-8 rounded-2xl bg-white ring-1 ring-slate-200 divide-y divide-slate-100">
@@ -701,7 +746,7 @@ export default function LandingPage() {
             </nav>
           </div>
           <div className="mt-8 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p>© {new Date().getFullYear()} Emerald Builders & Construction. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} Emerald Builders & Construction. All rights reserved. · Serving Metro Manila only.</p>
             <button onClick={() => scrollTo('home')} className="hover:text-emerald-400 transition-colors">Back to top ↑</button>
           </div>
         </div>
