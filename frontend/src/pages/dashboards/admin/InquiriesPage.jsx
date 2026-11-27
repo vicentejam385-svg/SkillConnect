@@ -325,7 +325,6 @@ function InquiryDetails({ inquiry, onClose }) {
     ['Email',           inquiry.email],
     ['Project address', inquiry.address],
     ['Received',        `${fmtDate(created)} (${timeAgo(created)})`],
-    ['Type',            inquiry.source === 'walk_in' ? 'Walk-in' : 'Online'],
     ...(answer ? [['Customer answer', answer]] : []),
   ]
   return createPortal(
