@@ -5,7 +5,7 @@ import {
   Plus, Search, Eye, X, CheckCircle2, AlertCircle, XCircle, Inbox, Trophy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown,
   Mail, Smartphone, MapPin, Copy, Check, Loader2, MessageSquareText,
-  Info, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, ThumbsUp, Ban, Hourglass, MessageSquare,
+  Info, MoreHorizontal, ArrowUp, ArrowDown, ArrowUpDown, Send, RefreshCw, CheckCircle, Store, ThumbsUp, Ban, Hourglass, MessageSquare,
 } from 'lucide-react'
 import { apiGet, apiPost, apiPut } from '../../../utils/api'
 import { createPortal } from 'react-dom'
@@ -397,23 +397,70 @@ function ConfirmStatus({ inquiry, type, busy, onCancel, onConfirm }) {
 
 const isOpen = inq => inq.status !== 'Won' && inq.status !== 'Lost'
 
-/* The three row actions */
-function RowActions({ inq, onView, onWon, onLost, full = false }) {
-  const base = 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 whitespace-nowrap'
+/* Row actions: one "…" button that opens a small menu (drawn on top of everything, so it never hides behind the table) */
+function RowActions({ inq, onView, onWon, onLost }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
+
+  const place = useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect()
+    if (!r) return
+    const W = 184, H = isOpen(inq) ? 132 : 52
+    const below = window.innerHeight - r.bottom > H + 12
+    setPos({ left: Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8)), top: below ? r.bottom + 6 : r.top - H - 6, width: W })
+  }, [inq])
+
+  useEffect(() => {
+    if (!open) return
+    place()
+    const close = e => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return
+      if (e.type === 'mousedown' && (menuRef.current?.contains(e.target) || btnRef.current?.contains(e.target))) return
+      setOpen(false)
+    }
+    const shut = () => setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    window.addEventListener('scroll', shut, true)
+    window.addEventListener('resize', shut)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', close)
+      window.removeEventListener('scroll', shut, true)
+      window.removeEventListener('resize', shut)
+    }
+  }, [open, place])
+
+  const pick = fn => () => { setOpen(false); fn() }
+  const item = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md text-left transition-colors focus-visible:outline-none'
+
   return (
-    <div className={full ? 'grid grid-cols-2 gap-1.5' : 'flex items-center gap-1.5 justify-end'}>
-      <button onClick={onView} className={`${base} border border-slate-200 text-slate-700 hover:bg-slate-50 ${full ? 'col-span-2' : ''}`}>
-        <Eye size={14} {...ICON} /> View details
+    <>
+      <button ref={btnRef} onClick={() => setOpen(o => !o)} aria-label="Actions" aria-haspopup="menu" aria-expanded={open}
+        className={`${iconBtn} ${open ? 'bg-slate-100 text-slate-900' : ''}`}>
+        <MoreHorizontal size={18} {...ICON} />
       </button>
-      {isOpen(inq) && <>
-        <button onClick={onWon} className={`${base} bg-emerald-600 text-white hover:bg-emerald-700`}>
-          <Trophy size={14} {...ICON} /> Mark as won
-        </button>
-        <button onClick={onLost} className={`${base} border border-red-200 text-red-600 hover:bg-red-50`}>
-          <XCircle size={14} {...ICON} /> Mark as lost
-        </button>
-      </>}
-    </div>
+      {open && pos && createPortal(
+        <div ref={menuRef} role="menu" style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+          className="sc-pop z-[1000] p-1 bg-white rounded-lg shadow-lg ring-1 ring-slate-900/10">
+          <button role="menuitem" onClick={pick(onView)} className={`${item} text-slate-700 hover:bg-slate-50`}>
+            <Eye size={15} {...ICON} className="text-slate-400" /> View details
+          </button>
+          {isOpen(inq) && <>
+            <div className="my-1 h-px bg-slate-100" />
+            <button role="menuitem" onClick={pick(onWon)} className={`${item} text-emerald-700 hover:bg-emerald-50`}>
+              <Trophy size={15} {...ICON} /> Mark as won
+            </button>
+            <button role="menuitem" onClick={pick(onLost)} className={`${item} text-red-600 hover:bg-red-50`}>
+              <XCircle size={15} {...ICON} /> Mark as lost
+            </button>
+          </>}
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
 
@@ -766,19 +813,19 @@ export default function InquiriesPage() {
           <>
             <ul className="sm:hidden divide-y divide-slate-100">
               {pageItems.map((inq, i) => (
-                <li key={inq.id} className="sc-rise px-4 py-3.5" style={{ animationDelay: `${i * 30}ms` }}>
+                <li key={inq.id} className="sc-rise px-4 py-3" style={{ animationDelay: `${i * 30}ms` }}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900 truncate">{inq.full_name}</p>
                       <p className="text-xs text-slate-500 mt-0.5 truncate">{inq.inquiry_code} · {inq.reason || '—'} · {fmtDate(parseDT(inq.created_at))}</p>
                     </div>
-                    <StatusBadge status={inq.status} />
-                  </div>
-                  <div className="mt-2.5">
-                    <RowActions inq={inq} full
-                      onView={() => setSelected(inq)}
-                      onWon={() => setConfirm({ inq, type: 'won' })}
-                      onLost={() => setConfirm({ inq, type: 'lost' })} />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <StatusBadge status={inq.status} />
+                      <RowActions inq={inq}
+                        onView={() => setSelected(inq)}
+                        onWon={() => setConfirm({ inq, type: 'won' })}
+                        onLost={() => setConfirm({ inq, type: 'lost' })} />
+                    </div>
                   </div>
                 </li>
               ))}
@@ -805,10 +852,12 @@ export default function InquiriesPage() {
                       <td className="px-5 py-3 text-slate-700 tabular-nums whitespace-nowrap">{fmtDate(parseDT(inq.created_at))}</td>
                       <td className="px-5 py-3"><StatusBadge status={inq.status} /></td>
                       <td className="px-5 py-3">
-                        <RowActions inq={inq}
-                          onView={() => setSelected(inq)}
-                          onWon={() => setConfirm({ inq, type: 'won' })}
-                          onLost={() => setConfirm({ inq, type: 'lost' })} />
+                        <div className="flex justify-end">
+                          <RowActions inq={inq}
+                            onView={() => setSelected(inq)}
+                            onWon={() => setConfirm({ inq, type: 'won' })}
+                            onLost={() => setConfirm({ inq, type: 'lost' })} />
+                        </div>
                       </td>
                     </tr>
                   ))}
