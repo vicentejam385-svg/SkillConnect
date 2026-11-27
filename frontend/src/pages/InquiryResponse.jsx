@@ -80,7 +80,9 @@ export default function InquiryResponse() {
         ) : done ? (
           <Message icon={inq.answer === 'proceed' ? CheckCircle2 : XCircle} tone={inq.answer === 'proceed' ? 'green' : 'slate'}
             title={inq.answer === 'proceed' ? 'Thank you!' : 'Inquiry cancelled'} text={done}
-            foot={`You can change your answer using the same email link until our team reviews inquiry ${inq.inquiry_code}.`} />
+            foot={inq.answer === 'proceed'
+              ? `You can change your answer using the same email link until our team reviews inquiry ${inq.inquiry_code}.`
+              : `Inquiry ${inq.inquiry_code} is now closed. If this was a mistake, please contact us or send a new inquiry.`} />
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <div className="px-5 sm:px-6 pt-6 pb-5 border-b border-slate-100">
@@ -103,7 +105,9 @@ export default function InquiryResponse() {
                   <CheckCircle2 size={18} {...ICON} className="text-emerald-600 flex-shrink-0 mt-0.5" />
                   {inq.decision === 'won'
                     ? 'Our team has accepted your inquiry. Please check your email for your SkillConnect login details.'
-                    : 'Our team has already reviewed this inquiry. Please contact us if you have any questions.'}
+                    : inq.answer === 'cancel'
+                      ? 'You cancelled this inquiry, so it is now closed. If this was a mistake, please contact us or send a new inquiry.'
+                      : 'Our team has already reviewed this inquiry. Please contact us if you have any questions.'}
                 </p>
               ) : inq.state === 'expired' ? (
                 <p className="flex items-start gap-2.5 text-sm text-slate-700">
@@ -122,6 +126,12 @@ export default function InquiryResponse() {
                     <Choice on={choice === 'proceed'} onClick={() => setChoice('proceed')} icon={CheckCircle2} title="Yes, proceed" text="I still need this service." tone="green" />
                     <Choice on={choice === 'cancel'} onClick={() => setChoice('cancel')} icon={XCircle} title="No, cancel" text="I don't need it anymore." tone="red" />
                   </div>
+                  {choice === 'cancel' && (
+                    <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-600">
+                      <AlertCircle size={14} {...ICON} className="text-amber-500 flex-shrink-0 mt-px" />
+                      Cancelling closes your inquiry right away and can’t be undone.
+                    </p>
+                  )}
                   {error && <p className="mt-3 flex items-center gap-1.5 text-xs text-red-600"><AlertCircle size={14} {...ICON} />{error}</p>}
                   <button onClick={save} disabled={!choice || saving}
                     className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed">

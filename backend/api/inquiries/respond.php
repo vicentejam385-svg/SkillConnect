@@ -3,7 +3,8 @@
 // PUBLIC (no login): the page the email buttons open.
 //   GET  ?t=<private link>                       → the inquiry summary and the current answer
 //   POST { t, answer: 'proceed' | 'cancel' }     → save the customer's answer
-// The customer can change the answer until the admin marks the inquiry Won or Lost, or the link expires.
+// "Yes, proceed" can still be changed until the admin decides (or the link expires).
+// "No, cancel" is final: the inquiry is closed as Lost right away, so it can't be marked Won.
 require_once __DIR__ . '/../../cors.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../middleware/audit.php';
@@ -65,8 +66,14 @@ try {
 
     if ($inq['customer_answer'] !== $answer) {
         $now = jobOrderNow();
-        $pdo->prepare("UPDATE inquiries SET customer_answer = ?, customer_answer_at = ? WHERE id = ? AND status_id = ?")
-            ->execute([$answer, $now, $inq['id'], INQ_STATUS_NEW]);
+        $newStatus = $answer === 'cancel' ? INQ_STATUS_LOST : INQ_STATUS_NEW;
+        $upd = $pdo->prepare("UPDATE inquiries SET customer_answer = ?, customer_answer_at = ?, status_id = ? WHERE id = ? AND status_id = ?");
+        $upd->execute([$answer, $now, $newStatus, $inq['id'], INQ_STATUS_NEW]);
+        if ($upd->rowCount() === 0) {
+            // The admin decided a moment ago: show the customer the current state instead
+            $inq = inquiryFindByToken($pdo, $token);
+            irFail('Our team has already reviewed this inquiry, so the answer can no longer be changed.', 409, ['inquiry' => irPublic($inq)]);
+        }
 
         $who  = trim($inq['first_name'] . ' ' . $inq['last_name']);
         $code = $inq['inquiry_code'] ?: ('#' . $inq['id']);
@@ -78,16 +85,17 @@ try {
             'module'         => 'Inquiries',
             'description'    => $answer === 'proceed'
                 ? 'Customer confirmed they want to proceed with inquiry ' . $code
-                : 'Customer cancelled inquiry ' . $code,
+                : 'Customer cancelled inquiry ' . $code . ' (marked as Lost automatically)',
             'target_type'    => 'inquiry',
             'target_id'      => (int)$inq['id'],
             'target_label'   => $code . ' — ' . $who,
-            'old_values'     => ['customer_answer' => $inq['customer_answer']],
-            'new_values'     => ['customer_answer' => $answer],
+            'old_values'     => ['customer_answer' => $inq['customer_answer'], 'status_id' => (int)$inq['status_id']],
+            'new_values'     => ['customer_answer' => $answer, 'status_id' => $newStatus],
             'status'         => 'success',
         ]);
         $inq['customer_answer']    = $answer;
         $inq['customer_answer_at'] = $now;
+        $inq['status_id']          = $newStatus;
     }
 
     echo json_encode([

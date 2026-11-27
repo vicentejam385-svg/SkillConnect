@@ -396,6 +396,7 @@ function ConfirmStatus({ inquiry, type, busy, onCancel, onConfirm }) {
 }
 
 const isOpen = inq => inq.status !== 'Won' && inq.status !== 'Lost'
+const cancelledByCustomer = inq => inq.customer_answer === 'cancel'
 
 /* Row actions: one "…" button that opens a small menu (drawn on top of everything, so it never hides behind the table) */
 function RowActions({ inq, onView, onWon, onLost }) {
@@ -450,9 +451,16 @@ function RowActions({ inq, onView, onWon, onLost }) {
           </button>
           {isOpen(inq) && <>
             <div className="my-1 h-px bg-slate-100" />
-            <button role="menuitem" onClick={pick(onWon)} className={`${item} text-emerald-700 hover:bg-emerald-50`}>
-              <Trophy size={15} {...ICON} /> Mark as won
-            </button>
+            {cancelledByCustomer(inq) ? (
+              <div role="menuitem" aria-disabled="true" title="The customer cancelled this inquiry" className={`${item} text-slate-400 cursor-not-allowed`}>
+                <Trophy size={15} {...ICON} /> Mark as won
+                <span className="ml-auto text-[10px] font-medium text-red-500">Cancelled</span>
+              </div>
+            ) : (
+              <button role="menuitem" onClick={pick(onWon)} className={`${item} text-emerald-700 hover:bg-emerald-50`}>
+                <Trophy size={15} {...ICON} /> Mark as won
+              </button>
+            )}
             <button role="menuitem" onClick={pick(onLost)} className={`${item} text-red-600 hover:bg-red-50`}>
               <XCircle size={15} {...ICON} /> Mark as lost
             </button>
@@ -647,6 +655,15 @@ export default function InquiriesPage() {
     }
 
     const isDuplicate = (msg = '') => /already exists/i.test(msg)
+
+    // The customer may have cancelled from the email a moment ago: check the latest copy first
+    try {
+      const fresh = (await apiGet('/api/inquiries/list.php', { per_page: 500 })).inquiries?.find(x => x.id === inq.id)
+      if (fresh && (fresh.customer_answer === 'cancel' || fresh.status === 'Lost')) {
+        showToast('The customer cancelled this inquiry, so it can’t be marked as won.', 'error')
+        loadInquiries(); return
+      }
+    } catch { /* if the check fails, continue as before */ }
 
     try {
       let userId = inq.user_id || null
