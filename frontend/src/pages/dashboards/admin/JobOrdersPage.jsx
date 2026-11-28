@@ -1305,7 +1305,7 @@ function JobOrderModal({
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3">
               <CalendarDays size={16} {...ICON} className="text-slate-400" />Contract period
               <InfoTip label="About the contract period">
-                <ul className="space-y-1.5">
+                <ul className="space-y-1.5 list-disc pl-4 marker:text-slate-400">
                   {form._contract_suggested && selectedContract && (
                     <li>Suggested contract for {form._service || 'this service'}: <span className="font-semibold">{selectedContract.name}</span>. You can change it.</li>
                   )}
