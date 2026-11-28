@@ -991,6 +991,33 @@ function StartDatePicker({ value, onChange, blockReason, disabled, invalid, plac
   )
 }
 
+/* Small (i) icon: the details show only while the mouse is on it (or it has keyboard focus) */
+function InfoTip({ children, tone = 'slate', label = 'More info' }) {
+  const [pos, setPos] = useState(null)
+  const ref = useRef(null)
+  const show = () => {
+    const r = ref.current.getBoundingClientRect()
+    const W = 280
+    setPos({ left: Math.max(8, Math.min(r.left + r.width / 2 - W / 2, window.innerWidth - W - 8)), top: r.bottom + 8, width: W })
+  }
+  const color = { slate: 'text-slate-400 hover:text-slate-600', amber: 'text-amber-500 hover:text-amber-600', red: 'text-red-500 hover:text-red-600', emerald: 'text-emerald-600 hover:text-emerald-700' }[tone]
+  return (
+    <>
+      <button ref={ref} type="button" aria-label={label} onMouseEnter={show} onMouseLeave={() => setPos(null)} onFocus={show} onBlur={() => setPos(null)}
+        className={`inline-flex items-center justify-center w-5 h-5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${color}`}>
+        <Info size={15} {...ICON} />
+      </button>
+      {pos && createPortal(
+        <div role="tooltip" style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+          className="sc-pop z-[1000] pointer-events-none rounded-lg bg-slate-900 text-white text-xs leading-relaxed shadow-xl px-3 py-2.5">
+          {children}
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
 // ── Create / edit modal ────────────────────────────────────────
 function JobOrderModal({
   form, f, editTarget, saving, contacts, clients, contracts, inquiries, today, closeForm, handleSave, handleClientChange,
@@ -1201,7 +1228,30 @@ function JobOrderModal({
           {/* Worker */}
           <fieldset>
             <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><HardHat size={16} {...ICON} className="text-slate-400" />Worker</legend>
-            <label className={labelCls}>Assigned worker</label>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <label className="text-sm font-medium text-slate-700">Assigned worker</label>
+              {form.worker_contact_id && (
+                <InfoTip label="Worker's other job orders" tone={busyRanges.length === 0 ? 'emerald' : hasConflict ? 'red' : 'amber'}>
+                  {busyRanges.length === 0 ? (
+                    <p>This worker is free, with no other active job orders.</p>
+                  ) : (
+                    <>
+                      <p className="font-semibold">{hasConflict ? 'This worker is busy on the dates you picked' : 'This worker has other active job orders'}</p>
+                      <ul className="mt-1.5 space-y-0.5">
+                        {busyRanges.map((r, i) => (
+                          <li key={i} className="flex items-center gap-2">
+                            <span className={`w-1.5 h-1.5 rounded-full ${hasConflict ? 'bg-red-400' : 'bg-amber-400'}`} />
+                            <span className="font-semibold tabular-nums">{r.code}</span>
+                            <span className="tabular-nums text-slate-300">{fmtDay(r.start, { month: 'short', day: 'numeric' })} – {fmtDay(r.end)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-1.5 text-slate-300">Next free from <span className="font-semibold text-white">{nextAvail ? fmtDay(nextAvail) : 'unknown'}</span></p>
+                    </>
+                  )}
+                </InfoTip>
+              )}
+            </div>
             {workerFixed ? (
               <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5">
                 <span className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0"><HardHat size={15} {...ICON} /></span>
@@ -1246,27 +1296,6 @@ function JobOrderModal({
               </p>
             )}
 
-            {form.worker_contact_id && (
-              <div className="mt-3">
-                {busyRanges.length === 0 ? (
-                  <Notice tone="success" icon={CheckCircle2}>This worker is free, with no other active job orders.</Notice>
-                ) : (
-                  <Notice tone={hasConflict ? 'error' : 'warning'} icon={AlertTriangle}>
-                    <p className="font-medium">{hasConflict ? 'This worker is busy on the dates you picked' : 'This worker has other active job orders'}</p>
-                    <ul className="mt-2 space-y-1">
-                      {busyRanges.map((r, i) => (
-                        <li key={i} className="flex items-center gap-2 text-[13px]">
-                          <span className={`w-1.5 h-1.5 rounded-full ${hasConflict ? 'bg-red-400' : 'bg-amber-400'}`} />
-                          <span className="font-semibold tabular-nums">{r.code}</span>
-                          <span className="tabular-nums">{fmtDay(r.start, { month: 'short', day: 'numeric' })} – {fmtDay(r.end)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-[13px]">Next free from <span className="font-semibold">{nextAvail ? fmtDay(nextAvail) : 'unknown'}</span></p>
-                  </Notice>
-                )}
-              </div>
-            )}
           </fieldset>
 
           <div className="h-px bg-slate-100" />
