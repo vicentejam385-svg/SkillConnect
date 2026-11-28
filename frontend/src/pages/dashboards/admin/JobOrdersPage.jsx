@@ -1302,7 +1302,24 @@ function JobOrderModal({
 
           {/* Contract & dates */}
           <fieldset>
-            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3"><CalendarDays size={16} {...ICON} className="text-slate-400" />Contract period</legend>
+            <legend className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-3">
+              <CalendarDays size={16} {...ICON} className="text-slate-400" />Contract period
+              <InfoTip label="About the contract period">
+                <ul className="space-y-1.5">
+                  {form._contract_suggested && selectedContract && (
+                    <li>Suggested contract for {form._service || 'this service'}: <span className="font-semibold">{selectedContract.name}</span>. You can change it.</li>
+                  )}
+                  <li>The end date is set automatically from {selectedContract ? <>the <span className="font-semibold">{selectedContract.name}</span> contract</> : 'the contract type'} and can’t be changed.</li>
+                  <li>The start date can’t be a Saturday, Sunday or holiday. Those days are greyed out.</li>
+                  {selectedContract && isOneDayContract(selectedContract.name)
+                    ? <li>1-day contracts have no site visits. Site visits start from 2-day contracts.</li>
+                    : <li>Site visits are available from 2-day contracts.</li>}
+                  {nextAvail && form.worker_contact_id && (
+                    <li>Earliest start for this worker: <span className="font-semibold text-emerald-300">{fmtDay(nextAvail)}</span></li>
+                  )}
+                </ul>
+              </InfoTip>
+            </legend>
             {datesLocked && (
               <p className="-mt-1.5 mb-3 text-xs text-slate-500 flex items-center gap-1.5">
                 <Lock size={12} {...ICON} className="text-slate-400 flex-shrink-0" />
@@ -1355,25 +1372,6 @@ function JobOrderModal({
                 {!endBusy && fieldError(err('end'))}
               </div>
             </div>
-            {form._contract_suggested && selectedContract && (
-              <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1.5">
-                <Info size={12} {...ICON} />
-                Suggested contract for {form._service || 'this service'}: <span className="font-medium">{selectedContract.name}</span>. You can change it.
-              </p>
-            )}
-            {selectedContract && isOneDayContract(selectedContract.name) && (
-              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1.5">
-                <Info size={12} {...ICON} />1-day contracts have no site visits. Site visits start from 2-day contracts.
-              </p>
-            )}
-            {selectedContract && form.start_date && (
-              <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
-                <Clock size={12} {...ICON} />The end date is set automatically from the {selectedContract.name} contract.
-              </p>
-            )}
-            {nextAvail && form.worker_contact_id && (
-              <p className="text-xs text-slate-500 mt-1.5">Earliest start for this worker: <span className="font-medium text-emerald-700">{fmtDay(nextAvail)}</span></p>
-            )}
           </fieldset>
 
           <div className="h-px bg-slate-100" />
